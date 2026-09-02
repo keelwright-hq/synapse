@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/taricsa/synapse/internal/graph"
@@ -41,11 +40,12 @@ func resolveGraphPath(dir string) (string, error) {
 	if dir == "" {
 		dir = defaultDataDir
 	}
+	cleaned := filepath.Clean(dir)
 	var path string
-	if strings.HasSuffix(filepath.Clean(dir), "graph") {
-		path = filepath.Clean(dir)
+	if filepath.Base(cleaned) == "graph" {
+		path = cleaned
 	} else {
-		path = filepath.Join(filepath.Clean(dir), "graph")
+		path = filepath.Join(cleaned, "graph")
 	}
 	return filepath.Abs(path)
 }
@@ -160,6 +160,9 @@ func (s *Store) DeleteEdge(from graph.NodeID, to graph.NodeID, edgeType graph.Ed
 func (s *Store) OutEdges(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
 	var edges []graph.Edge
 	prefix := outEdgePrefix(from)
+	if edgeType != "" {
+		prefix = outEdgeTypePrefix(from, edgeType)
+	}
 	err := s.db.View(func(txn *badgerdb.Txn) error {
 		it := txn.NewIterator(badgerdb.DefaultIteratorOptions)
 		defer it.Close()
@@ -175,9 +178,6 @@ func (s *Store) OutEdges(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Ed
 				return nil
 			}); err != nil {
 				return err
-			}
-			if edgeType != "" && edge.Type != edgeType {
-				continue
 			}
 			edges = append(edges, edge)
 		}
@@ -189,6 +189,9 @@ func (s *Store) OutEdges(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Ed
 func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
 	var edges []graph.Edge
 	prefix := inEdgePrefix(to)
+	if edgeType != "" {
+		prefix = inEdgeTypePrefix(to, edgeType)
+	}
 	err := s.db.View(func(txn *badgerdb.Txn) error {
 		it := txn.NewIterator(badgerdb.DefaultIteratorOptions)
 		defer it.Close()
@@ -204,9 +207,6 @@ func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge,
 				return nil
 			}); err != nil {
 				return err
-			}
-			if edgeType != "" && edge.Type != edgeType {
-				continue
 			}
 			edges = append(edges, edge)
 		}
@@ -266,22 +266,32 @@ func deleteEdgesForNode(txn *badgerdb.Txn, id graph.NodeID) error {
 	return nil
 }
 
+// Key segments use \x00 so NodeIDs containing '/' (file/package paths) cannot
+// collide during prefix scans.
 func nodeKey(id graph.NodeID) []byte {
-	return []byte("n/" + string(id))
+	return []byte("n\x00" + string(id))
 }
 
 func outEdgePrefix(from graph.NodeID) []byte {
-	return []byte("eo/" + string(from) + "/")
+	return []byte("eo\x00" + string(from) + "\x00")
 }
 
 func inEdgePrefix(to graph.NodeID) []byte {
-	return []byte("ei/" + string(to) + "/")
+	return []byte("ei\x00" + string(to) + "\x00")
+}
+
+func outEdgeTypePrefix(from graph.NodeID, edgeType graph.EdgeType) []byte {
+	return []byte("eo\x00" + string(from) + "\x00" + string(edgeType) + "\x00")
+}
+
+func inEdgeTypePrefix(to graph.NodeID, edgeType graph.EdgeType) []byte {
+	return []byte("ei\x00" + string(to) + "\x00" + string(edgeType) + "\x00")
 }
 
 func outEdgeKey(from graph.NodeID, edgeType graph.EdgeType, to graph.NodeID) []byte {
-	return []byte("eo/" + string(from) + "/" + string(edgeType) + "/" + string(to))
+	return []byte("eo\x00" + string(from) + "\x00" + string(edgeType) + "\x00" + string(to))
 }
 
 func inEdgeKey(to graph.NodeID, edgeType graph.EdgeType, from graph.NodeID) []byte {
-	return []byte("ei/" + string(to) + "/" + string(edgeType) + "/" + string(from))
+	return []byte("ei\x00" + string(to) + "\x00" + string(edgeType) + "\x00" + string(from))
 }

@@ -66,15 +66,12 @@ func TestDurabilityAcrossRestart(t *testing.T) {
 }
 
 func TestDefaultDataDir(t *testing.T) {
-	origWD, err := os.Getwd()
+	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)
 	}
-	tmp := t.TempDir()
-	if err := os.Chdir(tmp); err != nil {
-		t.Fatalf("Chdir: %v", err)
-	}
-	defer os.Chdir(origWD)
+	dataRoot := filepath.Join(wd, ".synapse")
+	t.Cleanup(func() { _ = os.RemoveAll(dataRoot) })
 
 	s, err := Open("")
 	if err != nil {
@@ -82,7 +79,7 @@ func TestDefaultDataDir(t *testing.T) {
 	}
 	defer s.Close()
 
-	want := filepath.Join(tmp, ".synapse", "graph")
+	want := filepath.Join(dataRoot, "graph")
 	got, err := filepath.EvalSymlinks(s.dir)
 	if err != nil {
 		got = s.dir
@@ -93,5 +90,58 @@ func TestDefaultDataDir(t *testing.T) {
 	}
 	if got != wantEval {
 		t.Fatalf("graph path = %q want %q", got, wantEval)
+	}
+}
+
+func TestResolveGraphPathDoesNotSuffixMatch(t *testing.T) {
+	path, err := resolveGraphPath(filepath.Join(t.TempDir(), "mygraph"))
+	if err != nil {
+		t.Fatalf("resolveGraphPath: %v", err)
+	}
+	if filepath.Base(path) != "graph" {
+		t.Fatalf("expected .../mygraph/graph, got %q", path)
+	}
+}
+
+func TestSlashContainingNodeIDsDoNotCollide(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+
+	parent := graph.Node{ID: "cmd/synapse", Kind: "dir"}
+	child := graph.Node{ID: "cmd/synapse/main.go", Kind: "file"}
+	other := graph.Node{ID: "other", Kind: "file"}
+	for _, n := range []graph.Node{parent, child, other} {
+		if err := s.PutNode(n); err != nil {
+			t.Fatalf("PutNode %s: %v", n.ID, err)
+		}
+	}
+
+	// Parent has an edge whose type contains '/', which would collide under
+	// slash-delimited keys with a scan of child.
+	if err := s.PutEdge(graph.Edge{From: parent.ID, To: other.ID, Type: "main.go/foo"}); err != nil {
+		t.Fatalf("PutEdge: %v", err)
+	}
+	if err := s.PutEdge(graph.Edge{From: child.ID, To: other.ID, Type: "imports"}); err != nil {
+		t.Fatalf("PutEdge child: %v", err)
+	}
+
+	out, err := s.OutEdges(child.ID, "")
+	if err != nil {
+		t.Fatalf("OutEdges child: %v", err)
+	}
+	if len(out) != 1 || out[0].Type != "imports" {
+		t.Fatalf("child OutEdges leaked parent edges: %+v", out)
+	}
+
+	typed, err := s.OutEdges(parent.ID, "main.go/foo")
+	if err != nil {
+		t.Fatalf("OutEdges typed: %v", err)
+	}
+	if len(typed) != 1 || typed[0].To != other.ID {
+		t.Fatalf("typed OutEdges: %+v", typed)
 	}
 }
