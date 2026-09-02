@@ -32,7 +32,7 @@ func (s *Store) PutNode(node graph.Node) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.nodes[node.ID] = node
+	s.nodes[node.ID] = cloneNode(node)
 	return nil
 }
 
@@ -43,7 +43,7 @@ func (s *Store) GetNode(id graph.NodeID) (graph.Node, error) {
 	if !ok {
 		return graph.Node{}, graph.ErrNotFound
 	}
-	return node, nil
+	return cloneNode(node), nil
 }
 
 func (s *Store) DeleteNode(id graph.NodeID) error {
@@ -73,7 +73,7 @@ func (s *Store) PutEdge(edge graph.Edge) error {
 	if _, ok := s.nodes[edge.To]; !ok {
 		return graph.ErrNotFound
 	}
-	s.edges[edgeKey(edge)] = edge
+	s.edges[edgeKey(edge)] = cloneEdge(edge)
 	return nil
 }
 
@@ -99,7 +99,7 @@ func (s *Store) OutEdges(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Ed
 		if edgeType != "" && edge.Type != edgeType {
 			continue
 		}
-		out = append(out, edge)
+		out = append(out, cloneEdge(edge))
 	}
 	return out, nil
 }
@@ -115,11 +115,32 @@ func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge,
 		if edgeType != "" && edge.Type != edgeType {
 			continue
 		}
-		in = append(in, edge)
+		in = append(in, cloneEdge(edge))
 	}
 	return in, nil
 }
 
 func edgeKey(edge graph.Edge) string {
 	return string(edge.From) + "\x00" + string(edge.Type) + "\x00" + string(edge.To)
+}
+
+func cloneNode(node graph.Node) graph.Node {
+	node.Props = cloneProps(node.Props)
+	return node
+}
+
+func cloneEdge(edge graph.Edge) graph.Edge {
+	edge.Props = cloneProps(edge.Props)
+	return edge
+}
+
+func cloneProps(props map[string]string) map[string]string {
+	if props == nil {
+		return nil
+	}
+	cp := make(map[string]string, len(props))
+	for k, v := range props {
+		cp[k] = v
+	}
+	return cp
 }
