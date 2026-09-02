@@ -7,6 +7,7 @@ Go-native code context engine for AI IDEs. Synapse indexes repositories via tree
 ## Requirements
 
 - Go 1.22+ (developed with Go 1.27)
+- A C toolchain (**CGO required** for tree-sitter grammars — see [docs/tree-sitter.md](docs/tree-sitter.md))
 
 ## Install
 
@@ -40,10 +41,11 @@ go build -o synapse ./cmd/synapse
 |--------------|--------------------------------------------------|
 | `make build` | Build `./synapse` with version ldflags           |
 | `make test`  | Run `go test ./...`                              |
-| `make cross` | Cross-compile `linux/amd64` + `darwin/arm64`     |
+| `make cross` | Native CGO build into `dist/` (no cross-OS yet)  |
 | `make clean` | Remove `synapse` and `dist/`                     |
 
-Graph store benchmarks: see [docs/benchmarks.md](docs/benchmarks.md).
+Graph store benchmarks: see [docs/benchmarks.md](docs/benchmarks.md).  
+Tree-sitter / CGO notes: see [docs/tree-sitter.md](docs/tree-sitter.md).
 
 ## License
 

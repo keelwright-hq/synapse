@@ -1,0 +1,132 @@
+{
+  "path": "go/sample/greet.go",
+  "lang": "go",
+  "nodes": [
+    {
+      "id": "file:go/sample/greet.go",
+      "kind": "file",
+      "name": "go/sample/greet.go",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "func:go/sample/greet.go#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "func:go/sample/greet.go#main",
+      "kind": "function",
+      "name": "main",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "import:go/sample/greet.go#fmt",
+      "kind": "import",
+      "name": "fmt",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "method:go/sample/greet.go#Greeter.Greet",
+      "kind": "method",
+      "name": "Greet",
+      "path": "go/sample/greet.go",
+      "props": {
+        "receiver": "Greeter"
+      }
+    },
+    {
+      "id": "package:go/sample/greet.go#main",
+      "kind": "package",
+      "name": "main",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "symbol:Greet",
+      "kind": "symbol",
+      "name": "Greet",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "symbol:Printf",
+      "kind": "symbol",
+      "name": "Printf",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "symbol:Println",
+      "kind": "symbol",
+      "name": "Println",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "symbol:helper",
+      "kind": "symbol",
+      "name": "helper",
+      "path": "go/sample/greet.go"
+    },
+    {
+      "id": "type:go/sample/greet.go#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "go/sample/greet.go"
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:go/sample/greet.go",
+      "to": "package:go/sample/greet.go#main",
+      "type": "contains"
+    },
+    {
+      "from": "func:go/sample/greet.go#helper",
+      "to": "symbol:Println",
+      "type": "calls"
+    },
+    {
+      "from": "func:go/sample/greet.go#main",
+      "to": "symbol:Greet",
+      "type": "calls"
+    },
+    {
+      "from": "func:go/sample/greet.go#main",
+      "to": "symbol:helper",
+      "type": "calls"
+    },
+    {
+      "from": "method:go/sample/greet.go#Greeter.Greet",
+      "to": "symbol:Printf",
+      "type": "calls"
+    },
+    {
+      "from": "method:go/sample/greet.go#Greeter.Greet",
+      "to": "symbol:helper",
+      "type": "calls"
+    },
+    {
+      "from": "package:go/sample/greet.go#main",
+      "to": "func:go/sample/greet.go#helper",
+      "type": "contains"
+    },
+    {
+      "from": "package:go/sample/greet.go#main",
+      "to": "func:go/sample/greet.go#main",
+      "type": "contains"
+    },
+    {
+      "from": "package:go/sample/greet.go#main",
+      "to": "import:go/sample/greet.go#fmt",
+      "type": "imports"
+    },
+    {
+      "from": "package:go/sample/greet.go#main",
+      "to": "method:go/sample/greet.go#Greeter.Greet",
+      "type": "contains"
+    },
+    {
+      "from": "package:go/sample/greet.go#main",
+      "to": "type:go/sample/greet.go#Greeter",
+      "type": "contains"
+    }
+  ]
+}

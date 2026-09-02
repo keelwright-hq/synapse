@@ -1,0 +1,129 @@
+{
+  "path": "ts/sample/greet.ts",
+  "lang": "typescript",
+  "nodes": [
+    {
+      "id": "file:ts/sample/greet.ts",
+      "kind": "file",
+      "name": "ts/sample/greet.ts",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "func:ts/sample/greet.ts#format",
+      "kind": "function",
+      "name": "format",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "func:ts/sample/greet.ts#greet",
+      "kind": "function",
+      "name": "greet",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "import:ts/sample/greet.ts#fs",
+      "kind": "import",
+      "name": "fs",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "method:ts/sample/greet.ts#class.say",
+      "kind": "method",
+      "name": "say",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "module:ts/sample/greet.ts",
+      "kind": "module",
+      "name": "greet",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "symbol:format",
+      "kind": "symbol",
+      "name": "format",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "symbol:readFile",
+      "kind": "symbol",
+      "name": "readFile",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "symbol:toUpperCase",
+      "kind": "symbol",
+      "name": "toUpperCase",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "type:ts/sample/greet.ts#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "ts/sample/greet.ts"
+    },
+    {
+      "id": "type:ts/sample/greet.ts#User",
+      "kind": "type",
+      "name": "User",
+      "path": "ts/sample/greet.ts"
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:ts/sample/greet.ts",
+      "to": "module:ts/sample/greet.ts",
+      "type": "contains"
+    },
+    {
+      "from": "func:ts/sample/greet.ts#format",
+      "to": "symbol:toUpperCase",
+      "type": "calls"
+    },
+    {
+      "from": "func:ts/sample/greet.ts#greet",
+      "to": "symbol:format",
+      "type": "calls"
+    },
+    {
+      "from": "func:ts/sample/greet.ts#greet",
+      "to": "symbol:readFile",
+      "type": "calls"
+    },
+    {
+      "from": "method:ts/sample/greet.ts#class.say",
+      "to": "symbol:format",
+      "type": "calls"
+    },
+    {
+      "from": "module:ts/sample/greet.ts",
+      "to": "func:ts/sample/greet.ts#format",
+      "type": "contains"
+    },
+    {
+      "from": "module:ts/sample/greet.ts",
+      "to": "func:ts/sample/greet.ts#greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:ts/sample/greet.ts",
+      "to": "import:ts/sample/greet.ts#fs",
+      "type": "imports"
+    },
+    {
+      "from": "module:ts/sample/greet.ts",
+      "to": "method:ts/sample/greet.ts#class.say",
+      "type": "contains"
+    },
+    {
+      "from": "module:ts/sample/greet.ts",
+      "to": "type:ts/sample/greet.ts#Greeter",
+      "type": "contains"
+    },
+    {
+      "from": "module:ts/sample/greet.ts",
+      "to": "type:ts/sample/greet.ts#User",
+      "type": "contains"
+    }
+  ]
+}

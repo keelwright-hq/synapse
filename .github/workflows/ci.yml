@@ -16,14 +16,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install C toolchain
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
       - name: Test
+        env:
+          CGO_ENABLED: "1"
         run: go test ./...
 
       - name: Build
+        env:
+          CGO_ENABLED: "1"
         run: |
           VERSION="${GITHUB_REF_NAME}"
           COMMIT="${GITHUB_SHA::7}"
@@ -35,21 +42,25 @@ jobs:
             -o synapse ./cmd/synapse
           ./synapse version
 
-  cross:
-    name: Cross-compile smoke
+  # Native-OS cgo smoke only. Linux→darwin CGO cross-compile is deferred
+  # until a dedicated cross-cgo/release pipeline exists (see docs/tree-sitter.md).
+  native-cgo:
+    name: Native CGO build smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install C toolchain
+        run: sudo apt-get update && sudo apt-get install -y build-essential
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: linux/amd64
-        run: GOOS=linux GOARCH=amd64 go build -o dist/synapse-linux-amd64 ./cmd/synapse
-
-      - name: darwin/arm64
-        run: GOOS=darwin GOARCH=arm64 go build -o dist/synapse-darwin-arm64 ./cmd/synapse
-
-      - name: List artifacts
-        run: ls -la dist/
+      - name: linux/amd64 (native)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          mkdir -p dist
+          go build -o dist/synapse-linux-amd64 ./cmd/synapse
+          ls -la dist/
