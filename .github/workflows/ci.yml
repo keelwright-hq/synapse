@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          COMMIT="${GITHUB_SHA::7}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          go build -ldflags "-s -w \
+            -X github.com/taricsa/synapse/internal/buildinfo.Version=${VERSION} \
+            -X github.com/taricsa/synapse/internal/buildinfo.Commit=${COMMIT} \
+            -X github.com/taricsa/synapse/internal/buildinfo.Date=${DATE}" \
+            -o synapse ./cmd/synapse
+          ./synapse version
+
+  cross:
+    name: Cross-compile smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: linux/amd64
+        run: GOOS=linux GOARCH=amd64 go build -o dist/synapse-linux-amd64 ./cmd/synapse
+
+      - name: darwin/arm64
+        run: GOOS=darwin GOARCH=arm64 go build -o dist/synapse-darwin-arm64 ./cmd/synapse
+
+      - name: List artifacts
+        run: ls -la dist/
