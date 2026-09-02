@@ -9,7 +9,9 @@ import (
 	"github.com/taricsa/synapse/internal/graph"
 )
 
-const defaultDataDir = ".synapse"
+// defaultDataDir is the relative path used when Open receives an empty dir.
+// It is a var so tests can override it with t.TempDir() without writing to cwd.
+var defaultDataDir = ".synapse"
 
 // Store persists a graph in BadgerDB.
 type Store struct {

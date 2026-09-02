@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -66,12 +65,10 @@ func TestDurabilityAcrossRestart(t *testing.T) {
 }
 
 func TestDefaultDataDir(t *testing.T) {
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	dataRoot := filepath.Join(wd, ".synapse")
-	t.Cleanup(func() { _ = os.RemoveAll(dataRoot) })
+	orig := defaultDataDir
+	tmp := t.TempDir()
+	defaultDataDir = tmp
+	t.Cleanup(func() { defaultDataDir = orig })
 
 	s, err := Open("")
 	if err != nil {
@@ -79,7 +76,7 @@ func TestDefaultDataDir(t *testing.T) {
 	}
 	defer s.Close()
 
-	want := filepath.Join(dataRoot, "graph")
+	want := filepath.Join(tmp, "graph")
 	got, err := filepath.EvalSymlinks(s.dir)
 	if err != nil {
 		got = s.dir
