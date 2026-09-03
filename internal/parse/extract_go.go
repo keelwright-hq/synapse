@@ -1,8 +1,8 @@
 package parse
 
 import (
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/taricsa/synapse/internal/graph"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 func extractGo(path string, src []byte, root *tree_sitter.Node) Result {

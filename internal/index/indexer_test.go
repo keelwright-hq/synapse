@@ -110,3 +110,21 @@ func writeGo(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+func TestIndexerProcessesJavaScript(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "app.js"), []byte(`function hello() { console.log("hi") }`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := memory.New()
+	stats, err := index.New(store).Run(root, index.Options{Workers: 1, Repo: "jsdemo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Processed < 1 {
+		t.Fatalf("want processed>=1, got %+v", stats)
+	}
+	if _, err := store.GetNode("func:app.js#hello"); err != nil {
+		t.Fatalf("hello missing: %v", err)
+	}
+}

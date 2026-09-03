@@ -3,8 +3,8 @@ package parse
 import (
 	"fmt"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/taricsa/synapse/internal/graph"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 type builder struct {

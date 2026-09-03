@@ -24,12 +24,17 @@ func fixtureRoot(t *testing.T) string {
 func TestRegistryRouting(t *testing.T) {
 	reg := parse.NewRegistry()
 	cases := map[string]string{
-		"a.go":  "go",
-		"b.TS":  "typescript",
-		"c.tsx": "tsx",
-		"d.jsx": "",
-		"e.txt": "",
-		"noext": "",
+		"a.go":    "go",
+		"b.TS":    "typescript",
+		"c.tsx":   "tsx",
+		"d.jsx":   "jsx",
+		"e.js":    "javascript",
+		"f.mjs":   "javascript",
+		"g.cjs":   "javascript",
+		"h.py":    "python",
+		"i.SWIFT": "swift",
+		"j.txt":   "",
+		"noext":   "",
 	}
 	for path, want := range cases {
 		lang := reg.Lookup(path)
@@ -84,6 +89,65 @@ func TestParseSmokeGoAndTS(t *testing.T) {
 	assertHasKind(t, res, parse.KindType, "Props")
 }
 
+func TestParseSmokeJSPythonSwift(t *testing.T) {
+	root := fixtureRoot(t)
+	reg := parse.NewRegistry()
+
+	jsPath := filepath.Join(root, "js", "sample", "greet.js")
+	res, err := parse.ParseFile(reg, jsPath)
+	if err != nil {
+		t.Fatalf("parse js: %v", err)
+	}
+	if res.Skipped || res.Lang != "javascript" {
+		t.Fatalf("unexpected js result: %+v", res)
+	}
+	assertHasKind(t, res, parse.KindFunction, "greet")
+	assertHasKind(t, res, parse.KindFunction, "format")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "fs")
+	assertHasKind(t, res, parse.KindImport, "fs/promises")
+
+	jsxPath := filepath.Join(root, "jsx", "sample", "app.jsx")
+	res, err = parse.ParseFile(reg, jsxPath)
+	if err != nil {
+		t.Fatalf("parse jsx: %v", err)
+	}
+	if res.Lang != "jsx" {
+		t.Fatalf("want jsx, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindFunction, "Badge")
+	assertHasKind(t, res, parse.KindType, "App")
+	assertHasKind(t, res, parse.KindImport, "react")
+
+	pyPath := filepath.Join(root, "python", "sample", "greet.py")
+	res, err = parse.ParseFile(reg, pyPath)
+	if err != nil {
+		t.Fatalf("parse python: %v", err)
+	}
+	if res.Lang != "python" {
+		t.Fatalf("want python, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "os")
+	assertHasKind(t, res, parse.KindImport, "pathlib")
+
+	swiftPath := filepath.Join(root, "swift", "sample", "greet.swift")
+	res, err = parse.ParseFile(reg, swiftPath)
+	if err != nil {
+		t.Fatalf("parse swift: %v", err)
+	}
+	if res.Lang != "swift" {
+		t.Fatalf("want swift, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "User")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindImport, "Foundation")
+}
+
 func TestGoldenFixtures(t *testing.T) {
 	root := fixtureRoot(t)
 	reg := parse.NewRegistry()
@@ -94,6 +158,10 @@ func TestGoldenFixtures(t *testing.T) {
 		{filepath.Join(root, "go", "sample", "greet.go"), filepath.Join(root, "go", "sample", "greet.golden.json")},
 		{filepath.Join(root, "ts", "sample", "greet.ts"), filepath.Join(root, "ts", "sample", "greet.golden.json")},
 		{filepath.Join(root, "tsx", "sample", "app.tsx"), filepath.Join(root, "tsx", "sample", "app.golden.json")},
+		{filepath.Join(root, "js", "sample", "greet.js"), filepath.Join(root, "js", "sample", "greet.golden.json")},
+		{filepath.Join(root, "jsx", "sample", "app.jsx"), filepath.Join(root, "jsx", "sample", "app.golden.json")},
+		{filepath.Join(root, "python", "sample", "greet.py"), filepath.Join(root, "python", "sample", "greet.golden.json")},
+		{filepath.Join(root, "swift", "sample", "greet.swift"), filepath.Join(root, "swift", "sample", "greet.golden.json")},
 	}
 
 	for _, tc := range cases {
@@ -224,6 +292,81 @@ export class Beta {
 		if !found {
 			t.Fatalf("missing method ID containing %q in %v", want, methods)
 		}
+	}
+}
+
+func TestNestedPythonFunctionNotMethod(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nested.py")
+	mustWrite(t, path, `
+class Greeter:
+    def greet(self):
+        def helper():
+            print("hi")
+        helper()
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	for _, n := range res.Nodes {
+		if n.Name == "helper" && n.Kind == parse.KindMethod {
+			t.Fatalf("nested helper should be function, got method %s", n.ID)
+		}
+	}
+}
+
+func TestNestedSwiftFunctionNotMethod(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nested.swift")
+	mustWrite(t, path, `
+class Greeter {
+    func greet() {
+        func helper() {
+            print("hi")
+        }
+        helper()
+    }
+}
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	for _, n := range res.Nodes {
+		if n.Name == "helper" && n.Kind == parse.KindMethod {
+			t.Fatalf("nested helper should be function, got method %s", n.ID)
+		}
+	}
+}
+
+func TestJSDefaultParamCallsCaptured(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "defaults.js")
+	mustWrite(t, path, `
+const foo = (x = bar()) => {
+  return x;
+};
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindFunction, "foo")
+	assertHasKind(t, res, parse.KindSymbol, "bar")
+	found := false
+	for _, e := range res.Edges {
+		if e.Type == parse.EdgeCalls && strings.Contains(string(e.From), "#foo") && string(e.To) == "symbol:bar" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want foo -> symbol:bar calls edge, got %+v", res.Edges)
 	}
 }
 

@@ -1,0 +1,81 @@
+{
+  "path": "jsx/sample/app.jsx",
+  "lang": "jsx",
+  "nodes": [
+    {
+      "id": "file:jsx/sample/app.jsx",
+      "kind": "file",
+      "name": "jsx/sample/app.jsx",
+      "path": "jsx/sample/app.jsx"
+    },
+    {
+      "id": "func:jsx/sample/app.jsx#Badge",
+      "kind": "function",
+      "name": "Badge",
+      "path": "jsx/sample/app.jsx",
+      "props": {
+        "end_line": "5",
+        "start_line": "3"
+      }
+    },
+    {
+      "id": "import:jsx/sample/app.jsx#react",
+      "kind": "import",
+      "name": "react",
+      "path": "jsx/sample/app.jsx"
+    },
+    {
+      "id": "method:jsx/sample/app.jsx#App.render",
+      "kind": "method",
+      "name": "render",
+      "path": "jsx/sample/app.jsx",
+      "props": {
+        "end_line": "10",
+        "start_line": "8"
+      }
+    },
+    {
+      "id": "module:jsx/sample/app.jsx",
+      "kind": "module",
+      "name": "app",
+      "path": "jsx/sample/app.jsx"
+    },
+    {
+      "id": "type:jsx/sample/app.jsx#App",
+      "kind": "type",
+      "name": "App",
+      "path": "jsx/sample/app.jsx",
+      "props": {
+        "end_line": "11",
+        "start_line": "7"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:jsx/sample/app.jsx",
+      "to": "module:jsx/sample/app.jsx",
+      "type": "contains"
+    },
+    {
+      "from": "module:jsx/sample/app.jsx",
+      "to": "func:jsx/sample/app.jsx#Badge",
+      "type": "contains"
+    },
+    {
+      "from": "module:jsx/sample/app.jsx",
+      "to": "import:jsx/sample/app.jsx#react",
+      "type": "imports"
+    },
+    {
+      "from": "module:jsx/sample/app.jsx",
+      "to": "method:jsx/sample/app.jsx#App.render",
+      "type": "contains"
+    },
+    {
+      "from": "module:jsx/sample/app.jsx",
+      "to": "type:jsx/sample/app.jsx#App",
+      "type": "contains"
+    }
+  ]
+}
