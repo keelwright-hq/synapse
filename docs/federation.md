@@ -65,18 +65,25 @@ Export walks every node first, then emits each outbound edge once (from the
 ./synapse graph import --data-dir /tmp/shards --repo api api.ndjson
 ./synapse graph import --data-dir /tmp/shards --overlay overlay.ndjson
 
+# Import under a new logical name (rewrites props.repo_uri)
+./synapse graph import --data-dir /tmp/shards --repo renamed --rewrite-repo api.ndjson
+
 # Federated query (same as workspace mode)
 ./synapse query neighborhood 'repo://api/users.proto#operation:UserService.ListUsers' \
   --workspace path/to/synapse.yaml --data-dir /tmp/shards --json
 ```
 
 Round-trip export → import preserves nodes, edges, and `repo_uri` indexes.
+A mismatched `--repo` is a **hard fail** unless you pass `--rewrite-repo`, which
+remaps every `props.repo_uri` and any URI-keyed overlay endpoint (`repo://…`
+node/edge IDs) from the snapshot header repo to the target name.
 
 ## Failure modes
 
 | Condition | Behavior |
 |-----------|----------|
 | Snapshot `version` ≠ 1 or bad `format` | Import **fails** |
+| Snapshot header `repo` ≠ `--repo` | Import **fails** unless `--rewrite-repo` |
 | Listed workspace member has no local Badger dir | **Warning**; query continues with remaining shards |
 | Zero shards open | Query **fails** |
 | Overlay edge points at a URI whose shard is missing | Edge skipped; **warning** recorded (JSON `warnings` / stderr) |

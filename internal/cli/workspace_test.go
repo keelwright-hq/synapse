@@ -48,6 +48,7 @@ func resetPersistentFlags(t *testing.T, cmd *cobra.Command) {
 	}
 	if importCmd, _, err := cmd.Find([]string{"graph", "import"}); err == nil {
 		_ = importCmd.Flags().Set("overlay", "false")
+		_ = importCmd.Flags().Set("rewrite-repo", "false")
 	}
 }
 

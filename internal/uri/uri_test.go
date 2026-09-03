@@ -159,6 +159,25 @@ func TestParseLiteralPercentInSymbol(t *testing.T) {
 	}
 }
 
+func TestRewriteRepo(t *testing.T) {
+	got, err := RewriteRepo("repo://api/svc/handler.go#func:ListUsers", "api", "renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "repo://renamed/svc/handler.go#func:ListUsers"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	plain, err := RewriteRepo("func:a.go#A", "api", "renamed")
+	if err != nil || plain != "func:a.go#A" {
+		t.Fatalf("phase-1: %q %v", plain, err)
+	}
+	same, err := RewriteRepo("repo://api/a.go#file", "other", "renamed")
+	if err != nil || same != "repo://api/a.go#file" {
+		t.Fatalf("other repo: %q %v", same, err)
+	}
+}
+
 func TestErrorsAreInvalid(t *testing.T) {
 	_, err := Parse("not-a-uri")
 	if !errors.Is(err, ErrInvalid) {

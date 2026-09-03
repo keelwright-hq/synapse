@@ -15,6 +15,7 @@ var (
 	graphExportOut     string
 	graphExportOverlay bool
 	graphImportOverlay bool
+	graphImportRewrite bool
 )
 
 var graphCmd = &cobra.Command{
@@ -94,6 +95,9 @@ var graphImportCmd = &cobra.Command{
 		if !graphImportOverlay && repoName == "" {
 			return fmt.Errorf("graph import: require --repo NAME or --overlay")
 		}
+		if graphImportRewrite && graphImportOverlay {
+			return fmt.Errorf("graph import: --rewrite-repo is not valid with --overlay")
+		}
 
 		in := cmd.InOrStdin()
 		var closer io.Closer
@@ -130,7 +134,10 @@ var graphImportCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		res, err := snapshot.Import(in, store)
+		res, err := snapshot.ImportWithOptions(in, store, snapshot.ImportOptions{
+			TargetRepo:  targetRepo,
+			RewriteRepo: graphImportRewrite,
+		})
 		if err != nil {
 			return err
 		}
@@ -138,9 +145,8 @@ var graphImportCmd = &cobra.Command{
 			if res.Meta.Kind != snapshot.KindOverlay {
 				return fmt.Errorf("graph import: snapshot kind is %q, expected overlay", res.Meta.Kind)
 			}
-		} else if res.Meta.Kind == snapshot.KindRepo && res.Meta.Repo != "" && res.Meta.Repo != targetRepo {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"warning: snapshot repo %q imported as %q\n", res.Meta.Repo, targetRepo)
+		} else if res.Meta.Kind != snapshot.KindRepo {
+			return fmt.Errorf("graph import: snapshot kind is %q, expected repo", res.Meta.Kind)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
 			"imported snapshot: nodes=%d edges=%d kind=%s repo=%s (data-dir=%s)\n",
@@ -153,6 +159,7 @@ func init() {
 	graphExportCmd.Flags().StringVarP(&graphExportOut, "output", "o", "-", "Output file (default stdout)")
 	graphExportCmd.Flags().BoolVar(&graphExportOverlay, "overlay", false, "Export the workspace overlay store")
 	graphImportCmd.Flags().BoolVar(&graphImportOverlay, "overlay", false, "Import into the workspace overlay store")
+	graphImportCmd.Flags().BoolVar(&graphImportRewrite, "rewrite-repo", false, "Remap snapshot repo_uri values to --repo when names differ")
 	graphCmd.AddCommand(graphExportCmd)
 	graphCmd.AddCommand(graphImportCmd)
 	rootCmd.AddCommand(graphCmd)

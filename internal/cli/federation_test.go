@@ -3,11 +3,13 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/taricsa/synapse/internal/cli"
+	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/parse"
 	"github.com/taricsa/synapse/internal/rank"
 	"github.com/taricsa/synapse/internal/store/badger"
@@ -234,5 +236,56 @@ func TestFederationMissingShardWarning(t *testing.T) {
 	// Partial success: api operation still resolves.
 	if len(res.Hits) == 0 {
 		t.Fatal("expected partial hits from api shard")
+	}
+}
+
+func TestGraphImportRepoMismatch(t *testing.T) {
+	wsDir := workspaceFixtureDir(t)
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	apiSnap := filepath.Join(t.TempDir(), "api.ndjson")
+
+	cmd := cli.RootCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	resetPersistentFlags(t, cmd)
+	cmd.SetArgs([]string{"index", "--workspace", wsDir, "--data-dir", srcDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("index: %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "export", "--data-dir", srcDir, "--repo", "api", "-o", apiSnap})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("export: %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "import", "--data-dir", dstDir, "--repo", "renamed", apiSnap})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "does not match target") {
+		t.Fatalf("want mismatch error, got %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "import", "--data-dir", dstDir, "--repo", "renamed", "--rewrite-repo", apiSnap})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("rewrite import: %v\n%s", err, buf.String())
+	}
+
+	store, err := badger.OpenRepo(dstDir, "renamed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.GetNodeByURI("repo://renamed/svc/handler.go#func:ListUsers"); err != nil {
+		t.Fatalf("rewritten uri: %v", err)
+	}
+	if _, err := store.GetNodeByURI("repo://api/svc/handler.go#func:ListUsers"); !errors.Is(err, graph.ErrNotFound) {
+		t.Fatalf("old uri still present: %v", err)
 	}
 }
