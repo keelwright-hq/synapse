@@ -13,7 +13,7 @@ repo://{repo}/{path}#{kind}:{symbol}
 
 | Component | Rules |
 |-----------|--------|
-| `repo` | Normalized, URL-safe simple name (`[A-Za-z0-9._-]+`). Chosen via `--repo` / config; defaults to the basename of the index root. Later workspace mode may map names to paths (SYN-12). |
+| `repo` | Normalized, URL-safe simple name (`[A-Za-z0-9._-]+`). Chosen via `--repo`, workspace `synapse.yaml` member `name`, or the basename of the index root. See [workspace.md](workspace.md). |
 | `path` | Repo-relative, slash-normalized (`/`), percent-encoded where needed. No leading `/` in the canonical string after `repo://{repo}/`. |
 | fragment | `{kind}` for files, otherwise `{kind}:{symbol}`. Fragment content is percent-encoded where needed. |
 | query | **Not allowed** in SYN-11. |
@@ -49,7 +49,7 @@ and **do not** receive a `repo://` URI until they can be scoped.
 ## Conflict rules
 
 - Same `{repo, path, kind, symbol}` denotes the **same** entity.
-- Duplicate repo names in a multi-repo workspace are **invalid** unless explicitly aliased (SYN-12).
+- Duplicate repo names in a multi-repo workspace are **invalid** unless explicitly aliased (distinct logical `name` values in `synapse.yaml`; see [workspace.md](workspace.md)).
 - The same relative path in different repos is fine: `{repo}` disambiguates.
 - Within one store, the URI secondary index is unique: two different Phase-1 node IDs must not share a URI.
 
@@ -65,6 +65,8 @@ and **do not** receive a `repo://` URI until they can be scoped.
 ```bash
 ./synapse index . --data-dir .synapse --repo synapse
 ./synapse mcp --data-dir .synapse --root . --repo synapse
+./synapse index --workspace path/to/synapse.yaml --data-dir .synapse
 ```
 
-If `--repo` is omitted, Synapse uses `filepath.Base` of the absolute index/query root.
+If `--repo` is omitted in single-repo mode, Synapse uses `filepath.Base` of the absolute index/query root.
+In workspace mode, member names come from `synapse.yaml`; `--repo` scopes queries to one member.
