@@ -11,8 +11,9 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// openAPI3Re matches OpenAPI 3.x version fields in YAML or JSON.
-var openAPI3Re = regexp.MustCompile(`(?m)["']?openapi["']?\s*:\s*["']?3\.`)
+// openAPI3Re matches an OpenAPI 3.x version field at the start of a line
+// (optional leading spaces / JSON `{`), avoiding nested or comment false positives.
+var openAPI3Re = regexp.MustCompile(`(?m)^[\s{]*["']?openapi["']?\s*:\s*["']?3\.`)
 
 // LooksLikeOpenAPI reports whether data appears to be an OpenAPI 3.x document.
 func LooksLikeOpenAPI(data []byte) bool {

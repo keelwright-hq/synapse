@@ -2,6 +2,7 @@
 package bind
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -217,7 +218,7 @@ func Bind(opts Options) error {
 					continue
 				}
 			}
-			line := 1 + strings.Count(string(data[:m[0]]), "\n")
+			line := 1 + bytes.Count(data[:m[0]], []byte("\n"))
 			hits = append(hits, hit{path: norm, line: line})
 		}
 		for _, h := range hits {
@@ -282,9 +283,6 @@ func normalizeAPIPath(p string) string {
 	// Strip query/fragment if present in literals.
 	if i := strings.IndexAny(p, "?#"); i >= 0 {
 		p = p[:i]
-	}
-	if !strings.HasPrefix(p, "/") {
-		return p
 	}
 	return p
 }

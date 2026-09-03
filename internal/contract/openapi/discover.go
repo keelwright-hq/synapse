@@ -42,11 +42,15 @@ func ListSpecFiles(root string, ignoreDirNames []string) ([]string, error) {
 		if _, ok := candidateExts[ext]; !ok {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		// Only sniff a prefix — openapi version is near the top; avoids loading huge YAML/JSON dumps.
+		f, err := os.Open(path)
 		if err != nil {
 			return nil // skip unreadable
 		}
-		if !LooksLikeOpenAPI(data) {
+		var header [8192]byte
+		n, _ := f.Read(header[:])
+		_ = f.Close()
+		if n == 0 || !LooksLikeOpenAPI(header[:n]) {
 			return nil
 		}
 		files = append(files, path)
