@@ -8,3 +8,8 @@ func Handle() string {
 func ListUsers() string {
 	return "[]"
 }
+
+// Users implements GraphQL Query.users.
+func Users() string {
+	return "[]"
+}

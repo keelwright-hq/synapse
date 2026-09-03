@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/taricsa/synapse/internal/contract/graphql"
 	"github.com/taricsa/synapse/internal/contract/openapi"
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/parse"
@@ -89,17 +90,32 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	if err != nil {
 		return Stats{}, err
 	}
-	specs, err := openapi.ListSpecFiles(root, opts.IgnoreDirNames)
+	oasSpecs, err := openapi.ListSpecFiles(root, opts.IgnoreDirNames)
 	if err != nil {
 		return Stats{}, err
 	}
-	specSet := make(map[string]struct{}, len(specs))
-	for _, abs := range specs {
-		specSet[abs] = struct{}{}
+	gqlSpecs, err := graphql.ListSpecFiles(root, opts.IgnoreDirNames)
+	if err != nil {
+		return Stats{}, err
+	}
+	type contractKind byte
+	const (
+		contractNone contractKind = iota
+		contractOpenAPI
+		contractGraphQL
+	)
+	specKind := make(map[string]contractKind, len(oasSpecs)+len(gqlSpecs))
+	for _, abs := range oasSpecs {
+		specKind[abs] = contractOpenAPI
+	}
+	for _, abs := range gqlSpecs {
+		if _, ok := specKind[abs]; !ok {
+			specKind[abs] = contractGraphQL
+		}
 	}
 	// Avoid double-processing if a path somehow appears in both lists.
-	merged := make([]string, 0, len(files)+len(specs))
-	seenAbs := make(map[string]struct{}, len(files)+len(specs))
+	merged := make([]string, 0, len(files)+len(oasSpecs)+len(gqlSpecs))
+	seenAbs := make(map[string]struct{}, len(files)+len(oasSpecs)+len(gqlSpecs))
 	for _, abs := range files {
 		if _, ok := seenAbs[abs]; ok {
 			continue
@@ -107,7 +123,14 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 		seenAbs[abs] = struct{}{}
 		merged = append(merged, abs)
 	}
-	for _, abs := range specs {
+	for _, abs := range oasSpecs {
+		if _, ok := seenAbs[abs]; ok {
+			continue
+		}
+		seenAbs[abs] = struct{}{}
+		merged = append(merged, abs)
+	}
+	for _, abs := range gqlSpecs {
 		if _, ok := seenAbs[abs]; ok {
 			continue
 		}
@@ -124,7 +147,7 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	type job struct {
 		absPath string
 		relPath string
-		spec    bool
+		kind    contractKind
 	}
 	jobs := make(chan job, workers*2)
 	var (
@@ -169,9 +192,12 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 			}
 
 			var res parse.Result
-			if j.spec {
+			switch j.kind {
+			case contractOpenAPI:
 				res, err = openapi.ParseFile(j.absPath, j.relPath)
-			} else {
+			case contractGraphQL:
+				res, err = graphql.ParseFile(j.absPath, j.relPath)
+			default:
 				res, err = parse.ParseFile(reg, j.absPath)
 			}
 			if err != nil {
@@ -186,7 +212,7 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 				inc(&stats.Skipped)
 				continue
 			}
-			if !j.spec {
+			if j.kind == contractNone {
 				res = rewritePaths(res, j.absPath, j.relPath)
 			}
 			res = assignRepoURIs(res, repo)
@@ -216,8 +242,7 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		seen[rel] = struct{}{}
-		_, isSpec := specSet[abs]
-		jobs <- job{absPath: abs, relPath: rel, spec: isSpec}
+		jobs <- job{absPath: abs, relPath: rel, kind: specKind[abs]}
 	}
 	close(jobs)
 	wg.Wait()

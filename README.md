@@ -2,7 +2,8 @@
 
 Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single static binary.
 
-It also indexes **OpenAPI 3.x** specs into the graph and links handlers/clients across repos with `implements` / `consumes` edges.
+It also indexes **OpenAPI 3.x** and **GraphQL SDL** specs into the graph and links
+handlers/clients across repos with `implements` / `consumes` edges.
 
 ## Requirements
 
@@ -78,6 +79,21 @@ Example with the bundled fixture:
 
 Details: [docs/openapi.md](docs/openapi.md).
 
+## GraphQL contracts
+
+On index, Synapse content-sniffs `.graphql` / `.gql` / `.graphqls` for SDL,
+creates `type` / `field` / `operation` nodes, then heuristically binds resolvers
+(same-repo `implements`, cross-repo `consumes`) using field-name folds plus
+common variants (`Resolve{Field}`, `Get{Field}`, `{Root}_{Field}`).
+
+```bash
+./synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
+./synapse query neighborhood 'repo://api/schema.graphql#operation:query users' \
+  --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
+```
+
+Details: [docs/graphql.md](docs/graphql.md).
+
 ### Makefile targets
 
 | Target       | Description                                      |
@@ -95,6 +111,7 @@ Details: [docs/openapi.md](docs/openapi.md).
 | [docs/repo-uri.md](docs/repo-uri.md) | Global `repo://` identifiers |
 | [docs/workspace.md](docs/workspace.md) | Polyrepo workspace |
 | [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |
+| [docs/graphql.md](docs/graphql.md) | GraphQL SDL contracts and edges |
 | [docs/mcp.md](docs/mcp.md) | MCP IDE wiring |
 | [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
 

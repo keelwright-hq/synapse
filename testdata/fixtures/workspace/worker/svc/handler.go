@@ -9,3 +9,8 @@ func FetchUsers() string {
 	url := "/users"
 	return url
 }
+
+// Users consumes GraphQL Query.users by operation name match.
+func Users() string {
+	return "users"
+}
