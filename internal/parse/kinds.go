@@ -20,9 +20,9 @@ const (
 
 // Edge types emitted by extractors and contract binders.
 const (
-	EdgeContains    graph.EdgeType = "contains"
-	EdgeImports     graph.EdgeType = "imports"
-	EdgeCalls       graph.EdgeType = "calls"
-	EdgeImplements  graph.EdgeType = "implements"
-	EdgeConsumes    graph.EdgeType = "consumes"
+	EdgeContains   graph.EdgeType = "contains"
+	EdgeImports    graph.EdgeType = "imports"
+	EdgeCalls      graph.EdgeType = "calls"
+	EdgeImplements graph.EdgeType = "implements"
+	EdgeConsumes   graph.EdgeType = "consumes"
 )

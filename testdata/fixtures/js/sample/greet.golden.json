@@ -1,0 +1,160 @@
+{
+  "path": "js/sample/greet.js",
+  "lang": "javascript",
+  "nodes": [
+    {
+      "id": "file:js/sample/greet.js",
+      "kind": "file",
+      "name": "js/sample/greet.js",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "func:js/sample/greet.js#format",
+      "kind": "function",
+      "name": "format",
+      "path": "js/sample/greet.js",
+      "props": {
+        "end_line": "13",
+        "start_line": "11"
+      }
+    },
+    {
+      "id": "func:js/sample/greet.js#greet",
+      "kind": "function",
+      "name": "greet",
+      "path": "js/sample/greet.js",
+      "props": {
+        "end_line": "9",
+        "start_line": "6"
+      }
+    },
+    {
+      "id": "import:js/sample/greet.js#fs",
+      "kind": "import",
+      "name": "fs",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "import:js/sample/greet.js#fs/promises",
+      "kind": "import",
+      "name": "fs/promises",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "method:js/sample/greet.js#Greeter.say",
+      "kind": "method",
+      "name": "say",
+      "path": "js/sample/greet.js",
+      "props": {
+        "end_line": "18",
+        "start_line": "16"
+      }
+    },
+    {
+      "id": "module:js/sample/greet.js",
+      "kind": "module",
+      "name": "greet",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "symbol:format",
+      "kind": "symbol",
+      "name": "format",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "symbol:readFile",
+      "kind": "symbol",
+      "name": "readFile",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "symbol:toUpperCase",
+      "kind": "symbol",
+      "name": "toUpperCase",
+      "path": "js/sample/greet.js"
+    },
+    {
+      "id": "type:js/sample/greet.js#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "js/sample/greet.js",
+      "props": {
+        "end_line": "19",
+        "start_line": "15"
+      }
+    },
+    {
+      "id": "type:js/sample/greet.js#User",
+      "kind": "type",
+      "name": "User",
+      "path": "js/sample/greet.js",
+      "props": {
+        "end_line": "4",
+        "start_line": "4"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:js/sample/greet.js",
+      "to": "module:js/sample/greet.js",
+      "type": "contains"
+    },
+    {
+      "from": "func:js/sample/greet.js#format",
+      "to": "symbol:toUpperCase",
+      "type": "calls"
+    },
+    {
+      "from": "func:js/sample/greet.js#greet",
+      "to": "symbol:format",
+      "type": "calls"
+    },
+    {
+      "from": "func:js/sample/greet.js#greet",
+      "to": "symbol:readFile",
+      "type": "calls"
+    },
+    {
+      "from": "method:js/sample/greet.js#Greeter.say",
+      "to": "symbol:format",
+      "type": "calls"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "func:js/sample/greet.js#format",
+      "type": "contains"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "func:js/sample/greet.js#greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "import:js/sample/greet.js#fs",
+      "type": "imports"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "import:js/sample/greet.js#fs/promises",
+      "type": "imports"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "method:js/sample/greet.js#Greeter.say",
+      "type": "contains"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "type:js/sample/greet.js#Greeter",
+      "type": "contains"
+    },
+    {
+      "from": "module:js/sample/greet.js",
+      "to": "type:js/sample/greet.js#User",
+      "type": "contains"
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "path": "swift/sample/greet.swift",
+  "lang": "swift",
+  "nodes": [
+    {
+      "id": "file:swift/sample/greet.swift",
+      "kind": "file",
+      "name": "swift/sample/greet.swift",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "func:swift/sample/greet.swift#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "swift/sample/greet.swift",
+      "props": {
+        "end_line": "16",
+        "start_line": "13"
+      }
+    },
+    {
+      "id": "import:swift/sample/greet.swift#Foundation",
+      "kind": "import",
+      "name": "Foundation",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "method:swift/sample/greet.swift#Greeter.greet",
+      "kind": "method",
+      "name": "greet",
+      "path": "swift/sample/greet.swift",
+      "props": {
+        "end_line": "10",
+        "start_line": "8"
+      }
+    },
+    {
+      "id": "module:swift/sample/greet.swift",
+      "kind": "module",
+      "name": "greet",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "symbol:.greet",
+      "kind": "symbol",
+      "name": ".greet",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "symbol:Greeter",
+      "kind": "symbol",
+      "name": "Greeter",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "symbol:print",
+      "kind": "symbol",
+      "name": "print",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "type:swift/sample/greet.swift#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "swift/sample/greet.swift",
+      "props": {
+        "end_line": "11",
+        "start_line": "7"
+      }
+    },
+    {
+      "id": "type:swift/sample/greet.swift#User",
+      "kind": "type",
+      "name": "User",
+      "path": "swift/sample/greet.swift",
+      "props": {
+        "end_line": "5",
+        "start_line": "3"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:swift/sample/greet.swift",
+      "to": "module:swift/sample/greet.swift",
+      "type": "contains"
+    },
+    {
+      "from": "func:swift/sample/greet.swift#helper",
+      "to": "symbol:.greet",
+      "type": "calls"
+    },
+    {
+      "from": "func:swift/sample/greet.swift#helper",
+      "to": "symbol:Greeter",
+      "type": "calls"
+    },
+    {
+      "from": "method:swift/sample/greet.swift#Greeter.greet",
+      "to": "symbol:print",
+      "type": "calls"
+    },
+    {
+      "from": "module:swift/sample/greet.swift",
+      "to": "func:swift/sample/greet.swift#helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:swift/sample/greet.swift",
+      "to": "import:swift/sample/greet.swift#Foundation",
+      "type": "imports"
+    },
+    {
+      "from": "module:swift/sample/greet.swift",
+      "to": "method:swift/sample/greet.swift#Greeter.greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:swift/sample/greet.swift",
+      "to": "type:swift/sample/greet.swift#Greeter",
+      "type": "contains"
+    },
+    {
+      "from": "module:swift/sample/greet.swift",
+      "to": "type:swift/sample/greet.swift#User",
+      "type": "contains"
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "path": "python/sample/greet.py",
+  "lang": "python",
+  "nodes": [
+    {
+      "id": "file:python/sample/greet.py",
+      "kind": "file",
+      "name": "python/sample/greet.py",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "func:python/sample/greet.py#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "python/sample/greet.py",
+      "props": {
+        "end_line": "10",
+        "start_line": "8"
+      }
+    },
+    {
+      "id": "import:python/sample/greet.py#os",
+      "kind": "import",
+      "name": "os",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "import:python/sample/greet.py#pathlib",
+      "kind": "import",
+      "name": "pathlib",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "method:python/sample/greet.py#Greeter.greet",
+      "kind": "method",
+      "name": "greet",
+      "path": "python/sample/greet.py",
+      "props": {
+        "end_line": "6",
+        "start_line": "5"
+      }
+    },
+    {
+      "id": "module:python/sample/greet.py",
+      "kind": "module",
+      "name": "greet",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "symbol:Greeter",
+      "kind": "symbol",
+      "name": "Greeter",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "symbol:greet",
+      "kind": "symbol",
+      "name": "greet",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "symbol:print",
+      "kind": "symbol",
+      "name": "print",
+      "path": "python/sample/greet.py"
+    },
+    {
+      "id": "type:python/sample/greet.py#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "python/sample/greet.py",
+      "props": {
+        "end_line": "6",
+        "start_line": "4"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:python/sample/greet.py",
+      "to": "module:python/sample/greet.py",
+      "type": "contains"
+    },
+    {
+      "from": "func:python/sample/greet.py#helper",
+      "to": "symbol:Greeter",
+      "type": "calls"
+    },
+    {
+      "from": "func:python/sample/greet.py#helper",
+      "to": "symbol:greet",
+      "type": "calls"
+    },
+    {
+      "from": "method:python/sample/greet.py#Greeter.greet",
+      "to": "symbol:print",
+      "type": "calls"
+    },
+    {
+      "from": "module:python/sample/greet.py",
+      "to": "func:python/sample/greet.py#helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:python/sample/greet.py",
+      "to": "import:python/sample/greet.py#os",
+      "type": "imports"
+    },
+    {
+      "from": "module:python/sample/greet.py",
+      "to": "import:python/sample/greet.py#pathlib",
+      "type": "imports"
+    },
+    {
+      "from": "module:python/sample/greet.py",
+      "to": "method:python/sample/greet.py#Greeter.greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:python/sample/greet.py",
+      "to": "type:python/sample/greet.py#Greeter",
+      "type": "contains"
+    }
+  ]
+}
