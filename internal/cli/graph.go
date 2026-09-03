@@ -111,8 +111,9 @@ var graphImportCmd = &cobra.Command{
 		}
 
 		var (
-			store *badger.Store
-			err   error
+			store      *badger.Store
+			err        error
+			targetRepo string
 		)
 		if graphImportOverlay {
 			store, err = badger.OpenOverlay(dataDir)
@@ -122,7 +123,7 @@ var graphImportCmd = &cobra.Command{
 				return nerr
 			}
 			store, err = badger.OpenRepo(dataDir, name)
-			repoName = name
+			targetRepo = name
 		}
 		if err != nil {
 			return err
@@ -137,9 +138,9 @@ var graphImportCmd = &cobra.Command{
 			if res.Meta.Kind != snapshot.KindOverlay {
 				return fmt.Errorf("graph import: snapshot kind is %q, expected overlay", res.Meta.Kind)
 			}
-		} else if res.Meta.Kind == snapshot.KindRepo && res.Meta.Repo != "" && res.Meta.Repo != repoName {
+		} else if res.Meta.Kind == snapshot.KindRepo && res.Meta.Repo != "" && res.Meta.Repo != targetRepo {
 			fmt.Fprintf(cmd.ErrOrStderr(),
-				"warning: snapshot repo %q imported as %q\n", res.Meta.Repo, repoName)
+				"warning: snapshot repo %q imported as %q\n", res.Meta.Repo, targetRepo)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
 			"imported snapshot: nodes=%d edges=%d kind=%s repo=%s (data-dir=%s)\n",

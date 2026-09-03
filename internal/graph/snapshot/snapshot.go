@@ -67,7 +67,8 @@ func Export(w io.Writer, store graph.Store, meta Meta) error {
 		return fmt.Errorf("snapshot: repo name required for kind %q", KindRepo)
 	}
 
-	enc := json.NewEncoder(w)
+	bw := bufio.NewWriter(w)
+	enc := json.NewEncoder(bw)
 	if err := enc.Encode(headerRecord{
 		Type:    "header",
 		Format:  FormatID,
@@ -78,15 +79,9 @@ func Export(w io.Writer, store graph.Store, meta Meta) error {
 		return fmt.Errorf("snapshot: write header: %w", err)
 	}
 
-	var nodes []graph.Node
+	// Two-pass streaming: nodes first, then edges. O(1) memory — no node slice.
+	var writeErr error
 	err := store.ForEachNode(func(n graph.Node) bool {
-		nodes = append(nodes, n)
-		return true
-	})
-	if err != nil {
-		return err
-	}
-	for _, n := range nodes {
 		rec := nodeRecord{
 			Type:  "node",
 			ID:    n.ID,
@@ -96,13 +91,23 @@ func Export(w io.Writer, store graph.Store, meta Meta) error {
 			Props: n.Props,
 		}
 		if err := enc.Encode(rec); err != nil {
-			return fmt.Errorf("snapshot: write node %s: %w", n.ID, err)
+			writeErr = fmt.Errorf("snapshot: write node %s: %w", n.ID, err)
+			return false
 		}
+		return true
+	})
+	if err != nil {
+		return err
 	}
-	for _, n := range nodes {
+	if writeErr != nil {
+		return writeErr
+	}
+
+	err = store.ForEachNode(func(n graph.Node) bool {
 		edges, err := store.OutEdges(n.ID, "")
 		if err != nil {
-			return fmt.Errorf("snapshot: out edges %s: %w", n.ID, err)
+			writeErr = fmt.Errorf("snapshot: out edges %s: %w", n.ID, err)
+			return false
 		}
 		for _, e := range edges {
 			erec := edgeRecord{
@@ -113,9 +118,21 @@ func Export(w io.Writer, store graph.Store, meta Meta) error {
 				Props:    e.Props,
 			}
 			if err := enc.Encode(erec); err != nil {
-				return fmt.Errorf("snapshot: write edge: %w", err)
+				writeErr = fmt.Errorf("snapshot: write edge: %w", err)
+				return false
 			}
 		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	if writeErr != nil {
+		return writeErr
+	}
+
+	if err := bw.Flush(); err != nil {
+		return fmt.Errorf("snapshot: flush: %w", err)
 	}
 	return nil
 }
