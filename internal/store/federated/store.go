@@ -23,9 +23,14 @@ type Member struct {
 // not be shared across goroutines. Keep underlying member stores long-lived
 // (to avoid re-opening Badger) and call New or Session once per query.
 //
-// Close does not close members; the caller owns member lifetime.
+// An optional Overlay holds cross-repo contract edges whose endpoints are
+// keyed by repo:// URI (see package bind). Overlay edges are merged into
+// OutEdges/InEdges and far ends resolve via GetNodeByURI.
+//
+// Close does not close members or the overlay; the caller owns their lifetime.
 type Store struct {
 	members []Member
+	overlay graph.Store
 
 	mu      sync.RWMutex
 	idOwner map[graph.NodeID]int // pinned or uniquely owned member index
@@ -34,6 +39,11 @@ type Store struct {
 // New builds a federated store for a single query. members must be non-empty
 // and have unique names. The returned Store is not safe for concurrent use.
 func New(members []Member) (*Store, error) {
+	return NewWithOverlay(members, nil)
+}
+
+// NewWithOverlay is like New but also merges cross-repo edges from overlay.
+func NewWithOverlay(members []Member, overlay graph.Store) (*Store, error) {
 	if len(members) == 0 {
 		return nil, fmt.Errorf("federated: no members")
 	}
@@ -57,20 +67,22 @@ func New(members []Member) (*Store, error) {
 	}
 	return &Store{
 		members: copied,
+		overlay: overlay,
 		idOwner: make(map[graph.NodeID]int),
 	}, nil
 }
 
-// Session returns a new Store sharing the same members with an empty pin map.
+// Session returns a new Store sharing the same members (and overlay) with an empty pin map.
 // Use one Session (or New) per concurrent query against long-lived members.
 func (s *Store) Session() *Store {
 	return &Store{
 		members: s.members,
+		overlay: s.overlay,
 		idOwner: make(map[graph.NodeID]int),
 	}
 }
 
-// Close clears query pins. It does not close member stores.
+// Close clears query pins. It does not close member stores or the overlay.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	s.idOwner = make(map[graph.NodeID]int)
@@ -144,11 +156,12 @@ func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
 	if err != nil {
 		return graph.Node{}, err
 	}
+	canonical := u.String()
 	for i, m := range s.members {
 		if m.Name != u.Repo {
 			continue
 		}
-		n, err := m.Store.GetNodeByURI(repoURI)
+		n, err := m.Store.GetNodeByURI(canonical)
 		if err != nil {
 			return graph.Node{}, err
 		}
@@ -157,7 +170,7 @@ func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
 	}
 	// Fallback: scan all (covers misnamed members).
 	for i, m := range s.members {
-		n, err := m.Store.GetNodeByURI(repoURI)
+		n, err := m.Store.GetNodeByURI(canonical)
 		if err == nil {
 			s.pin(n.ID, i)
 			return n, nil
@@ -182,7 +195,11 @@ func (s *Store) OutEdges(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Ed
 		s.pin(e.From, idx)
 		s.pin(e.To, idx)
 	}
-	return edges, nil
+	overlayEdges, err := s.overlayOut(from, edgeType)
+	if err != nil {
+		return nil, err
+	}
+	return append(edges, overlayEdges...), nil
 }
 
 func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
@@ -198,7 +215,87 @@ func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge,
 		s.pin(e.From, idx)
 		s.pin(e.To, idx)
 	}
-	return edges, nil
+	overlayEdges, err := s.overlayIn(to, edgeType)
+	if err != nil {
+		return nil, err
+	}
+	return append(edges, overlayEdges...), nil
+}
+
+func (s *Store) overlayOut(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
+	if s.overlay == nil {
+		return nil, nil
+	}
+	n, err := s.GetNode(from)
+	if err != nil {
+		return nil, err
+	}
+	repoURI := ""
+	if n.Props != nil {
+		repoURI = n.Props[uri.PropKey]
+	}
+	if repoURI == "" {
+		return nil, nil
+	}
+	raw, err := s.overlay.OutEdges(graph.NodeID(repoURI), edgeType)
+	if err != nil {
+		if err == graph.ErrNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]graph.Edge, 0, len(raw))
+	for _, e := range raw {
+		toNode, err := s.GetNodeByURI(string(e.To))
+		if err != nil {
+			continue
+		}
+		out = append(out, graph.Edge{
+			From:  from,
+			To:    toNode.ID,
+			Type:  e.Type,
+			Props: e.Props,
+		})
+	}
+	return out, nil
+}
+
+func (s *Store) overlayIn(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
+	if s.overlay == nil {
+		return nil, nil
+	}
+	n, err := s.GetNode(to)
+	if err != nil {
+		return nil, err
+	}
+	repoURI := ""
+	if n.Props != nil {
+		repoURI = n.Props[uri.PropKey]
+	}
+	if repoURI == "" {
+		return nil, nil
+	}
+	raw, err := s.overlay.InEdges(graph.NodeID(repoURI), edgeType)
+	if err != nil {
+		if err == graph.ErrNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]graph.Edge, 0, len(raw))
+	for _, e := range raw {
+		fromNode, err := s.GetNodeByURI(string(e.From))
+		if err != nil {
+			continue
+		}
+		out = append(out, graph.Edge{
+			From:  fromNode.ID,
+			To:    to,
+			Type:  e.Type,
+			Props: e.Props,
+		})
+	}
+	return out, nil
 }
 
 func (s *Store) ForEachNode(fn func(graph.Node) bool) error {

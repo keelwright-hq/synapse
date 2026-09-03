@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/taricsa/synapse/internal/config"
+	"github.com/taricsa/synapse/internal/contract/bind"
 	"github.com/taricsa/synapse/internal/index"
 	"github.com/taricsa/synapse/internal/store/badger"
 )
@@ -17,8 +18,13 @@ var indexCmd = &cobra.Command{
 nodes and edges into the embedded graph store. Unchanged files are skipped
 via content-hash fingerprints stored under --data-dir.
 
+OpenAPI 3.x YAML/JSON specs are content-sniffed and mapped to operation/schema
+nodes. After indexing, a heuristic binder links handlers/clients to operations
+(implements/consumes).
+
 With --workspace, indexes every member listed in synapse.yaml into
-<data-dir>/repos/<name>/graph. Do not pass a positional path in workspace mode.`,
+<data-dir>/repos/<name>/graph, then binds cross-repo contract edges into
+<data-dir>/overlay. Do not pass a positional path in workspace mode.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if workspacePath != "" {
@@ -50,6 +56,11 @@ With --workspace, indexes every member listed in synapse.yaml into
 		if err != nil {
 			return err
 		}
+		if err := bind.Bind(bind.Options{
+			Members: []bind.Member{{Name: repo, Root: path, Store: store}},
+		}); err != nil {
+			return fmt.Errorf("index bind: %w", err)
+		}
 		fmt.Fprintf(cmd.OutOrStdout(),
 			"index complete: processed=%d skipped=%d deleted=%d errors=%d (data-dir=%s repo=%s)\n",
 			stats.Processed, stats.Skipped, stats.Deleted, stats.Errors, dataDir, repo)
@@ -70,16 +81,24 @@ func runWorkspaceIndex(cmd *cobra.Command) error {
 	}))
 
 	var (
-		total index.Stats
+		total  index.Stats
 		failed int
 	)
+	members := make([]bind.Member, 0, len(ws.Repos))
+	stores := make([]*badger.Store, 0, len(ws.Repos))
+	defer func() {
+		for _, s := range stores {
+			_ = s.Close()
+		}
+	}()
+
 	for _, member := range ws.Repos {
 		store, err := badger.OpenRepo(dataDir, member.Name)
 		if err != nil {
 			return fmt.Errorf("index workspace member %q: %w", member.Name, err)
 		}
+		stores = append(stores, store)
 		stats, err := index.New(store).Run(member.Path, index.Options{Logger: logger, Repo: member.Name})
-		_ = store.Close()
 		if err != nil {
 			return fmt.Errorf("index workspace member %q: %w", member.Name, err)
 		}
@@ -93,7 +112,23 @@ func runWorkspaceIndex(cmd *cobra.Command) error {
 		if stats.Errors > 0 {
 			failed++
 		}
+		members = append(members, bind.Member{
+			Name:  member.Name,
+			Root:  member.Path,
+			Store: store,
+		})
 	}
+
+	overlay, err := badger.OpenOverlay(dataDir)
+	if err != nil {
+		return fmt.Errorf("index workspace overlay: %w", err)
+	}
+	defer overlay.Close()
+
+	if err := bind.Bind(bind.Options{Members: members, Overlay: overlay}); err != nil {
+		return fmt.Errorf("index workspace bind: %w", err)
+	}
+
 	fmt.Fprintf(cmd.OutOrStdout(),
 		"workspace index complete: repos=%d processed=%d skipped=%d deleted=%d errors=%d (data-dir=%s workspace=%s)\n",
 		len(ws.Repos), total.Processed, total.Skipped, total.Deleted, total.Errors, dataDir, ws.ConfigPath)

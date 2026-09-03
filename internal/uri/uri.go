@@ -19,23 +19,26 @@ const (
 
 // Kind tokens as they appear in the URI fragment.
 const (
-	KindFile     = "file"
-	KindPackage  = "package"
-	KindModule   = "module"
-	KindFunc     = "func"
-	KindMethod   = "method"
-	KindType     = "type"
-	KindImport   = "import"
-	KindSymbol   = "symbol"
+	KindFile      = "file"
+	KindPackage   = "package"
+	KindModule    = "module"
+	KindFunc      = "func"
+	KindMethod    = "method"
+	KindType      = "type"
+	KindImport    = "import"
+	KindSymbol    = "symbol"
+	KindOperation = "operation"
+	KindSchema    = "schema"
 )
 
 var (
-	ErrInvalid   = errors.New("uri: invalid repo:// URI")
-	ErrConflict  = errors.New("uri: conflict")
-	repoNameRe   = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-	validKinds   = map[string]struct{}{
+	ErrInvalid  = errors.New("uri: invalid repo:// URI")
+	ErrConflict = errors.New("uri: conflict")
+	repoNameRe  = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	validKinds  = map[string]struct{}{
 		KindFile: {}, KindPackage: {}, KindModule: {}, KindFunc: {},
 		KindMethod: {}, KindType: {}, KindImport: {}, KindSymbol: {},
+		KindOperation: {}, KindSchema: {},
 	}
 )
 
@@ -66,6 +69,10 @@ func KindToken(nodeKind string) (string, error) {
 		return KindImport, nil
 	case "symbol":
 		return KindSymbol, nil
+	case "operation":
+		return KindOperation, nil
+	case "schema":
+		return KindSchema, nil
 	default:
 		return "", fmt.Errorf("%w: unknown node kind %q", ErrInvalid, nodeKind)
 	}
@@ -90,6 +97,10 @@ func NodeKind(kindToken string) (string, error) {
 		return "import", nil
 	case KindSymbol:
 		return "symbol", nil
+	case KindOperation:
+		return "operation", nil
+	case KindSchema:
+		return "schema", nil
 	default:
 		return "", fmt.Errorf("%w: unknown kind token %q", ErrInvalid, kindToken)
 	}

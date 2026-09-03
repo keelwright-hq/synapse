@@ -68,7 +68,8 @@ Graph store benchmarks: see [docs/benchmarks.md](docs/benchmarks.md).
 Tree-sitter / CGO notes: see [docs/tree-sitter.md](docs/tree-sitter.md).  
 MCP IDE wiring: see [docs/mcp.md](docs/mcp.md).  
 Global `repo://` identifiers: see [docs/repo-uri.md](docs/repo-uri.md).  
-Polyrepo workspace: see [docs/workspace.md](docs/workspace.md).
+Polyrepo workspace: see [docs/workspace.md](docs/workspace.md).  
+OpenAPI contracts: see [docs/openapi.md](docs/openapi.md).
 
 ## License
 

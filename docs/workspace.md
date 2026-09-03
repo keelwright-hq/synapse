@@ -36,7 +36,12 @@ This writes:
 ```
 .synapse/repos/api/graph/
 .synapse/repos/worker/graph/
+.synapse/overlay/              # cross-repo implements/consumes (OpenAPI binder)
 ```
+
+After each member is indexed, Synapse runs a contract binder. Same-repo edges
+land in the member graph; cross-repo OpenAPI links go in the overlay (see
+[openapi.md](openapi.md)).
 
 Each member is its own Badger database. Federated queries wrap those stores in a
 **per-query** `federated.Store` (isolated Phase-1 ID pins); do not share one
