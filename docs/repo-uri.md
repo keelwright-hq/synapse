@@ -33,6 +33,7 @@ repo://{repo}/{path}#{kind}:{symbol}
 | `operation` | `operation` |
 | `schema` | `schema` |
 | `field` | `field` |
+| `service` | `service` |
 
 ### Examples
 
@@ -48,6 +49,7 @@ repo://{repo}/{path}#{kind}:{symbol}
 | operation | `repo://api/openapi.yaml#operation:GET%20/users` |
 | schema | `repo://api/openapi.yaml#schema:User` |
 | field | `repo://api/schema.graphql#field:User.name` |
+| service | `repo://api/users.proto#service:UserService` |
 
 Unresolved call targets without an owning file keep the Phase-1 id `symbol:Name`
 and **do not** receive a `repo://` URI until they can be scoped.

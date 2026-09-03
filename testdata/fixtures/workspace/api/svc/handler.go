@@ -4,7 +4,7 @@ func Handle() string {
 	return "api"
 }
 
-// ListUsers implements GET /users (operationId ListUsers).
+// ListUsers implements GET /users (operationId ListUsers) and gRPC UserService.ListUsers.
 func ListUsers() string {
 	return "[]"
 }

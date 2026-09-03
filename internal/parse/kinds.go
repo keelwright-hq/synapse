@@ -15,6 +15,7 @@ const (
 	KindOperation = "operation"
 	KindSchema    = "schema"
 	KindField     = "field"
+	KindService   = "service"
 )
 
 // Edge types emitted by extractors and contract binders.
