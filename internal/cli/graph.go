@@ -6,9 +6,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/taricsa/synapse/internal/graph/snapshot"
-	"github.com/taricsa/synapse/internal/store/badger"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph/snapshot"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 var (

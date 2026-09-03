@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // Store is an in-memory graph.Store for tests and fast local use.

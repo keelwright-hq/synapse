@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	badgerdb "github.com/dgraph-io/badger/v4"
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 // Fingerprint and ownership keys live alongside graph keys:

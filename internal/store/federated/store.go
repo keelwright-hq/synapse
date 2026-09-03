@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // Defaults for OSS federation guardrails (SYN-16 / SYN-69).

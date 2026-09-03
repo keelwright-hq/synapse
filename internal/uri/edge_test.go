@@ -3,7 +3,7 @@ package uri_test
 import (
 	"testing"
 
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 func TestEdgeCasesBranchesMonorepoConflicts(t *testing.T) {

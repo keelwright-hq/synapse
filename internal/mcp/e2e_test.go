@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/index"
-	mcpserver "github.com/taricsa/synapse/internal/mcp"
-	"github.com/taricsa/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/index"
+	mcpserver "github.com/keelwright-hq/synapse/internal/mcp"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 // End-to-end smoke: index a tiny repo, list MCP tools, call get_symbol.

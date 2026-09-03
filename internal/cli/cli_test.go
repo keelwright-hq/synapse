@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/buildinfo"
-	"github.com/taricsa/synapse/internal/cli"
+	"github.com/keelwright-hq/synapse/internal/buildinfo"
+	"github.com/keelwright-hq/synapse/internal/cli"
 )
 
 func TestRootHelpListsCommands(t *testing.T) {

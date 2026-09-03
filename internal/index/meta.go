@@ -1,7 +1,7 @@
 package index
 
 import (
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 // MetaStore persists file fingerprints and per-file node ownership alongside the graph.

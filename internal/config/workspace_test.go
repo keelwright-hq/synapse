@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/config"
+	"github.com/keelwright-hq/synapse/internal/config"
 )
 
 func writeWorkspace(t *testing.T, dir, body string) string {

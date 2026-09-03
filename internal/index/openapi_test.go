@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/index"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
 
 func TestIndexerIndexesOpenAPISpec(t *testing.T) {

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/cli"
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/rank"
-	"github.com/taricsa/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/cli"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 func TestGraphExportImportRoundTrip(t *testing.T) {

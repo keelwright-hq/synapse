@@ -7,10 +7,10 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/taricsa/synapse/internal/graph"
-	mcpserver "github.com/taricsa/synapse/internal/mcp"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	mcpserver "github.com/keelwright-hq/synapse/internal/mcp"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
 
 func TestToolsAgainstFixtureGraph(t *testing.T) {

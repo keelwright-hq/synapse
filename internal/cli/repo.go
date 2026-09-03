@@ -3,7 +3,7 @@ package cli
 import (
 	"path/filepath"
 
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // repoName is the optional --repo override (empty → basename of the command root).

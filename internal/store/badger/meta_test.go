@@ -3,8 +3,8 @@ package badger_test
 import (
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 func TestFingerprintRoundTrip(t *testing.T) {

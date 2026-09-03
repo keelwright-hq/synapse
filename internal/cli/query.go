@@ -6,8 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"github.com/taricsa/synapse/internal/rank"
-	"github.com/taricsa/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 var (

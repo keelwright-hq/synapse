@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/rank"
-	"github.com/taricsa/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
 
 func TestNeighborhoodGolden(t *testing.T) {

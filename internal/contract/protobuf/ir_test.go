@@ -3,8 +3,8 @@ package protobuf_test
 import (
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/protobuf"
-	"github.com/taricsa/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/contract/protobuf"
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 func TestToResultServicesMessagesFields(t *testing.T) {

@@ -5,10 +5,10 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"github.com/taricsa/synapse/internal/config"
-	"github.com/taricsa/synapse/internal/contract/bind"
-	"github.com/taricsa/synapse/internal/index"
-	"github.com/taricsa/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/config"
+	"github.com/keelwright-hq/synapse/internal/contract/bind"
+	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 var indexCmd = &cobra.Command{

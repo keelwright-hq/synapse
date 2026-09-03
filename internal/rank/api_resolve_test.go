@@ -5,12 +5,12 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/bind"
-	"github.com/taricsa/synapse/internal/index"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/rank"
-	"github.com/taricsa/synapse/internal/store/federated"
-	"github.com/taricsa/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/contract/bind"
+	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/federated"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
 
 func workspaceFixtureRoot(t *testing.T) string {

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 func TestRepoDirAndOpenRepo(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // ContractHit is a provider or consumer linked to a contract operation.

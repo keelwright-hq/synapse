@@ -3,7 +3,7 @@ package badger
 import (
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 func TestMarshalNodeRoundTrip(t *testing.T) {

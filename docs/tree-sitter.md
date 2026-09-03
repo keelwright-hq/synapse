@@ -23,9 +23,22 @@ CGO_ENABLED=1 go test ./...
 CGO_ENABLED=1 make build
 ```
 
-## Cross-compile
+## Cross-compile and releases
 
-`make cross` / the former CI `darwin/arm64` job from a Linux runner **does not** produce a working cgo binary for Darwin. Until a proper cross-cgo or release matrix exists, native (or same-OS) builds only.
+`make cross` is **same-OS / same-arch only**. Linux→Darwin (or any foreign-arch) CGO cross-compile is **not** supported.
+
+Tagged releases (`v*`) use [`.github/workflows/release.yml`](../.github/workflows/release.yml) with **native** runners:
+
+| Runner | Artifact |
+|--------|----------|
+| `macos-14` | `synapse-darwin-arm64` |
+| `macos-13` | `synapse-darwin-amd64` |
+| `ubuntu-latest` | `synapse-linux-amd64` |
+| `ubuntu-24.04-arm` | `synapse-linux-arm64` |
+
+Each artifact is built with `CGO_ENABLED=1` and version ldflags (`synapse version` must match the tag). Archives and SHA-256 checksums are attached to the GitHub Release.
+
+Homebrew tap/formula publishing is a **follow-up** (see README).
 
 ## Supported languages (batch 1)
 

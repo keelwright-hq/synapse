@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 // RunConformance exercises a Store implementation for CRUD, adjacency, and delete semantics.

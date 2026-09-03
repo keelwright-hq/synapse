@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/taricsa/synapse/internal/cli"
-	"github.com/taricsa/synapse/internal/store/badger"
-	"github.com/taricsa/synapse/internal/store/federated"
+	"github.com/keelwright-hq/synapse/internal/cli"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/store/federated"
 )
 
 func workspaceFixtureDir(t *testing.T) string {

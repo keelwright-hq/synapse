@@ -1,4 +1,4 @@
-module github.com/taricsa/synapse
+module github.com/keelwright-hq/synapse
 
 go 1.27.0
 
