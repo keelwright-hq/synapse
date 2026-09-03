@@ -1,0 +1,6 @@
+version: 1
+repos:
+  - name: api
+    path: api
+  - name: worker
+    path: worker

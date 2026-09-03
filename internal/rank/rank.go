@@ -26,6 +26,9 @@ type Options struct {
 	MaxNodes  int
 	Budget    int // max response characters; 0 = unlimited
 	RootDir   string
+	// RepoRoots maps logical repo:// names to filesystem roots (workspace mode).
+	// When set, snippet extraction prefers the root for the node's repo_uri.
+	RepoRoots map[string]string
 	Weights   map[graph.EdgeType]float64
 }
 
@@ -139,7 +142,7 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			StartLine:  propInt(node.Props, "start_line"),
 			EndLine:    propInt(node.Props, "end_line"),
 		}
-		h.Snippet = extractSnippet(opts.RootDir, node, h.StartLine, h.EndLine)
+		h.Snippet = extractSnippet(rootForNode(opts, node), node, h.StartLine, h.EndLine)
 		hits = append(hits, h)
 	}
 
@@ -294,7 +297,21 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if len(matches) == 0 {
 		return "", fmt.Errorf("%w: symbol %q", graph.ErrNotFound, query)
 	}
-	return "", fmt.Errorf("rank: ambiguous symbol %q (%d matches)", query, len(matches))
+	return "", fmt.Errorf("rank: ambiguous symbol %q (%d matches); use a repo:// URI or --repo to scope", query, len(matches))
+}
+
+// rootForNode picks the filesystem root for snippet extraction.
+func rootForNode(opts Options, node graph.Node) string {
+	if opts.RepoRoots != nil && node.Props != nil {
+		if raw := node.Props[uri.PropKey]; raw != "" {
+			if u, err := uri.Parse(raw); err == nil {
+				if root, ok := opts.RepoRoots[u.Repo]; ok && root != "" {
+					return root
+				}
+			}
+		}
+	}
+	return opts.RootDir
 }
 
 // Search returns nodes whose name or id contains query (case-sensitive), capped.

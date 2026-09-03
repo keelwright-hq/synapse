@@ -33,6 +33,28 @@ go build -o synapse ./cmd/synapse
 ./synapse mcp --data-dir .synapse --root . --repo synapse
 ```
 
+## Multi-repo workspace
+
+List members in `synapse.yaml`, then index and query with `--workspace`:
+
+```yaml
+version: 1
+repos:
+  - name: api
+    path: ./api
+  - name: worker
+    path: ./worker
+```
+
+```bash
+./synapse index --workspace . --data-dir .synapse
+./synapse query neighborhood Handle --workspace . --data-dir .synapse --repo api --json
+./synapse query neighborhood 'repo://worker/svc/handler.go#func:Handle' \
+  --workspace . --data-dir .synapse --json
+```
+
+Details: [docs/workspace.md](docs/workspace.md).
+
 ### Makefile targets
 
 | Target       | Description                                      |
@@ -45,7 +67,8 @@ go build -o synapse ./cmd/synapse
 Graph store benchmarks: see [docs/benchmarks.md](docs/benchmarks.md).  
 Tree-sitter / CGO notes: see [docs/tree-sitter.md](docs/tree-sitter.md).  
 MCP IDE wiring: see [docs/mcp.md](docs/mcp.md).  
-Global `repo://` identifiers: see [docs/repo-uri.md](docs/repo-uri.md).
+Global `repo://` identifiers: see [docs/repo-uri.md](docs/repo-uri.md).  
+Polyrepo workspace: see [docs/workspace.md](docs/workspace.md).
 
 ## License
 
