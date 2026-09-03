@@ -28,9 +28,9 @@ go build -o synapse ./cmd/synapse
 ```bash
 ./synapse --help
 ./synapse version
-./synapse index . --data-dir .synapse
+./synapse index . --data-dir .synapse --repo synapse
 ./synapse query neighborhood main --root . --json
-./synapse mcp --data-dir .synapse --root .
+./synapse mcp --data-dir .synapse --root . --repo synapse
 ```
 
 ### Makefile targets
@@ -44,7 +44,8 @@ go build -o synapse ./cmd/synapse
 
 Graph store benchmarks: see [docs/benchmarks.md](docs/benchmarks.md).  
 Tree-sitter / CGO notes: see [docs/tree-sitter.md](docs/tree-sitter.md).  
-MCP IDE wiring: see [docs/mcp.md](docs/mcp.md).
+MCP IDE wiring: see [docs/mcp.md](docs/mcp.md).  
+Global `repo://` identifiers: see [docs/repo-uri.md](docs/repo-uri.md).
 
 ## License
 

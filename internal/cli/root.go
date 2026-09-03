@@ -37,6 +37,7 @@ func RootCommand() *cobra.Command {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", ".synapse", "Directory for local graph index data")
+	rootCmd.PersistentFlags().StringVar(&repoName, "repo", "", "Canonical repo:// name (default: basename of index/query root)")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(indexCmd)
 	rootCmd.AddCommand(mcpCmd)

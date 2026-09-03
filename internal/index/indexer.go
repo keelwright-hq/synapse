@@ -14,6 +14,7 @@ import (
 
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/parse"
+	"github.com/taricsa/synapse/internal/uri"
 )
 
 // Store combines graph persistence with fingerprint/ownership metadata.
@@ -36,6 +37,7 @@ type Options struct {
 	IgnoreDirNames []string
 	Registry       *parse.Registry
 	Logger         *slog.Logger
+	Repo           string // repo:// name; required for URI assignment (caller supplies default)
 }
 
 // Indexer incrementally parses a repo and upserts into Store.
@@ -73,6 +75,13 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	}
 	if workers < 1 {
 		workers = 1
+	}
+	repo := opts.Repo
+	if repo == "" {
+		repo = filepath.Base(root)
+	}
+	if _, err := uri.NormalizeRepo(repo); err != nil {
+		return Stats{}, fmt.Errorf("index: repo name: %w", err)
 	}
 
 	files, err := parse.ListSourceFiles(root, reg, opts.IgnoreDirNames)
@@ -145,6 +154,7 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 				continue
 			}
 			res = rewritePaths(res, j.absPath, j.relPath)
+			res = assignRepoURIs(res, repo)
 			if err := idx.replaceFile(j.relPath, hash, res); err != nil {
 				errMu.Lock()
 				errs = append(errs, fmt.Errorf("%s: replace: %w", j.relPath, err))
@@ -307,4 +317,20 @@ func rewritePaths(res parse.Result, absPath, relPath string) parse.Result {
 	}
 	out.Normalize()
 	return out
+}
+
+// assignRepoURIs sets props.repo_uri on nodes that can receive a canonical URI.
+func assignRepoURIs(res parse.Result, repo string) parse.Result {
+	for i := range res.Nodes {
+		n := &res.Nodes[i]
+		canonical, ok, err := uri.Assign(repo, n.Path, n.Kind, n.Name, string(n.ID))
+		if err != nil || !ok {
+			continue
+		}
+		if n.Props == nil {
+			n.Props = map[string]string{}
+		}
+		n.Props[uri.PropKey] = canonical
+	}
+	return res
 }

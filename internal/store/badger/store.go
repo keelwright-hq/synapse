@@ -7,6 +7,7 @@ import (
 
 	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/taricsa/synapse/internal/graph"
+	"github.com/taricsa/synapse/internal/uri"
 )
 
 // defaultDataDir is the relative path used when Open receives an empty dir.
@@ -70,7 +71,19 @@ func (s *Store) PutNode(node graph.Node) error {
 	if err != nil {
 		return err
 	}
+	newURI := ""
+	if node.Props != nil {
+		newURI = node.Props[uri.PropKey]
+	}
 	return s.db.Update(func(txn *badgerdb.Txn) error {
+		if err := clearURIIndexForNode(txn, node.ID); err != nil {
+			return err
+		}
+		if newURI != "" {
+			if err := putURIIndex(txn, newURI, node.ID); err != nil {
+				return err
+			}
+		}
 		return txn.Set(nodeKey(node.ID), data)
 	})
 }
@@ -96,6 +109,41 @@ func (s *Store) GetNode(id graph.NodeID) (graph.Node, error) {
 	return node, nil
 }
 
+func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
+	var node graph.Node
+	err := s.db.View(func(txn *badgerdb.Txn) error {
+		item, err := txn.Get(uriIndexKey(repoURI))
+		if err != nil {
+			if err == badgerdb.ErrKeyNotFound {
+				return graph.ErrNotFound
+			}
+			return err
+		}
+		var id graph.NodeID
+		if err := item.Value(func(val []byte) error {
+			id = graph.NodeID(val)
+			return nil
+		}); err != nil {
+			return err
+		}
+		nItem, err := txn.Get(nodeKey(id))
+		if err != nil {
+			if err == badgerdb.ErrKeyNotFound {
+				return graph.ErrNotFound
+			}
+			return err
+		}
+		return nItem.Value(func(val []byte) error {
+			node, err = unmarshalNode(val)
+			return err
+		})
+	})
+	if err != nil {
+		return graph.Node{}, err
+	}
+	return node, nil
+}
+
 func (s *Store) DeleteNode(id graph.NodeID) error {
 	return s.db.Update(func(txn *badgerdb.Txn) error {
 		if _, err := txn.Get(nodeKey(id)); err != nil {
@@ -105,6 +153,9 @@ func (s *Store) DeleteNode(id graph.NodeID) error {
 			return err
 		}
 
+		if err := clearURIIndexForNode(txn, id); err != nil {
+			return err
+		}
 		if err := deleteEdgesForNode(txn, id); err != nil {
 			return err
 		}
@@ -302,6 +353,10 @@ func nodeKey(id graph.NodeID) []byte {
 	return []byte("n\x00" + string(id))
 }
 
+func uriIndexKey(repoURI string) []byte {
+	return []byte("ru\x00" + repoURI)
+}
+
 func outEdgePrefix(from graph.NodeID) []byte {
 	return []byte("eo\x00" + string(from) + "\x00")
 }
@@ -324,4 +379,50 @@ func outEdgeKey(from graph.NodeID, edgeType graph.EdgeType, to graph.NodeID) []b
 
 func inEdgeKey(to graph.NodeID, edgeType graph.EdgeType, from graph.NodeID) []byte {
 	return []byte("ei\x00" + string(to) + "\x00" + string(edgeType) + "\x00" + string(from))
+}
+
+func clearURIIndexForNode(txn *badgerdb.Txn, id graph.NodeID) error {
+	item, err := txn.Get(nodeKey(id))
+	if err != nil {
+		if err == badgerdb.ErrKeyNotFound {
+			return nil
+		}
+		return err
+	}
+	var node graph.Node
+	if err := item.Value(func(val []byte) error {
+		var e error
+		node, e = unmarshalNode(val)
+		return e
+	}); err != nil {
+		return err
+	}
+	if node.Props == nil {
+		return nil
+	}
+	u := node.Props[uri.PropKey]
+	if u == "" {
+		return nil
+	}
+	return txn.Delete(uriIndexKey(u))
+}
+
+func putURIIndex(txn *badgerdb.Txn, repoURI string, id graph.NodeID) error {
+	item, err := txn.Get(uriIndexKey(repoURI))
+	if err != nil && err != badgerdb.ErrKeyNotFound {
+		return err
+	}
+	if err == nil {
+		var existing graph.NodeID
+		if err := item.Value(func(val []byte) error {
+			existing = graph.NodeID(val)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if existing != id {
+			return fmt.Errorf("%w: uri %q already bound to %s", graph.ErrConflict, repoURI, existing)
+		}
+	}
+	return txn.Set(uriIndexKey(repoURI), []byte(id))
 }

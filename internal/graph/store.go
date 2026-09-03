@@ -5,6 +5,9 @@ import "errors"
 // ErrNotFound indicates the requested node or edge does not exist.
 var ErrNotFound = errors.New("graph: not found")
 
+// ErrConflict indicates a uniqueness violation (e.g. duplicate repo:// URI).
+var ErrConflict = errors.New("graph: conflict")
+
 // Store persists graph nodes and typed edges.
 type Store interface {
 	Close() error
@@ -24,4 +27,8 @@ type Store interface {
 
 	// ForEachNode invokes fn for every node. Iteration stops early if fn returns false.
 	ForEachNode(fn func(Node) bool) error
+
+	// GetNodeByURI resolves a canonical repo:// URI via the secondary unique index.
+	// Nodes without a URI are not findable this way.
+	GetNodeByURI(repoURI string) (Node, error)
 }
