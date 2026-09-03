@@ -10,6 +10,7 @@ import (
 
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/parse"
+	"github.com/taricsa/synapse/internal/uri"
 )
 
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).
@@ -257,10 +258,17 @@ func extractSnippet(root string, node graph.Node, start, end int) string {
 	return ""
 }
 
-// ResolveSeed finds a node by exact ID or unique name.
+// ResolveSeed finds a node by exact Phase-1 ID, unique name, or canonical repo:// URI.
 func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if query == "" {
 		return "", fmt.Errorf("rank: empty seed")
+	}
+	if strings.HasPrefix(query, uri.Scheme+"://") {
+		n, err := store.GetNodeByURI(query)
+		if err != nil {
+			return "", err
+		}
+		return n.ID, nil
 	}
 	if n, err := store.GetNode(graph.NodeID(query)); err == nil {
 		return n.ID, nil

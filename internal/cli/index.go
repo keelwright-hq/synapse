@@ -21,7 +21,11 @@ via content-hash fingerprints stored under --data-dir.`,
 		if len(args) > 0 {
 			path = args[0]
 		}
-		store, err := badger.Open(dataDir)
+		repo, err := resolveRepoName(path)
+		if err != nil {
+			return err
+		}
+		store, err := badger.OpenWithRepo(dataDir, repo)
 		if err != nil {
 			return err
 		}
@@ -31,13 +35,13 @@ via content-hash fingerprints stored under --data-dir.`,
 			Level: slog.LevelInfo,
 		}))
 		idx := index.New(store)
-		stats, err := idx.Run(path, index.Options{Logger: logger})
+		stats, err := idx.Run(path, index.Options{Logger: logger, Repo: repo})
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
-			"index complete: processed=%d skipped=%d deleted=%d errors=%d (data-dir=%s)\n",
-			stats.Processed, stats.Skipped, stats.Deleted, stats.Errors, dataDir)
+			"index complete: processed=%d skipped=%d deleted=%d errors=%d (data-dir=%s repo=%s)\n",
+			stats.Processed, stats.Skipped, stats.Deleted, stats.Errors, dataDir, repo)
 		if stats.Errors > 0 {
 			return fmt.Errorf("index finished with %d error(s)", stats.Errors)
 		}

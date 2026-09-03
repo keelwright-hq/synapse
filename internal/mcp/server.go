@@ -41,8 +41,8 @@ func ServeStdio(s *server.MCPServer) error {
 
 func registerTools(s *server.MCPServer, opts Options) {
 	getSymbol := mcp.NewTool("get_symbol",
-		mcp.WithDescription("Fetch a graph node by symbol id or unique name"),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("Node id or symbol name")),
+		mcp.WithDescription("Fetch a graph node by repo:// URI, Phase-1 id, or unique name"),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
 	)
 	s.AddTool(getSymbol, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		sym, err := req.RequireString("symbol")
@@ -62,7 +62,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 
 	findRefs := mcp.NewTool("find_references",
 		mcp.WithDescription("Find incoming call edges to a symbol"),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("Node id or symbol name")),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
 	)
 	s.AddTool(findRefs, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		sym, err := req.RequireString("symbol")
@@ -82,7 +82,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 
 	getNeighborhood := mcp.NewTool("get_neighborhood",
 		mcp.WithDescription("Ranked neighborhood context around a symbol"),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("Node id or symbol name")),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
 		mcp.WithNumber("depth", mcp.Description("Traversal depth (default 2)")),
 		mcp.WithNumber("max_nodes", mcp.Description("Max nodes (default 32)")),
 		mcp.WithNumber("budget", mcp.Description("Character budget (0 = unlimited)")),

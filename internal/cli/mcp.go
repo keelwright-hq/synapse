@@ -16,16 +16,20 @@ var mcpCmd = &cobra.Command{
 Configure Cursor/Claude to launch: synapse mcp --data-dir .synapse --root .
 Requires a prior synapse index of the repository.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := badger.Open(dataDir)
+		root := mcpRoot
+		if root == "" {
+			root = "."
+		}
+		repo, err := resolveRepoName(root)
+		if err != nil {
+			return err
+		}
+		store, err := badger.OpenWithRepo(dataDir, repo)
 		if err != nil {
 			return err
 		}
 		defer store.Close()
 
-		root := mcpRoot
-		if root == "" {
-			root = "."
-		}
 		s := mcpserver.New(mcpserver.Options{Store: store, RootDir: root})
 		return mcpserver.ServeStdio(s)
 	},

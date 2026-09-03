@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/taricsa/synapse/internal/graph"
+	"github.com/taricsa/synapse/internal/uri"
 )
 
 // Store is an in-memory graph.Store for tests and fast local use.
@@ -14,6 +15,9 @@ type Store struct {
 	edges        map[string]graph.Edge
 	fingerprints map[string]string
 	owned        map[string][]graph.NodeID
+	uriIndex     map[string]graph.NodeID // canonical repo:// → Node.ID
+	schemaVer    int
+	repoName     string
 }
 
 // New returns an empty in-memory store.
@@ -23,6 +27,8 @@ func New() *Store {
 		edges:        make(map[string]graph.Edge),
 		fingerprints: make(map[string]string),
 		owned:        make(map[string][]graph.NodeID),
+		uriIndex:     make(map[string]graph.NodeID),
+		schemaVer:    SchemaVersionCurrent,
 	}
 }
 
@@ -36,6 +42,32 @@ func (s *Store) PutNode(node graph.Node) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.uriIndex == nil {
+		s.uriIndex = make(map[string]graph.NodeID)
+	}
+
+	newURI := ""
+	if node.Props != nil {
+		newURI = node.Props[uri.PropKey]
+	}
+
+	// Validate conflicts before mutating the URI index (no txn rollback).
+	if newURI != "" {
+		if existing, ok := s.uriIndex[newURI]; ok && existing != node.ID {
+			return fmt.Errorf("%w: uri %q already bound to %s", graph.ErrConflict, newURI, existing)
+		}
+	}
+
+	if old, ok := s.nodes[node.ID]; ok && old.Props != nil {
+		if oldURI := old.Props[uri.PropKey]; oldURI != "" && oldURI != newURI {
+			delete(s.uriIndex, oldURI)
+		}
+	}
+
+	if newURI != "" {
+		s.uriIndex[newURI] = node.ID
+	}
+
 	s.nodes[node.ID] = cloneNode(node)
 	return nil
 }
@@ -50,11 +82,31 @@ func (s *Store) GetNode(id graph.NodeID) (graph.Node, error) {
 	return cloneNode(node), nil
 }
 
+func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	id, ok := s.uriIndex[repoURI]
+	if !ok {
+		return graph.Node{}, graph.ErrNotFound
+	}
+	node, ok := s.nodes[id]
+	if !ok {
+		return graph.Node{}, graph.ErrNotFound
+	}
+	return cloneNode(node), nil
+}
+
 func (s *Store) DeleteNode(id graph.NodeID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.nodes[id]; !ok {
+	node, ok := s.nodes[id]
+	if !ok {
 		return graph.ErrNotFound
+	}
+	if node.Props != nil {
+		if u := node.Props[uri.PropKey]; u != "" {
+			delete(s.uriIndex, u)
+		}
 	}
 	delete(s.nodes, id)
 	for key, edge := range s.edges {

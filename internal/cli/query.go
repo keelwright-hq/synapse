@@ -28,7 +28,11 @@ var queryNeighborhoodCmd = &cobra.Command{
 	Short: "Ranked neighborhood around a symbol id or name",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, err := badger.Open(dataDir)
+		repo, err := resolveRepoName(queryRoot)
+		if err != nil {
+			return err
+		}
+		store, err := badger.OpenWithRepo(dataDir, repo)
 		if err != nil {
 			return err
 		}
