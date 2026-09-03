@@ -33,22 +33,28 @@ jobs:
           CGO_ENABLED: "1"
         run: go test -race ./internal/index/ ./internal/store/...
 
-      - name: Build
+      - name: Release-path build smoke
         env:
           CGO_ENABLED: "1"
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          set -euo pipefail
+          VERSION="ci-smoke"
           COMMIT="${GITHUB_SHA::7}"
           DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           go build -ldflags "-s -w \
-            -X github.com/taricsa/synapse/internal/buildinfo.Version=${VERSION} \
-            -X github.com/taricsa/synapse/internal/buildinfo.Commit=${COMMIT} \
-            -X github.com/taricsa/synapse/internal/buildinfo.Date=${DATE}" \
+            -X github.com/keelwright-hq/synapse/internal/buildinfo.Version=${VERSION} \
+            -X github.com/keelwright-hq/synapse/internal/buildinfo.Commit=${COMMIT} \
+            -X github.com/keelwright-hq/synapse/internal/buildinfo.Date=${DATE}" \
             -o synapse ./cmd/synapse
-          ./synapse version
+          ./synapse version | tee version.out
+          grep -F "${VERSION}" version.out
+          if grep -qE '(^|[[:space:]])dev([[:space:]]|$)' version.out; then
+            echo "release-path build still reports Version=dev" >&2
+            exit 1
+          fi
 
-  # Native-OS cgo smoke only. Linux→darwin CGO cross-compile is deferred
-  # until a dedicated cross-cgo/release pipeline exists (see docs/tree-sitter.md).
+  # Native-OS cgo smoke. Release binaries are built on matching runners
+  # (see .github/workflows/release.yml and docs/tree-sitter.md).
   native-cgo:
     name: Native CGO build smoke
     runs-on: ubuntu-latest

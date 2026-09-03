@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	tree_sitter_swift "github.com/taricsa/synapse/third_party/tree-sitter-swift/bindings/go"
+	tree_sitter_swift "github.com/keelwright-hq/synapse/third_party/tree-sitter-swift/bindings/go"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"

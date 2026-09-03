@@ -3,8 +3,8 @@ package openapi_test
 import (
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/openapi"
-	"github.com/taricsa/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/contract/openapi"
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 func TestToResultOperationsAndSchemas(t *testing.T) {

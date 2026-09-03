@@ -44,7 +44,7 @@ repo://{repo}/{path}#{kind}:{symbol}
 | function | `repo://synapse/internal/parse/builder.go#func:newBuilder` |
 | method | `repo://synapse/internal/parse/builder.go#method:Builder.Put` |
 | type | `repo://synapse/internal/parse/builder.go#type:Builder` |
-| import | `repo://synapse/internal/parse/builder.go#import:github.com/taricsa/synapse/internal/graph` |
+| import | `repo://synapse/internal/parse/builder.go#import:github.com/keelwright-hq/synapse/internal/graph` |
 | symbol (file-scoped) | `repo://synapse/internal/parse/builder.go#symbol:Name` |
 | operation | `repo://api/openapi.yaml#operation:GET%20/users` |
 | schema | `repo://api/openapi.yaml#schema:User` |

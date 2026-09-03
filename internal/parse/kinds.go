@@ -1,6 +1,6 @@
 package parse
 
-import "github.com/taricsa/synapse/internal/graph"
+import "github.com/keelwright-hq/synapse/internal/graph"
 
 // Node kinds emitted by extractors and contract parsers.
 const (

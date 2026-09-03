@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/graph/snapshot"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/store/memory"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph/snapshot"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 func TestRoundTripMemory(t *testing.T) {

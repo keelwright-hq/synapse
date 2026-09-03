@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	badgerdb "github.com/dgraph-io/badger/v4"
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // defaultDataDir is the relative path used when Open receives an empty dir.

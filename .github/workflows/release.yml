@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+            artifact: synapse-darwin-arm64
+          - os: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            artifact: synapse-darwin-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            artifact: synapse-linux-amd64
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            artifact: synapse-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install C toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          COMMIT="${GITHUB_SHA::7}"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OUT="dist/${{ matrix.artifact }}"
+          mkdir -p dist
+          go build -ldflags "-s -w \
+            -X github.com/keelwright-hq/synapse/internal/buildinfo.Version=${VERSION} \
+            -X github.com/keelwright-hq/synapse/internal/buildinfo.Commit=${COMMIT} \
+            -X github.com/keelwright-hq/synapse/internal/buildinfo.Date=${DATE}" \
+            -o "${OUT}" ./cmd/synapse
+          chmod +x "${OUT}"
+          # Smoke: version metadata must match the tag (native runner == target).
+          "${OUT}" version | tee version.out
+          grep -F "${VERSION}" version.out
+          if grep -qE '(^|[[:space:]])dev([[:space:]]|$)' version.out; then
+            echo "refusing to release a binary that still reports Version=dev" >&2
+            exit 1
+          fi
+          ARCHIVE="dist/${{ matrix.artifact }}.tar.gz"
+          tar -C dist -czf "${ARCHIVE}" "${{ matrix.artifact }}"
+          (cd dist && shasum -a 256 "${{ matrix.artifact }}.tar.gz" > "${{ matrix.artifact }}.tar.gz.sha256")
+          ls -la dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/${{ matrix.artifact }}.tar.gz
+            dist/${{ matrix.artifact }}.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la release-assets/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Synapse ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

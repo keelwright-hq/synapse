@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/openapi"
+	"github.com/keelwright-hq/synapse/internal/contract/openapi"
 )
 
 const sampleYAML = `openapi: 3.0.3

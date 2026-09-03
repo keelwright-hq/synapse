@@ -1,6 +1,6 @@
 # Synapse — Go-native code context engine
 
-MODULE  := github.com/taricsa/synapse
+MODULE  := github.com/keelwright-hq/synapse
 BINARY  := synapse
 CMD     := ./cmd/synapse
 DIST    := dist

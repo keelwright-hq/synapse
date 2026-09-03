@@ -14,45 +14,68 @@ Supported source languages (batch 1): **Go**, **JavaScript/JSX**, **TypeScript/T
 
 ## Install
 
+Install once, then run `synapse` from any repository.
+
+### Go install (recommended)
+
+Requires Go 1.22+ and a C toolchain (CGO / tree-sitter — see [docs/tree-sitter.md](docs/tree-sitter.md)).
+
 ```bash
-git clone https://github.com/taricsa/synapse.git
+go install github.com/keelwright-hq/synapse/cmd/synapse@latest
+```
+
+Ensure Go’s bin directory is on your `PATH`. For zsh on macOS:
+
+```bash
+echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Verify:
+
+```bash
+synapse version
+```
+
+`go install` embeds the module version from build info (not release ldflags). Tagged
+[GitHub Release](https://github.com/keelwright-hq/synapse/releases) binaries stamp
+`Version` / `Commit` / `Date` explicitly via ldflags.
+
+Upgrade by re-running the same `go install …@latest` command.
+
+### Prebuilt binaries
+
+Download versioned archives for macOS (arm64 / amd64) and Linux (amd64 / arm64) from
+[GitHub Releases](https://github.com/keelwright-hq/synapse/releases). Unpack the archive
+for your OS/arch, place `synapse` on your `PATH`, then run `synapse version`.
+
+### Homebrew
+
+A Homebrew tap/formula is **not** published yet (follow-up). Use `go install` or a release binary for now.
+
+### Development (from source)
+
+For contributors working in this repo:
+
+```bash
+git clone https://github.com/keelwright-hq/synapse.git
 cd synapse
 make build
 ./synapse version
 ```
 
-Or without Make:
-
-```bash
-go build -o synapse ./cmd/synapse
-./synapse version
-```
-
-To make `synapse` available from any repo, install it into Go's bin directory:
-
-```bash
-go install ./cmd/synapse
-```
-
-Make sure Go's bin directory is on your shell `PATH`. For zsh on macOS:
-
-```bash
-echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-synapse version
-```
-
-After that, you can run `synapse ...` from another repository without using
-`/absolute/path/to/synapse`.
+Ordinary usage does **not** require cloning or rebuilding from source.
 
 ## First run
 
+From any target repository (with `synapse` on your `PATH`):
+
 ```bash
-./synapse --help
-./synapse version
-./synapse index . --data-dir .synapse --repo synapse
-./synapse query neighborhood main --root . --json
-./synapse mcp --data-dir .synapse --root . --repo synapse
+synapse --help
+synapse version
+synapse index . --data-dir .synapse --repo synapse
+synapse query neighborhood main --root . --json
+synapse mcp --data-dir .synapse --root . --repo synapse
 ```
 
 ## Multi-repo workspace
@@ -69,11 +92,11 @@ repos:
 ```
 
 ```bash
-./synapse index --workspace . --data-dir .synapse
-./synapse query neighborhood Handle --workspace . --data-dir .synapse --repo api --json
-./synapse query neighborhood 'repo://worker/svc/handler.go#func:Handle' \
+synapse index --workspace . --data-dir .synapse
+synapse query neighborhood Handle --workspace . --data-dir .synapse --repo api --json
+synapse query neighborhood 'repo://worker/svc/handler.go#func:Handle' \
   --workspace . --data-dir .synapse --json
-./synapse mcp --workspace . --data-dir .synapse
+synapse mcp --workspace . --data-dir .synapse
 ```
 
 Details: [docs/workspace.md](docs/workspace.md). Cross-repo MCP tools (`resolve_api`, `list_providers`, `list_consumers`): [docs/mcp.md](docs/mcp.md).
@@ -90,10 +113,10 @@ Cross-repo links are stored under `{data-dir}/overlay/` and show up in federated
 Example with the bundled fixture:
 
 ```bash
-./synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
-./synapse query neighborhood 'repo://api/openapi.yaml#operation:GET /users' \
+synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
+synapse query neighborhood 'repo://api/openapi.yaml#operation:GET /users' \
   --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
-./synapse query neighborhood 'repo://worker/svc/handler.go#func:FetchUsers' \
+synapse query neighborhood 'repo://worker/svc/handler.go#func:FetchUsers' \
   --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
 ```
 
@@ -107,8 +130,8 @@ creates `type` / `field` / `operation` nodes, then heuristically binds resolvers
 common variants (`Resolve{Field}`, `Get{Field}`, `{Root}_{Field}`).
 
 ```bash
-./synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
-./synapse query neighborhood 'repo://api/schema.graphql#operation:query users' \
+synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
+synapse query neighborhood 'repo://api/schema.graphql#operation:query users' \
   --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
 ```
 
@@ -122,8 +145,8 @@ root), then binds stubs with `implements` / `consumes` (method-name folds,
 `{Service}_{Method}`, and `grpc_path` literals).
 
 ```bash
-./synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
-./synapse query neighborhood 'repo://api/users.proto#operation:UserService.ListUsers' \
+synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
+synapse query neighborhood 'repo://api/users.proto#operation:UserService.ListUsers' \
   --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
 ```
 
@@ -134,11 +157,11 @@ Details: [docs/protobuf.md](docs/protobuf.md).
 Move graph shards between machines with NDJSON snapshots (no cloud required):
 
 ```bash
-./synapse graph export --data-dir .synapse --repo api -o api.ndjson
-./synapse graph import --data-dir /tmp/shards --repo api api.ndjson
+synapse graph export --data-dir .synapse --repo api -o api.ndjson
+synapse graph import --data-dir /tmp/shards --repo api api.ndjson
 
 # Import under a different logical name (rewrites props.repo_uri)
-./synapse graph import --data-dir /tmp/shards --repo renamed --rewrite-repo api.ndjson
+synapse graph import --data-dir /tmp/shards --repo renamed --rewrite-repo api.ndjson
 ```
 
 A mismatched `--repo` fails by default so shards never keep another repo’s
@@ -154,7 +177,7 @@ Details: [docs/federation.md](docs/federation.md).
 |--------------|--------------------------------------------------|
 | `make build` | Build `./synapse` with version ldflags           |
 | `make test`  | Run `go test ./...`                              |
-| `make cross` | Native CGO build into `dist/` (no cross-OS yet)  |
+| `make cross` | Native CGO build into `dist/` (same OS/arch only)  |
 | `make clean` | Remove `synapse` and `dist/`                     |
 
 ## Docs

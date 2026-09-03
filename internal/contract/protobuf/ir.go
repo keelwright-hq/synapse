@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 // OperationSymbol is the URI/legacy symbol for an RPC (e.g. "UserService.ListUsers").

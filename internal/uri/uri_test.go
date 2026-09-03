@@ -15,7 +15,7 @@ func TestBuildParseRoundTrip(t *testing.T) {
 		{"synapse", "internal/parse/builder.go", KindFunc, "newBuilder", "repo://synapse/internal/parse/builder.go#func:newBuilder"},
 		{"synapse", "internal/parse/builder.go", KindMethod, "Builder.Put", "repo://synapse/internal/parse/builder.go#method:Builder.Put"},
 		{"synapse", "internal/parse/builder.go", KindType, "Builder", "repo://synapse/internal/parse/builder.go#type:Builder"},
-		{"synapse", "internal/parse/builder.go", KindImport, "github.com/taricsa/synapse/internal/graph", "repo://synapse/internal/parse/builder.go#import:github.com/taricsa/synapse/internal/graph"},
+		{"synapse", "internal/parse/builder.go", KindImport, "github.com/keelwright-hq/synapse/internal/graph", "repo://synapse/internal/parse/builder.go#import:github.com/keelwright-hq/synapse/internal/graph"},
 		{"synapse", "internal/parse/builder.go", KindSymbol, "Name", "repo://synapse/internal/parse/builder.go#symbol:Name"},
 	}
 	for _, tc := range cases {

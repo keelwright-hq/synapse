@@ -3,7 +3,7 @@ package memory
 import (
 	"fmt"
 
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 // GetFingerprint returns the stored content hash for path.

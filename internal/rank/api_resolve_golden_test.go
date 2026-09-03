@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/rank"
 )
 
 // Stable projection for golden files (omit volatile node ids / line props).

@@ -3,8 +3,8 @@ package memory
 import (
 	"fmt"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // Schema versions for the in-memory / Badger graph stores.

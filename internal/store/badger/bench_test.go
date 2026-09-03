@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 const benchNodeCount = 10000

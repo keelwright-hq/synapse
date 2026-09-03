@@ -12,12 +12,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/taricsa/synapse/internal/contract/graphql"
-	"github.com/taricsa/synapse/internal/contract/openapi"
-	"github.com/taricsa/synapse/internal/contract/protobuf"
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/contract/graphql"
+	"github.com/keelwright-hq/synapse/internal/contract/openapi"
+	"github.com/keelwright-hq/synapse/internal/contract/protobuf"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // Store combines graph persistence with fingerprint/ownership metadata.

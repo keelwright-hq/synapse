@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/protobuf"
-	"github.com/taricsa/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/contract/protobuf"
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 const sampleProto = `

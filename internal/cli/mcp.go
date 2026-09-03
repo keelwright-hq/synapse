@@ -2,8 +2,8 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
-	mcpserver "github.com/taricsa/synapse/internal/mcp"
-	"github.com/taricsa/synapse/internal/store/badger"
+	mcpserver "github.com/keelwright-hq/synapse/internal/mcp"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
 
 var mcpRoot string

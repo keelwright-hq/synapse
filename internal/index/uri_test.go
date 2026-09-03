@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/index"
-	"github.com/taricsa/synapse/internal/rank"
-	"github.com/taricsa/synapse/internal/store/memory"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 func TestIndexerAssignsRepoURI(t *testing.T) {

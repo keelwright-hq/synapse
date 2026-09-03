@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/index"
-	"github.com/taricsa/synapse/internal/store/badger"
-	"github.com/taricsa/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
 
 func TestIndexerSkipUnchangedAndDelete(t *testing.T) {

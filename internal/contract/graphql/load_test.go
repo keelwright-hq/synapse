@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/graphql"
-	"github.com/taricsa/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/contract/graphql"
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 const sampleSDL = `

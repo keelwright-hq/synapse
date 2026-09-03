@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 

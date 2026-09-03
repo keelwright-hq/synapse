@@ -10,10 +10,10 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/taricsa/synapse/internal/buildinfo"
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/rank"
-	"github.com/taricsa/synapse/internal/store/federated"
+	"github.com/keelwright-hq/synapse/internal/buildinfo"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/federated"
 )
 
 // Options configure the MCP server.

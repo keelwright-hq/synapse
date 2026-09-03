@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/taricsa/synapse/internal/buildinfo"
+	"github.com/keelwright-hq/synapse/internal/buildinfo"
 )
 
 var versionCmd = &cobra.Command{

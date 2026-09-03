@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).

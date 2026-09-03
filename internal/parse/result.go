@@ -3,7 +3,7 @@ package parse
 import (
 	"sort"
 
-	"github.com/taricsa/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph"
 )
 
 // Result is the intermediate Node/Edge IR for one source file.

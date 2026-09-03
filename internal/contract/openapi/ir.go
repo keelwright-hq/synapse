@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 var httpMethods = []struct {

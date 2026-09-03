@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/taricsa/synapse/internal/config"
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/store/badger"
-	"github.com/taricsa/synapse/internal/store/federated"
+	"github.com/keelwright-hq/synapse/internal/config"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/store/badger"
+	"github.com/keelwright-hq/synapse/internal/store/federated"
 )
 
 // workspacePath is the optional --workspace path to synapse.yaml (or its directory).

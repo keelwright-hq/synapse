@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/taricsa/synapse/internal/contract/bind"
-	"github.com/taricsa/synapse/internal/index"
-	mcpserver "github.com/taricsa/synapse/internal/mcp"
-	"github.com/taricsa/synapse/internal/store/federated"
-	"github.com/taricsa/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/contract/bind"
+	"github.com/keelwright-hq/synapse/internal/index"
+	mcpserver "github.com/keelwright-hq/synapse/internal/mcp"
+	"github.com/keelwright-hq/synapse/internal/store/federated"
+	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
 
 func TestMCPResolveAPIWorkspaceOpenAPIandGRPC(t *testing.T) {

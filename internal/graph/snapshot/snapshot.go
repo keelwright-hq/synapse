@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/taricsa/synapse/internal/graph"
-	"github.com/taricsa/synapse/internal/uri"
+	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 const (
