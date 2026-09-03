@@ -104,7 +104,11 @@ func TestWorkspaceIndexAndQuery(t *testing.T) {
 	if _, err := fed.GetNodeByURI(uWorker); err != nil {
 		t.Fatal(err)
 	}
-	if err := fed.Close(); err != nil {
+	_ = fed.Close()
+	if err := apiStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := workerStore.Close(); err != nil {
 		t.Fatal(err)
 	}
 

@@ -38,6 +38,11 @@ This writes:
 .synapse/repos/worker/graph/
 ```
 
+Each member is its own Badger database. Federated queries wrap those stores in a
+**per-query** `federated.Store` (isolated Phase-1 ID pins); do not share one
+federated wrapper across concurrent requests — keep the Badger members open and
+call `New` / `Session` once per query.
+
 Single-repo `synapse index .` still uses `.synapse/graph/` unchanged.
 
 Do not pass a positional path together with `--workspace`.

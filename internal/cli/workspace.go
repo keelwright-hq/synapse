@@ -16,8 +16,26 @@ type closer interface {
 	Close() error
 }
 
+// multiCloser closes several resources; first error wins.
+type multiCloser []closer
+
+func (m multiCloser) Close() error {
+	var first error
+	for _, c := range m {
+		if c == nil {
+			continue
+		}
+		if err := c.Close(); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
 // openWorkspaceStore loads the workspace and opens either one scoped member DB
-// or a federated view of all members. scopeRepo is the --repo flag (empty = federate).
+// or a per-query federated view of all members. scopeRepo is the --repo flag
+// (empty = federate). The returned closer owns Badger member lifetime;
+// federated.Store does not close members.
 func openWorkspaceStore(wsPath, dataDir, scopeRepo string) (graph.Store, *config.Workspace, closer, error) {
 	ws, err := config.Load(wsPath)
 	if err != nil {
@@ -55,6 +73,10 @@ func openWorkspaceStore(wsPath, dataDir, scopeRepo string) (graph.Store, *config
 		}
 		return nil, nil, nil, err
 	}
-	// federated.Close already closes members; do not double-close.
-	return fed, ws, fed, nil
+	closers := make(multiCloser, 0, len(stores)+1)
+	closers = append(closers, fed) // clears pins
+	for _, s := range stores {
+		closers = append(closers, s)
+	}
+	return fed, ws, closers, nil
 }

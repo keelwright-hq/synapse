@@ -15,9 +15,15 @@ type Member struct {
 	Store graph.Store
 }
 
-// Store federates read queries across members. Writes always fail.
+// Store is a lightweight, per-query read federation over member stores.
+//
 // Phase-1 Node.IDs may collide across repos; routing prefers URI pins and
 // unique ownership so neighborhood walks stay within the seed's repo.
+// Those pins live in idOwner and are mutable query state, so a Store must
+// not be shared across goroutines. Keep underlying member stores long-lived
+// (to avoid re-opening Badger) and call New or Session once per query.
+//
+// Close does not close members; the caller owns member lifetime.
 type Store struct {
 	members []Member
 
@@ -25,13 +31,17 @@ type Store struct {
 	idOwner map[graph.NodeID]int // pinned or uniquely owned member index
 }
 
-// New builds a federated store. members must be non-empty and have unique names.
+// New builds a federated store for a single query. members must be non-empty
+// and have unique names. The returned Store is not safe for concurrent use.
 func New(members []Member) (*Store, error) {
 	if len(members) == 0 {
 		return nil, fmt.Errorf("federated: no members")
 	}
-	seen := make(map[string]struct{}, len(members))
-	for i, m := range members {
+	// Copy so callers can reuse their slice without racing our Name normalization.
+	copied := make([]Member, len(members))
+	copy(copied, members)
+	seen := make(map[string]struct{}, len(copied))
+	for i, m := range copied {
 		if m.Store == nil {
 			return nil, fmt.Errorf("federated: member %d has nil store", i)
 		}
@@ -43,23 +53,29 @@ func New(members []Member) (*Store, error) {
 			return nil, fmt.Errorf("federated: duplicate member name %q", name)
 		}
 		seen[name] = struct{}{}
-		members[i].Name = name
+		copied[i].Name = name
 	}
 	return &Store{
-		members: members,
+		members: copied,
 		idOwner: make(map[graph.NodeID]int),
 	}, nil
 }
 
-// Close closes all member stores.
-func (s *Store) Close() error {
-	var first error
-	for _, m := range s.members {
-		if err := m.Store.Close(); err != nil && first == nil {
-			first = err
-		}
+// Session returns a new Store sharing the same members with an empty pin map.
+// Use one Session (or New) per concurrent query against long-lived members.
+func (s *Store) Session() *Store {
+	return &Store{
+		members: s.members,
+		idOwner: make(map[graph.NodeID]int),
 	}
-	return first
+}
+
+// Close clears query pins. It does not close member stores.
+func (s *Store) Close() error {
+	s.mu.Lock()
+	s.idOwner = make(map[graph.NodeID]int)
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *Store) pin(id graph.NodeID, idx int) {

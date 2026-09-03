@@ -134,3 +134,70 @@ func TestFederatedWritesRejected(t *testing.T) {
 		t.Fatal("expected write error")
 	}
 }
+
+func TestSessionIsolatesPins(t *testing.T) {
+	api, worker, _ := indexTwinRepos(t)
+	base, err := federated.New([]federated.Member{
+		{Name: "api", Store: api},
+		{Name: "worker", Store: worker},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	uAPI := "repo://api/svc/handler.go#func:Handle"
+	uWorker := "repo://worker/svc/handler.go#func:Handle"
+	id := graph.NodeID("func:svc/handler.go#Handle")
+
+	s1 := base.Session()
+	if _, err := s1.GetNodeByURI(uAPI); err != nil {
+		t.Fatal(err)
+	}
+	// s1 pinned Handle → api; same Phase-1 id still works on s1.
+	if n, err := s1.GetNode(id); err != nil || n.Props[uri.PropKey] != uAPI {
+		t.Fatalf("s1 GetNode: %+v %v", n, err)
+	}
+
+	// Fresh session has no pins — ambiguous id still conflicts.
+	s2 := base.Session()
+	if _, err := s2.GetNode(id); !errors.Is(err, graph.ErrConflict) {
+		t.Fatalf("s2 want conflict, got %v", err)
+	}
+	if _, err := s2.GetNodeByURI(uWorker); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s2.GetNode(id); err != nil || n.Props[uri.PropKey] != uWorker {
+		t.Fatalf("s2 GetNode: %+v %v", n, err)
+	}
+
+	// Concurrent sessions against long-lived members must not interfere.
+	const n = 32
+	errCh := make(chan error, n*2)
+	for i := 0; i < n; i++ {
+		go func() {
+			s := base.Session()
+			seed, err := rank.ResolveSeed(s, uAPI)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			_, err = rank.Neighborhood(s, seed, rank.Options{Depth: 1, MaxNodes: 16})
+			errCh <- err
+		}()
+		go func() {
+			s := base.Session()
+			seed, err := rank.ResolveSeed(s, uWorker)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			_, err = rank.Neighborhood(s, seed, rank.Options{Depth: 1, MaxNodes: 16})
+			errCh <- err
+		}()
+	}
+	for i := 0; i < n*2; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
