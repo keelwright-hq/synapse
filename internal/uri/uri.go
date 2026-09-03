@@ -29,6 +29,7 @@ const (
 	KindSymbol    = "symbol"
 	KindOperation = "operation"
 	KindSchema    = "schema"
+	KindField     = "field"
 )
 
 var (
@@ -38,7 +39,7 @@ var (
 	validKinds  = map[string]struct{}{
 		KindFile: {}, KindPackage: {}, KindModule: {}, KindFunc: {},
 		KindMethod: {}, KindType: {}, KindImport: {}, KindSymbol: {},
-		KindOperation: {}, KindSchema: {},
+		KindOperation: {}, KindSchema: {}, KindField: {},
 	}
 )
 
@@ -73,6 +74,8 @@ func KindToken(nodeKind string) (string, error) {
 		return KindOperation, nil
 	case "schema":
 		return KindSchema, nil
+	case "field":
+		return KindField, nil
 	default:
 		return "", fmt.Errorf("%w: unknown node kind %q", ErrInvalid, nodeKind)
 	}
@@ -101,6 +104,8 @@ func NodeKind(kindToken string) (string, error) {
 		return "operation", nil
 	case KindSchema:
 		return "schema", nil
+	case KindField:
+		return "field", nil
 	default:
 		return "", fmt.Errorf("%w: unknown kind token %q", ErrInvalid, kindToken)
 	}

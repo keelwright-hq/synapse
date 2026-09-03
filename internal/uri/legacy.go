@@ -52,7 +52,7 @@ func ParseLegacyID(id string) (LegacyParts, error) {
 			return LegacyParts{}, err
 		}
 		return LegacyParts{KindToken: KindSymbol, Path: p, Symbol: sym}, nil
-	case "func", "method", "type", "package", "import", "operation", "schema":
+	case "func", "method", "type", "package", "import", "operation", "schema", "field":
 		pathPart, sym, cut := strings.Cut(rest, "#")
 		if !cut || pathPart == "" || sym == "" {
 			return LegacyParts{}, fmt.Errorf("%w: malformed legacy id %q", ErrInvalid, id)
@@ -131,7 +131,7 @@ func Assign(repo, filePath, nodeKind, name, legacyID string) (canonical string, 
 				sym = rest
 			}
 		}
-	} else if tok == KindImport || tok == KindPackage || tok == KindType || tok == KindFunc || tok == KindModule || tok == KindOperation || tok == KindSchema {
+	} else if tok == KindImport || tok == KindPackage || tok == KindType || tok == KindFunc || tok == KindModule || tok == KindOperation || tok == KindSchema || tok == KindField {
 		if parts, perr := ParseLegacyID(legacyID); perr == nil && parts.Symbol != "" {
 			sym = parts.Symbol
 		}

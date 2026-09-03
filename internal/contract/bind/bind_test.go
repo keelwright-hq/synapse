@@ -62,3 +62,53 @@ func ListUsers() {}
 	}
 	t.Fatalf("missing implements edge: %+v", edges)
 }
+
+func TestBindGraphQLResolverVariants(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "schema.graphql"), []byte(`
+type Query {
+  users: [User!]!
+}
+type User {
+  id: ID!
+  name: String!
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "handler.go"), []byte(`package main
+func ResolveUsers() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Repo: "api", Workers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bind.Bind(bind.Options{
+		Members: []bind.Member{{Name: "api", Root: root, Store: store}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	handler, err := store.GetNodeByURI("repo://api/handler.go#func:ResolveUsers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := store.GetNodeByURI("repo://api/schema.graphql#operation:query users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edges, err := store.OutEdges(handler.ID, parse.EdgeImplements)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range edges {
+		if e.To == op.ID {
+			return
+		}
+	}
+	t.Fatalf("missing implements edge for ResolveUsers: %+v", edges)
+}
+

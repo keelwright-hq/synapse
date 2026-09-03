@@ -1,4 +1,5 @@
-// Package bind links code symbols to OpenAPI operations via best-effort heuristics.
+// Package bind links code symbols to contract operations (OpenAPI / GraphQL)
+// via best-effort heuristics.
 package bind
 
 import (
@@ -31,13 +32,14 @@ type Options struct {
 }
 
 type operationRef struct {
-	node     graph.Node
-	repo     string
-	store    graph.Store
-	opID     string // props.operation_id
-	path     string // props.path
-	method   string
-	repoURI  string
+	node    graph.Node
+	repo    string
+	store   graph.Store
+	opID    string // props.operation_id
+	path    string // props.path
+	method  string
+	gqlRoot string // props.gql_root (Query|Mutation|Subscription)
+	repoURI string
 }
 
 type symbolRef struct {
@@ -75,6 +77,7 @@ func Bind(opts Options) error {
 					op.opID = n.Props["operation_id"]
 					op.path = n.Props["path"]
 					op.method = n.Props["method"]
+					op.gqlRoot = n.Props["gql_root"]
 				}
 				ops = append(ops, op)
 			case parse.KindFunction, parse.KindMethod:
@@ -143,14 +146,15 @@ func Bind(opts Options) error {
 		})
 	}
 
-	// 1) operationId ↔ symbol name: same repo → implements; other repo → consumes.
+	// 1) operationId ↔ symbol name (plus GraphQL resolver name variants):
+	// same repo → implements; other repo → consumes.
 	for _, op := range ops {
 		if op.opID == "" {
 			continue
 		}
-		want := foldName(op.opID)
+		wants := operationNameFolds(op)
 		for _, sym := range syms {
-			if sym.fold != want {
+			if !foldMatches(sym.fold, wants) {
 				continue
 			}
 			if sym.repo == op.repo {
@@ -263,6 +267,40 @@ func symbolMatchName(n graph.Node) string {
 		}
 	}
 	return n.Name
+}
+
+// operationNameFolds returns folded candidate names that may implement/consume op.
+func operationNameFolds(op operationRef) []string {
+	field := op.opID
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(s string) {
+		f := foldName(s)
+		if f == "" {
+			return
+		}
+		if _, ok := seen[f]; ok {
+			return
+		}
+		seen[f] = struct{}{}
+		out = append(out, f)
+	}
+	add(field)
+	if op.gqlRoot != "" {
+		add("Resolve" + field)
+		add("Get" + field)
+		add(op.gqlRoot + "_" + field)
+	}
+	return out
+}
+
+func foldMatches(symFold string, wants []string) bool {
+	for _, w := range wants {
+		if symFold == w {
+			return true
+		}
+	}
+	return false
 }
 
 func foldName(s string) string {
