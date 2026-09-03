@@ -27,7 +27,7 @@
       "path": "ts/sample/greet.ts"
     },
     {
-      "id": "method:ts/sample/greet.ts#class.say",
+      "id": "method:ts/sample/greet.ts#Greeter.say",
       "kind": "method",
       "name": "say",
       "path": "ts/sample/greet.ts"
@@ -91,7 +91,7 @@
       "type": "calls"
     },
     {
-      "from": "method:ts/sample/greet.ts#class.say",
+      "from": "method:ts/sample/greet.ts#Greeter.say",
       "to": "symbol:format",
       "type": "calls"
     },
@@ -112,7 +112,7 @@
     },
     {
       "from": "module:ts/sample/greet.ts",
-      "to": "method:ts/sample/greet.ts#class.say",
+      "to": "method:ts/sample/greet.ts#Greeter.say",
       "type": "contains"
     },
     {

@@ -179,6 +179,76 @@ func TestWalkRace(t *testing.T) {
 	}
 }
 
+func TestTypeScriptMethodIDsIncludeClassName(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "classes.ts")
+	mustWrite(t, path, `
+export class Alpha {
+  render() {
+    console.log("alpha")
+  }
+}
+
+export class Beta {
+  render() {
+    console.log("beta")
+  }
+}
+`)
+
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var methods []graph.NodeID
+	for _, n := range res.Nodes {
+		if n.Kind == parse.KindMethod && n.Name == "render" {
+			methods = append(methods, n.ID)
+		}
+	}
+	if len(methods) != 2 {
+		t.Fatalf("want two render methods, got %d: %v", len(methods), methods)
+	}
+	if methods[0] == methods[1] {
+		t.Fatalf("method IDs collided: %v", methods)
+	}
+	for _, want := range []string{"#Alpha.render", "#Beta.render"} {
+		found := false
+		for _, id := range methods {
+			if strings.Contains(string(id), want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("missing method ID containing %q in %v", want, methods)
+		}
+	}
+}
+
+func TestNormalizeDeduplicatesEdges(t *testing.T) {
+	res := parse.Result{
+		Edges: []graph.Edge{
+			{From: "b", To: "c", Type: "calls"},
+			{From: "a", To: "b", Type: "contains"},
+			{From: "a", To: "b", Type: "contains"},
+			{From: "b", To: "c", Type: "calls"},
+		},
+	}
+	res.Normalize()
+	if len(res.Edges) != 2 {
+		t.Fatalf("want 2 unique edges, got %d: %+v", len(res.Edges), res.Edges)
+	}
+}
+
+func TestWalkTreeRejectsMissingRoot(t *testing.T) {
+	_, err := parse.WalkTree(filepath.Join(t.TempDir(), "missing"), parse.WalkOptions{})
+	if err == nil {
+		t.Fatal("expected missing root error")
+	}
+}
+
 func assertHasKind(t *testing.T, res parse.Result, kind, name string) {
 	t.Helper()
 	for _, n := range res.Nodes {

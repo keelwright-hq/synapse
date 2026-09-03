@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/taricsa/synapse/internal/graph"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 func extractTypeScript(path string, src []byte, root *tree_sitter.Node) Result {
@@ -47,7 +47,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		nameNode := field(n, "name")
 		if nameNode != nil {
 			name := b.text(nameNode)
-			id := methodID(b.path, "class", name)
+			id := methodID(b.path, containingTSClassName(b, n), name)
 			b.put(graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
 			walkTS(b, field(n, "body"), module, id)
@@ -108,6 +108,19 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		walkTS(b, n.NamedChild(i), module, current)
 	}
+}
+
+func containingTSClassName(b *builder, n *tree_sitter.Node) string {
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		if p.Kind() != "class_declaration" {
+			continue
+		}
+		if nameNode := field(p, "name"); nameNode != nil {
+			return b.text(nameNode)
+		}
+		break
+	}
+	return "class"
 }
 
 func extractTSImport(b *builder, n *tree_sitter.Node, parent graph.NodeID) {

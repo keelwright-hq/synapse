@@ -30,6 +30,9 @@ type WalkResult struct {
 
 // WalkTree walks root, skipping ignored dirs, and parses registered source files concurrently.
 func WalkTree(root string, opts WalkOptions) (WalkResult, error) {
+	if err := EnsureRootExists(root); err != nil {
+		return WalkResult{}, err
+	}
 	if opts.Registry == nil {
 		opts.Registry = NewRegistry()
 	}
@@ -54,9 +57,9 @@ func WalkTree(root string, opts WalkOptions) (WalkResult, error) {
 	}
 	jobs := make(chan job, workers*2)
 	var (
-		mu   sync.Mutex
-		out  WalkResult
-		wg   sync.WaitGroup
+		mu  sync.Mutex
+		out WalkResult
+		wg  sync.WaitGroup
 	)
 
 	worker := func() {

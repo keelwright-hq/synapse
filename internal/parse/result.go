@@ -30,4 +30,20 @@ func (r *Result) Normalize() {
 		}
 		return a.Type < b.Type
 	})
+	if len(r.Edges) < 2 {
+		return
+	}
+	w := 1
+	for i := 1; i < len(r.Edges); i++ {
+		if sameEdgeIdentity(r.Edges[i], r.Edges[w-1]) {
+			continue
+		}
+		r.Edges[w] = r.Edges[i]
+		w++
+	}
+	r.Edges = r.Edges[:w]
+}
+
+func sameEdgeIdentity(a, b graph.Edge) bool {
+	return a.From == b.From && a.To == b.To && a.Type == b.Type
 }
