@@ -134,7 +134,7 @@ func resolveOperation(store graph.Store, query string) (graph.Node, error) {
 	if len(matches) == 0 {
 		return graph.Node{}, fmt.Errorf("%w: operation %q", graph.ErrNotFound, query)
 	}
-	return graph.Node{}, fmt.Errorf("rank: ambiguous operation %q (%d matches); use a repo:// URI", query, len(matches))
+	return graph.Node{}, fmt.Errorf("rank: ambiguous operation %q (multiple matches found); use a repo:// URI", query)
 }
 
 func operationMatchesQuery(n graph.Node, q string) bool {

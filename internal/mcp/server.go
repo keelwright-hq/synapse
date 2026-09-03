@@ -44,8 +44,8 @@ func (o Options) withWarnings(warnings []string) []string {
 }
 
 func takeFedWarnings(store graph.Store) []string {
-	if fed, ok := store.(*federated.Store); ok {
-		return fed.TakeWarnings()
+	if taker, ok := store.(interface{ TakeWarnings() []string }); ok {
+		return taker.TakeWarnings()
 	}
 	return nil
 }
