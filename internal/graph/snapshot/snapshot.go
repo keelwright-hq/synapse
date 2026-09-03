@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/taricsa/synapse/internal/graph"
+	"github.com/taricsa/synapse/internal/uri"
 )
 
 const (
@@ -44,11 +45,11 @@ type nodeRecord struct {
 }
 
 type edgeRecord struct {
-	Type      string            `json:"type"`
-	From      graph.NodeID      `json:"from"`
-	To        graph.NodeID      `json:"to"`
-	EdgeType  graph.EdgeType    `json:"edge_type"`
-	Props     map[string]string `json:"props,omitempty"`
+	Type     string            `json:"type"`
+	From     graph.NodeID      `json:"from"`
+	To       graph.NodeID      `json:"to"`
+	EdgeType graph.EdgeType    `json:"edge_type"`
+	Props    map[string]string `json:"props,omitempty"`
 }
 
 // Export writes a v1 NDJSON snapshot of store to w.
@@ -145,8 +146,22 @@ type ImportResult struct {
 	HeaderSeen bool
 }
 
+// ImportOptions control destination checks and optional repo_uri rewrite (SYN-94).
+type ImportOptions struct {
+	// TargetRepo is the --repo destination for KindRepo snapshots.
+	// Empty skips the dest check (tests / overlay).
+	TargetRepo string
+	// RewriteRepo remaps header.Repo → TargetRepo on repo_uri and URI-keyed IDs.
+	RewriteRepo bool
+}
+
 // Import streams a v1 NDJSON snapshot from r into store.
 func Import(r io.Reader, store graph.Store) (ImportResult, error) {
+	return ImportWithOptions(r, store, ImportOptions{})
+}
+
+// ImportWithOptions streams a v1 NDJSON snapshot with dest/rewrite options.
+func ImportWithOptions(r io.Reader, store graph.Store, opts ImportOptions) (ImportResult, error) {
 	var out ImportResult
 	if store == nil {
 		return out, fmt.Errorf("snapshot: nil store")
@@ -156,6 +171,7 @@ func Import(r io.Reader, store graph.Store) (ImportResult, error) {
 	buf := make([]byte, 0, 64*1024)
 	sc.Buffer(buf, 16*1024*1024)
 
+	rewriteFrom, rewriteTo := "", ""
 	lineNo := 0
 	for sc.Scan() {
 		lineNo++
@@ -192,6 +208,13 @@ func Import(r io.Reader, store graph.Store) (ImportResult, error) {
 			}
 			out.HeaderSeen = true
 			out.Meta = Meta{Repo: h.Repo, Kind: h.Kind}
+			if h.Kind == KindRepo && opts.TargetRepo != "" && h.Repo != opts.TargetRepo {
+				if !opts.RewriteRepo {
+					return out, fmt.Errorf("snapshot: repo %q does not match target %q (pass --rewrite-repo to remap repo_uri)", h.Repo, opts.TargetRepo)
+				}
+				rewriteFrom, rewriteTo = h.Repo, opts.TargetRepo
+				out.Meta.Repo = opts.TargetRepo
+			}
 		case "node":
 			if !out.HeaderSeen {
 				return out, fmt.Errorf("snapshot: line %d: node before header", lineNo)
@@ -199,6 +222,18 @@ func Import(r io.Reader, store graph.Store) (ImportResult, error) {
 			var n nodeRecord
 			if err := json.Unmarshal(line, &n); err != nil {
 				return out, fmt.Errorf("snapshot: line %d node: %w", lineNo, err)
+			}
+			if rewriteFrom != "" {
+				id, err := rewriteNodeID(n.ID, rewriteFrom, rewriteTo)
+				if err != nil {
+					return out, fmt.Errorf("snapshot: line %d node id: %w", lineNo, err)
+				}
+				n.ID = id
+				props, err := rewriteProps(n.Props, rewriteFrom, rewriteTo)
+				if err != nil {
+					return out, fmt.Errorf("snapshot: line %d node props: %w", lineNo, err)
+				}
+				n.Props = props
 			}
 			if err := store.PutNode(graph.Node{
 				ID: n.ID, Kind: n.Kind, Name: n.Name, Path: n.Path, Props: n.Props,
@@ -226,6 +261,21 @@ func Import(r io.Reader, store graph.Store) (ImportResult, error) {
 			if et == "" {
 				return out, fmt.Errorf("snapshot: line %d: edge missing edge_type", lineNo)
 			}
+			if rewriteFrom != "" {
+				from, err := rewriteNodeID(e.From, rewriteFrom, rewriteTo)
+				if err != nil {
+					return out, fmt.Errorf("snapshot: line %d edge from: %w", lineNo, err)
+				}
+				to, err := rewriteNodeID(e.To, rewriteFrom, rewriteTo)
+				if err != nil {
+					return out, fmt.Errorf("snapshot: line %d edge to: %w", lineNo, err)
+				}
+				props, err := rewriteProps(e.Props, rewriteFrom, rewriteTo)
+				if err != nil {
+					return out, fmt.Errorf("snapshot: line %d edge props: %w", lineNo, err)
+				}
+				e.From, e.To, e.Props = from, to, props
+			}
 			if err := store.PutEdge(graph.Edge{
 				From: e.From, To: e.To, Type: et, Props: e.Props,
 			}); err != nil {
@@ -241,6 +291,29 @@ func Import(r io.Reader, store graph.Store) (ImportResult, error) {
 	}
 	if !out.HeaderSeen {
 		return out, fmt.Errorf("snapshot: missing header")
+	}
+	return out, nil
+}
+
+func rewriteNodeID(id graph.NodeID, from, to string) (graph.NodeID, error) {
+	s, err := uri.RewriteRepo(string(id), from, to)
+	if err != nil {
+		return "", err
+	}
+	return graph.NodeID(s), nil
+}
+
+func rewriteProps(props map[string]string, from, to string) (map[string]string, error) {
+	if len(props) == 0 {
+		return props, nil
+	}
+	out := make(map[string]string, len(props))
+	for k, v := range props {
+		nv, err := uri.RewriteRepo(v, from, to)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = nv
 	}
 	return out, nil
 }

@@ -265,6 +265,23 @@ func Normalize(raw string) (string, error) {
 	return u.String(), nil
 }
 
+// RewriteRepo remaps the repo segment of a repo:// URI from `from` to `to`.
+// Non-repo:// strings are returned unchanged. A repo:// value that fails to parse is an error.
+func RewriteRepo(raw, from, to string) (string, error) {
+	if raw == "" || !strings.HasPrefix(raw, Scheme+"://") {
+		return raw, nil
+	}
+	u, err := Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if u.Repo != from {
+		return u.String(), nil
+	}
+	u.Repo = to
+	return u.String(), nil
+}
+
 func splitFragment(frag string) (kind, symbol string, err error) {
 	if frag == KindFile {
 		return KindFile, "", nil

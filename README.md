@@ -26,6 +26,23 @@ go build -o synapse ./cmd/synapse
 ./synapse version
 ```
 
+To make `synapse` available from any repo, install it into Go's bin directory:
+
+```bash
+go install ./cmd/synapse
+```
+
+Make sure Go's bin directory is on your shell `PATH`. For zsh on macOS:
+
+```bash
+echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+synapse version
+```
+
+After that, you can run `synapse ...` from another repository without using
+`/absolute/path/to/synapse`.
+
 ## First run
 
 ```bash
@@ -117,7 +134,14 @@ Move graph shards between machines with NDJSON snapshots (no cloud required):
 ```bash
 ./synapse graph export --data-dir .synapse --repo api -o api.ndjson
 ./synapse graph import --data-dir /tmp/shards --repo api api.ndjson
+
+# Import under a different logical name (rewrites props.repo_uri)
+./synapse graph import --data-dir /tmp/shards --repo renamed --rewrite-repo api.ndjson
 ```
+
+A mismatched `--repo` fails by default so shards never keep another repo’s
+`repo_uri`. Pass `--rewrite-repo` to remap `props.repo_uri` (and URI-keyed
+overlay endpoints) to the target name.
 
 Federated workspace queries soft-fail missing shards (partial results + warnings).
 Details: [docs/federation.md](docs/federation.md).
