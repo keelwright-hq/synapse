@@ -216,15 +216,8 @@ func Parse(raw string) (URI, error) {
 		return URI{}, err
 	}
 
-	frag, err := url.PathUnescape(parsed.Fragment)
-	if err != nil {
-		// Fragment may use different escaping; try QueryUnescape
-		frag, err = url.QueryUnescape(parsed.Fragment)
-		if err != nil {
-			return URI{}, fmt.Errorf("%w: fragment unescape: %v", ErrInvalid, err)
-		}
-	}
-	frag = strings.TrimSpace(frag)
+	// url.Parse already decodes Fragment; do not unescape again.
+	frag := strings.TrimSpace(parsed.Fragment)
 	if frag == "" {
 		return URI{}, fmt.Errorf("%w: missing fragment", ErrInvalid)
 	}

@@ -121,40 +121,47 @@ func (s *Store) migrateToV2(repo string) error {
 		return err
 	}
 
-	seen := make(map[string]graph.NodeID)
-	for _, p := range nodes {
-		node := p.node
-		if node.Props != nil && node.Props[uri.PropKey] != "" {
-			u := node.Props[uri.PropKey]
-			if existing, ok := seen[u]; ok && existing != node.ID {
-				return fmt.Errorf("%w: uri %q for %s and %s", graph.ErrConflict, u, existing, node.ID)
+	return s.db.Update(func(txn *badgerdb.Txn) error {
+		seen := make(map[string]graph.NodeID)
+		for _, p := range nodes {
+			node := p.node
+			if node.Props != nil && node.Props[uri.PropKey] != "" {
+				u := node.Props[uri.PropKey]
+				if existing, ok := seen[u]; ok && existing != node.ID {
+					return fmt.Errorf("%w: uri %q for %s and %s", graph.ErrConflict, u, existing, node.ID)
+				}
+				seen[u] = node.ID
+				if err := txn.Set(uriIndexKey(u), []byte(node.ID)); err != nil {
+					return err
+				}
+				continue
 			}
-			seen[u] = node.ID
-			if err := s.db.Update(func(txn *badgerdb.Txn) error {
-				return txn.Set(uriIndexKey(u), []byte(node.ID))
-			}); err != nil {
+			canonical, ok, err := uri.FromLegacy(repo, string(node.ID))
+			if err != nil {
+				return fmt.Errorf("migrate %s: %w", node.ID, err)
+			}
+			if !ok {
+				continue
+			}
+			if existing, ok := seen[canonical]; ok && existing != node.ID {
+				return fmt.Errorf("%w: uri %q for %s and %s", graph.ErrConflict, canonical, existing, node.ID)
+			}
+			seen[canonical] = node.ID
+			if node.Props == nil {
+				node.Props = map[string]string{}
+			}
+			node.Props[uri.PropKey] = canonical
+			data, err := marshalNode(node)
+			if err != nil {
 				return err
 			}
-			continue
+			if err := txn.Set(nodeKey(node.ID), data); err != nil {
+				return err
+			}
+			if err := txn.Set(uriIndexKey(canonical), []byte(node.ID)); err != nil {
+				return err
+			}
 		}
-		canonical, ok, err := uri.FromLegacy(repo, string(node.ID))
-		if err != nil {
-			return fmt.Errorf("migrate %s: %w", node.ID, err)
-		}
-		if !ok {
-			continue
-		}
-		if existing, ok := seen[canonical]; ok && existing != node.ID {
-			return fmt.Errorf("%w: uri %q for %s and %s", graph.ErrConflict, canonical, existing, node.ID)
-		}
-		seen[canonical] = node.ID
-		if node.Props == nil {
-			node.Props = map[string]string{}
-		}
-		node.Props[uri.PropKey] = canonical
-		if err := s.PutNode(node); err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }

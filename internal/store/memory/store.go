@@ -51,6 +51,13 @@ func (s *Store) PutNode(node graph.Node) error {
 		newURI = node.Props[uri.PropKey]
 	}
 
+	// Validate conflicts before mutating the URI index (no txn rollback).
+	if newURI != "" {
+		if existing, ok := s.uriIndex[newURI]; ok && existing != node.ID {
+			return fmt.Errorf("%w: uri %q already bound to %s", graph.ErrConflict, newURI, existing)
+		}
+	}
+
 	if old, ok := s.nodes[node.ID]; ok && old.Props != nil {
 		if oldURI := old.Props[uri.PropKey]; oldURI != "" && oldURI != newURI {
 			delete(s.uriIndex, oldURI)
@@ -58,9 +65,6 @@ func (s *Store) PutNode(node graph.Node) error {
 	}
 
 	if newURI != "" {
-		if existing, ok := s.uriIndex[newURI]; ok && existing != node.ID {
-			return fmt.Errorf("%w: uri %q already bound to %s", graph.ErrConflict, newURI, existing)
-		}
 		s.uriIndex[newURI] = node.ID
 	}
 

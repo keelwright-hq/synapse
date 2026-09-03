@@ -283,12 +283,6 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 				return false
 			}
 		}
-		if n.Props != nil && n.Props[uri.PropKey] == query {
-			matches = append(matches, n.ID)
-			if len(matches) >= 2 {
-				return false
-			}
-		}
 		return true
 	})
 	if err != nil {

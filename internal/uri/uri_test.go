@@ -139,6 +139,26 @@ func TestAssignMethodUsesReceiver(t *testing.T) {
 	}
 }
 
+func TestParseLiteralPercentInSymbol(t *testing.T) {
+	raw, err := Build("r", "a.go", KindImport, "100%_pure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse(%q): %v", raw, err)
+	}
+	if u.Symbol != "100%_pure" {
+		t.Fatalf("symbol %q", u.Symbol)
+	}
+	// Encoded form in the wire string should survive a second Parse without
+	// treating a decoded percent as an escape sequence.
+	again, err := Parse(u.String())
+	if err != nil || again.Symbol != "100%_pure" {
+		t.Fatalf("round-trip: %+v %v", again, err)
+	}
+}
+
 func TestErrorsAreInvalid(t *testing.T) {
 	_, err := Parse("not-a-uri")
 	if !errors.Is(err, ErrInvalid) {
