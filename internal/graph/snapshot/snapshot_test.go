@@ -128,6 +128,41 @@ func TestImportRejectsRepoMismatch(t *testing.T) {
 	}
 }
 
+func TestImportRewriteKeepsInvalidNonURIProps(t *testing.T) {
+	src := memory.New()
+	n := graph.Node{
+		ID:   "func:a.go#A",
+		Kind: parse.KindFunction,
+		Name: "A",
+		Path: "a.go",
+		Props: map[string]string{
+			uri.PropKey: "repo://demo/a.go#func:A",
+			"note":      "repo://not a valid uri?x=1",
+		},
+	}
+	if err := src.PutNode(n); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := snapshot.Export(&buf, src, snapshot.Meta{Repo: "demo", Kind: snapshot.KindRepo}); err != nil {
+		t.Fatal(err)
+	}
+	dst := memory.New()
+	if _, err := snapshot.ImportWithOptions(bytes.NewReader(buf.Bytes()), dst, snapshot.ImportOptions{
+		TargetRepo:  "renamed",
+		RewriteRepo: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := dst.GetNodeByURI("repo://renamed/a.go#func:A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Props["note"] != "repo://not a valid uri?x=1" {
+		t.Fatalf("note prop rewritten: %+v", got.Props)
+	}
+}
+
 func TestImportRewriteRepoURI(t *testing.T) {
 	src := memory.New()
 	n1 := graph.Node{

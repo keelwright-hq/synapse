@@ -145,6 +145,8 @@ var graphImportCmd = &cobra.Command{
 			if res.Meta.Kind != snapshot.KindOverlay {
 				return fmt.Errorf("graph import: snapshot kind is %q, expected overlay", res.Meta.Kind)
 			}
+		} else if res.Meta.Kind != snapshot.KindRepo {
+			return fmt.Errorf("graph import: snapshot kind is %q, expected repo", res.Meta.Kind)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
 			"imported snapshot: nodes=%d edges=%d kind=%s repo=%s (data-dir=%s)\n",

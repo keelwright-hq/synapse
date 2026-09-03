@@ -311,7 +311,10 @@ func rewriteProps(props map[string]string, from, to string) (map[string]string, 
 	for k, v := range props {
 		nv, err := uri.RewriteRepo(v, from, to)
 		if err != nil {
-			return nil, err
+			if k == uri.PropKey {
+				return nil, err
+			}
+			nv = v
 		}
 		out[k] = nv
 	}
