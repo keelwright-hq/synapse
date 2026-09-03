@@ -73,10 +73,17 @@ From any target repository (with `synapse` on your `PATH`):
 ```bash
 synapse --help
 synapse version
-synapse index . --data-dir .synapse --repo synapse
+synapse --repo synapse index .
 synapse query neighborhood main --root . --json
-synapse mcp --data-dir .synapse --root . --repo synapse
+synapse mcp --root . --repo synapse
 ```
+
+Single-repo `index` writes an embedded Badger graph database under
+`<repo>/.synapse` by default (not a human-readable report). That folder is
+already on Synapse’s ignore list when walking source. Override with
+`--data-dir /tmp/synapse-test` for disposable runs. If you indexed an absolute
+path from outside the repo, pass the same `--data-dir` (or `cd` into the repo)
+for later `query` / `mcp` commands.
 
 ## Multi-repo workspace
 

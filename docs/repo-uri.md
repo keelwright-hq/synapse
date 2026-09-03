@@ -71,7 +71,8 @@ and **do not** receive a `repo://` URI until they can be scoped.
 ## CLI
 
 ```bash
-./synapse index . --data-dir .synapse --repo synapse
+./synapse index . --repo synapse
+# defaults to <repo>/.synapse; override with --data-dir for disposable runs
 ./synapse mcp --data-dir .synapse --root . --repo synapse
 ./synapse index --workspace path/to/synapse.yaml --data-dir .synapse
 ```

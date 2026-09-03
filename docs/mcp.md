@@ -6,6 +6,9 @@
 
 ```bash
 make build
+# --data-dir defaults to /path/to/repo/.synapse when omitted
+./synapse index /path/to/repo --repo myrepo
+# equivalent explicit form:
 ./synapse index /path/to/repo --data-dir /path/to/repo/.synapse --repo myrepo
 ```
 

@@ -3,12 +3,13 @@ package cli
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"github.com/keelwright-hq/synapse/internal/config"
 	"github.com/keelwright-hq/synapse/internal/contract/bind"
 	"github.com/keelwright-hq/synapse/internal/index"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
+	"github.com/spf13/cobra"
 )
 
 var indexCmd = &cobra.Command{
@@ -18,13 +19,18 @@ var indexCmd = &cobra.Command{
 nodes and edges into the embedded graph store. Unchanged files are skipped
 via content-hash fingerprints stored under --data-dir.
 
+For a single-repo index (no --workspace), when --data-dir is omitted the
+default is <target-repo>/.synapse (the embedded Badger graph database under
+the repository being indexed—not a human-readable report folder).
+
 OpenAPI 3.x YAML/JSON specs are content-sniffed and mapped to operation/schema
 nodes. After indexing, a heuristic binder links handlers/clients to operations
 (implements/consumes).
 
 With --workspace, indexes every member listed in synapse.yaml into
 <data-dir>/repos/<name>/graph, then binds cross-repo contract edges into
-<data-dir>/overlay. Do not pass a positional path in workspace mode.`,
+<data-dir>/overlay. Do not pass a positional path in workspace mode.
+Workspace mode keeps the --data-dir / CWD default unchanged.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if workspacePath != "" {
@@ -42,7 +48,11 @@ With --workspace, indexes every member listed in synapse.yaml into
 		if err != nil {
 			return err
 		}
-		store, err := badger.OpenWithRepo(dataDir, repo)
+		resolvedDataDir, err := resolveSingleRepoDataDir(cmd, path)
+		if err != nil {
+			return err
+		}
+		store, err := badger.OpenWithRepo(resolvedDataDir, repo)
 		if err != nil {
 			return err
 		}
@@ -63,12 +73,31 @@ With --workspace, indexes every member listed in synapse.yaml into
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
 			"index complete: processed=%d skipped=%d deleted=%d errors=%d (data-dir=%s repo=%s)\n",
-			stats.Processed, stats.Skipped, stats.Deleted, stats.Errors, dataDir, repo)
+			stats.Processed, stats.Skipped, stats.Deleted, stats.Errors, resolvedDataDir, repo)
 		if stats.Errors > 0 {
 			return fmt.Errorf("index finished with %d error(s)", stats.Errors)
 		}
 		return nil
 	},
+}
+
+// resolveSingleRepoDataDir returns the Badger root for a single-repo index.
+// When --data-dir was not explicitly set, it defaults to <abs(root)>/.synapse.
+// Explicit --data-dir values are preserved (absolutized only for clear logging).
+func resolveSingleRepoDataDir(cmd *cobra.Command, root string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("index: resolve path: %w", err)
+	}
+	dir := dataDir
+	if !cmd.Flags().Changed("data-dir") {
+		dir = filepath.Join(absRoot, ".synapse")
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("index: resolve data-dir: %w", err)
+	}
+	return absDir, nil
 }
 
 func runWorkspaceIndex(cmd *cobra.Command) error {
