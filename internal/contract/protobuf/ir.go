@@ -155,9 +155,9 @@ func emitMessage(out *parse.Result, fid graph.NodeID, specPath, pkg string, msg 
 			"parent":       name,
 			"field_number": strconv.Itoa(int(f.Number())),
 		}
-		if f.Kind() == protoreflect.MessageKind || f.Kind() == protoreflect.GroupKind {
+		if (f.Kind() == protoreflect.MessageKind || f.Kind() == protoreflect.GroupKind) && f.Message() != nil {
 			props["proto_type"] = string(f.Message().FullName())
-		} else if f.Kind() == protoreflect.EnumKind {
+		} else if f.Kind() == protoreflect.EnumKind && f.Enum() != nil {
 			props["proto_type"] = string(f.Enum().FullName())
 		} else {
 			props["proto_type"] = f.Kind().String()
@@ -183,7 +183,13 @@ func emitFromProto(out *parse.Result, fid graph.NodeID, specPath, pkg string, pr
 		emitMessageProto(out, fid, specPath, pkg, "", msg)
 	}
 	for _, svc := range proto.GetService() {
+		if svc == nil {
+			continue
+		}
 		svcName := svc.GetName()
+		if svcName == "" {
+			continue
+		}
 		sid := ServiceID(specPath, svcName)
 		out.Nodes = append(out.Nodes, graph.Node{
 			ID:   sid,
@@ -196,7 +202,13 @@ func emitFromProto(out *parse.Result, fid graph.NodeID, specPath, pkg string, pr
 		})
 		out.Edges = append(out.Edges, graph.Edge{From: fid, To: sid, Type: parse.EdgeContains})
 		for _, m := range svc.GetMethod() {
+			if m == nil {
+				continue
+			}
 			methodName := m.GetName()
+			if methodName == "" {
+				continue
+			}
 			sym := OperationSymbol(svcName, methodName)
 			oid := OperationID(specPath, svcName, methodName)
 			grpcPath := GRPCPath(pkg, svcName, methodName)
@@ -222,7 +234,13 @@ func emitFromProto(out *parse.Result, fid graph.NodeID, specPath, pkg string, pr
 }
 
 func emitMessageProto(out *parse.Result, fid graph.NodeID, specPath, pkg, parent string, msg *descriptorpb.DescriptorProto) {
+	if msg == nil {
+		return
+	}
 	name := msg.GetName()
+	if name == "" {
+		return
+	}
 	if parent != "" {
 		name = parent + "." + name
 	}
@@ -239,6 +257,9 @@ func emitMessageProto(out *parse.Result, fid graph.NodeID, specPath, pkg, parent
 	out.Edges = append(out.Edges, graph.Edge{From: fid, To: sid, Type: parse.EdgeContains})
 
 	for _, f := range msg.GetField() {
+		if f == nil {
+			continue
+		}
 		fname := f.GetName()
 		fsym := name + "." + fname
 		fidField := FieldID(specPath, name, fname)
