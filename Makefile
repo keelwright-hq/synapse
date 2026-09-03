@@ -14,23 +14,26 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(DATE)
 
+export CGO_ENABLED ?= 1
+
 .PHONY: build test clean cross help
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 
-build: ## Build synapse binary into ./synapse
+build: ## Build synapse binary into ./synapse (requires CGO)
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
-test: ## Run unit tests
+test: ## Run unit tests (requires CGO)
 	go test ./...
 
 clean: ## Remove build artifacts
 	rm -f $(BINARY)
 	rm -rf $(DIST)
 
-cross: ## Cross-compile for linux/amd64 and darwin/arm64 into dist/
+# Same-OS native build only. Linux→darwin CGO cross-compile is deferred
+# (see docs/tree-sitter.md).
+cross: ## Native cgo build into dist/ (no cross-OS)
 	mkdir -p $(DIST)
-	GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)-linux-amd64  $(CMD)
-	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)-darwin-arm64 $(CMD)
+	go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)-$$(go env GOOS)-$$(go env GOARCH) $(CMD)
 	@ls -la $(DIST)
