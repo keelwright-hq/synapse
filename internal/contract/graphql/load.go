@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 )
 
 // sdlCueRe matches common GraphQL SDL keywords at line start (optional leading spaces).
@@ -21,8 +21,8 @@ func LooksLikeGraphQL(data []byte) bool {
 	return sdlCueRe.Match(data)
 }
 
-// Load reads and parses a GraphQL SDL schema from path.
-func Load(path string) (*ast.Schema, error) {
+// Load reads and parses a GraphQL SDL document from path (syntax only; no schema validation).
+func Load(path string) (*ast.SchemaDocument, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -30,30 +30,27 @@ func Load(path string) (*ast.Schema, error) {
 	return LoadBytes(data, path)
 }
 
-// LoadBytes parses GraphQL SDL from data. name is used as the source name in errors.
-func LoadBytes(data []byte, name string) (*ast.Schema, error) {
+// LoadBytes parses GraphQL SDL from data into a SchemaDocument without cross-file
+// validation, so split schemas can be indexed file-by-file. name is used as the
+// source name in errors.
+func LoadBytes(data []byte, name string) (*ast.SchemaDocument, error) {
 	if !LooksLikeGraphQL(data) {
 		return nil, fmt.Errorf("graphql: not a GraphQL SDL document")
 	}
 	if name == "" {
 		name = "schema.graphql"
 	}
-	schema, err := gqlparser.LoadSchema(&ast.Source{
+	doc, err := parser.ParseSchema(&ast.Source{
 		Name:  name,
 		Input: string(data),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("graphql: load: %w", err)
+		return nil, fmt.Errorf("graphql: parse: %w", err)
 	}
-	if schema == nil {
-		return nil, fmt.Errorf("graphql: empty schema")
+	if doc == nil {
+		return nil, fmt.Errorf("graphql: empty schema document")
 	}
-	return schema, nil
-}
-
-// IsBuiltIn reports whether name is a GraphQL built-in scalar (when schema marks BuiltIn).
-func IsBuiltIn(def *ast.Definition) bool {
-	return def != nil && def.BuiltIn
+	return doc, nil
 }
 
 // GQLKindProp maps an AST definition kind to the graph props gql_kind value.

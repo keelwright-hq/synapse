@@ -65,5 +65,8 @@ to each endpoint’s `repo://` URI.
 
 ## Loader
 
-Parsing uses [gqlparser](https://github.com/vektah/gqlparser). Package:
-`internal/contract/graphql`. Binding: `internal/contract/bind`.
+Parsing uses [gqlparser](https://github.com/vektah/gqlparser) **`parser.ParseSchema`**
+(syntax only). Synapse does **not** run full schema validation via
+`gqlparser.LoadSchema`, so split schemas (types referenced across files) still
+index file-by-file. Package: `internal/contract/graphql`. Binding:
+`internal/contract/bind`.

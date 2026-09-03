@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/taricsa/synapse/internal/contract/graphql"
+	"github.com/taricsa/synapse/internal/parse"
 )
 
 const sampleSDL = `
@@ -20,19 +21,27 @@ type User {
 `
 
 func TestLoadBytes(t *testing.T) {
-	schema, err := graphql.LoadBytes([]byte(sampleSDL), "schema.graphql")
+	doc, err := graphql.LoadBytes([]byte(sampleSDL), "schema.graphql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if schema.Query == nil {
-		t.Fatal("expected Query root")
+	var foundQuery, foundUser bool
+	for _, d := range doc.Definitions {
+		if d.Name == "Query" {
+			foundQuery = true
+			if d.Fields.ForName("users") == nil {
+				t.Fatal("expected Query.users")
+			}
+		}
+		if d.Name == "User" {
+			foundUser = true
+		}
 	}
-	if _, ok := schema.Types["User"]; !ok {
+	if !foundQuery {
+		t.Fatal("expected Query type")
+	}
+	if !foundUser {
 		t.Fatal("expected User type")
-	}
-	users := schema.Query.Fields.ForName("users")
-	if users == nil {
-		t.Fatal("expected Query.users")
 	}
 }
 
@@ -42,11 +51,17 @@ func TestLoadFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(sampleSDL), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	schema, err := graphql.Load(path)
+	doc, err := graphql.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if schema.Types["User"] == nil {
+	found := false
+	for _, d := range doc.Definitions {
+		if d.Name == "User" {
+			found = true
+		}
+	}
+	if !found {
 		t.Fatal("expected User")
 	}
 }
@@ -65,5 +80,28 @@ func TestLooksLikeGraphQLAcceptsSchemaKeyword(t *testing.T) {
 	sdl := []byte("schema {\n  query: Query\n}\ntype Query { ok: Boolean }\n")
 	if !graphql.LooksLikeGraphQL(sdl) {
 		t.Fatal("expected schema keyword to match")
+	}
+}
+
+// Split schemas reference types defined in other files; syntactic parse must succeed.
+func TestLoadBytesAllowsUnresolvedTypes(t *testing.T) {
+	partial := []byte(`
+type Query {
+  users: [User!]!
+}
+`)
+	doc, err := graphql.LoadBytes(partial, "query.graphql")
+	if err != nil {
+		t.Fatalf("split schema should parse without validation: %v", err)
+	}
+	res := graphql.ToResult("query.graphql", doc)
+	found := false
+	for _, n := range res.Nodes {
+		if n.Kind == parse.KindOperation && n.Name == "query users" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected query users operation, nodes=%+v", res.Nodes)
 	}
 }
