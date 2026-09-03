@@ -32,7 +32,7 @@ Tagged releases (`v*`) use [`.github/workflows/release.yml`](../.github/workflow
 | Runner | Artifact |
 |--------|----------|
 | `macos-14` | `synapse-darwin-arm64` |
-| `macos-13` | `synapse-darwin-amd64` |
+| `macos-15-intel` | `synapse-darwin-amd64` |
 | `ubuntu-latest` | `synapse-linux-amd64` |
 | `ubuntu-24.04-arm` | `synapse-linux-arm64` |
 

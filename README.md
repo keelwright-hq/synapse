@@ -37,6 +37,10 @@ Verify:
 synapse version
 ```
 
+`go install` embeds the module version from build info (not release ldflags). Tagged
+[GitHub Release](https://github.com/keelwright-hq/synapse/releases) binaries stamp
+`Version` / `Commit` / `Date` explicitly via ldflags.
+
 Upgrade by re-running the same `go install …@latest` command.
 
 ### Prebuilt binaries
