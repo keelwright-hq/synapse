@@ -74,4 +74,5 @@ or a `repo://` URI.
 ## See also
 
 - [`repo-uri.md`](repo-uri.md) — `repo://` grammar
+- [`federation.md`](federation.md) — NDJSON snapshots, soft-fail missing shards, guardrails
 - Fixture: `testdata/fixtures/workspace/`

@@ -19,7 +19,7 @@ func TestRootHelpListsCommands(t *testing.T) {
 		t.Fatalf("help: %v", err)
 	}
 	out := buf.String()
-	for _, name := range []string{"version", "index", "mcp", "query"} {
+	for _, name := range []string{"version", "index", "mcp", "query", "graph"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("help missing command %q; got:\n%s", name, out)
 		}

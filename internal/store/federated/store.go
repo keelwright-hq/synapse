@@ -2,17 +2,35 @@
 package federated
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/uri"
+)
+
+// Defaults for OSS federation guardrails (SYN-16 / SYN-69).
+const (
+	DefaultMaxShards      = 32
+	DefaultLookupTimeout  = 5 * time.Second
 )
 
 // Member is one named backend store (typically one Badger DB per repo).
 type Member struct {
 	Name  string
 	Store graph.Store
+}
+
+// Options configure federated open and lookup guardrails.
+type Options struct {
+	// MaxShards caps how many members may be attached (0 = DefaultMaxShards).
+	MaxShards int
+	// LookupTimeout bounds URI / ownership fan-out (0 = DefaultLookupTimeout).
+	LookupTimeout time.Duration
+	// Overlay holds cross-repo contract edges keyed by repo:// URI.
+	Overlay graph.Store
 }
 
 // Store is a lightweight, per-query read federation over member stores.
@@ -29,24 +47,40 @@ type Member struct {
 //
 // Close does not close members or the overlay; the caller owns their lifetime.
 type Store struct {
-	members []Member
-	overlay graph.Store
+	members       []Member
+	overlay       graph.Store
+	lookupTimeout time.Duration
 
-	mu      sync.RWMutex
-	idOwner map[graph.NodeID]int // pinned or uniquely owned member index
+	mu       sync.RWMutex
+	idOwner  map[graph.NodeID]int // pinned or uniquely owned member index
+	warnings []string
 }
 
 // New builds a federated store for a single query. members must be non-empty
 // and have unique names. The returned Store is not safe for concurrent use.
 func New(members []Member) (*Store, error) {
-	return NewWithOverlay(members, nil)
+	return NewWithOptions(members, Options{})
 }
 
 // NewWithOverlay is like New but also merges cross-repo edges from overlay.
 func NewWithOverlay(members []Member, overlay graph.Store) (*Store, error) {
+	return NewWithOptions(members, Options{Overlay: overlay})
+}
+
+// NewWithOptions builds a federated store with guardrails.
+func NewWithOptions(members []Member, opts Options) (*Store, error) {
 	if len(members) == 0 {
 		return nil, fmt.Errorf("federated: no members")
 	}
+	maxShards := opts.MaxShards
+	if maxShards <= 0 {
+		maxShards = DefaultMaxShards
+	}
+	timeout := opts.LookupTimeout
+	if timeout <= 0 {
+		timeout = DefaultLookupTimeout
+	}
+
 	// Copy so callers can reuse their slice without racing our Name normalization.
 	copied := make([]Member, len(members))
 	copy(copied, members)
@@ -65,29 +99,78 @@ func NewWithOverlay(members []Member, overlay graph.Store) (*Store, error) {
 		seen[name] = struct{}{}
 		copied[i].Name = name
 	}
-	return &Store{
-		members: copied,
-		overlay: overlay,
-		idOwner: make(map[graph.NodeID]int),
-	}, nil
+
+	s := &Store{
+		members:       copied,
+		overlay:       opts.Overlay,
+		lookupTimeout: timeout,
+		idOwner:       make(map[graph.NodeID]int),
+	}
+	if len(copied) > maxShards {
+		skipped := copied[maxShards:]
+		s.members = copied[:maxShards]
+		for _, m := range skipped {
+			s.warn(fmt.Sprintf("max shards (%d) exceeded; skipping member %q", maxShards, m.Name))
+		}
+	}
+	return s, nil
 }
 
 // Session returns a new Store sharing the same members (and overlay) with an empty pin map.
-// Use one Session (or New) per concurrent query against long-lived members.
+// Warnings are not copied; use one Session (or New) per concurrent query against long-lived members.
 func (s *Store) Session() *Store {
 	return &Store{
-		members: s.members,
-		overlay: s.overlay,
-		idOwner: make(map[graph.NodeID]int),
+		members:       s.members,
+		overlay:       s.overlay,
+		lookupTimeout: s.lookupTimeout,
+		idOwner:       make(map[graph.NodeID]int),
 	}
 }
 
-// Close clears query pins. It does not close member stores or the overlay.
+// Close clears query pins and warnings. It does not close member stores or the overlay.
 func (s *Store) Close() error {
 	s.mu.Lock()
 	s.idOwner = make(map[graph.NodeID]int)
+	s.warnings = nil
 	s.mu.Unlock()
 	return nil
+}
+
+func (s *Store) warn(msg string) {
+	s.mu.Lock()
+	s.warnings = append(s.warnings, msg)
+	s.mu.Unlock()
+}
+
+// TakeWarnings returns and clears accumulated warnings (missing far-ends, max shards, …).
+func (s *Store) TakeWarnings() []string {
+	s.mu.Lock()
+	out := append([]string(nil), s.warnings...)
+	s.warnings = nil
+	s.mu.Unlock()
+	return out
+}
+
+// Warnings returns a copy of accumulated warnings without clearing them.
+func (s *Store) Warnings() []string {
+	s.mu.RLock()
+	out := append([]string(nil), s.warnings...)
+	s.mu.RUnlock()
+	return out
+}
+
+// AppendWarnings records open-time or caller-supplied warnings.
+func (s *Store) AppendWarnings(msgs ...string) {
+	if len(msgs) == 0 {
+		return
+	}
+	s.mu.Lock()
+	s.warnings = append(s.warnings, msgs...)
+	s.mu.Unlock()
+}
+
+func (s *Store) lookupCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), s.lookupTimeout)
 }
 
 func (s *Store) pin(id graph.NodeID, idx int) {
@@ -107,8 +190,14 @@ func (s *Store) resolveOwner(id graph.NodeID) (int, error) {
 	if idx, ok := s.owner(id); ok {
 		return idx, nil
 	}
+	ctx, cancel := s.lookupCtx()
+	defer cancel()
+
 	var found []int
 	for i, m := range s.members {
+		if err := ctx.Err(); err != nil {
+			return -1, fmt.Errorf("federated: lookup timeout: %w", err)
+		}
 		if _, err := m.Store.GetNode(id); err == nil {
 			found = append(found, i)
 		} else if err != graph.ErrNotFound {
@@ -157,7 +246,13 @@ func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
 		return graph.Node{}, err
 	}
 	canonical := u.String()
+	ctx, cancel := s.lookupCtx()
+	defer cancel()
+
 	for i, m := range s.members {
+		if err := ctx.Err(); err != nil {
+			return graph.Node{}, fmt.Errorf("federated: lookup timeout: %w", err)
+		}
 		if m.Name != u.Repo {
 			continue
 		}
@@ -170,6 +265,9 @@ func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
 	}
 	// Fallback: scan all (covers misnamed members).
 	for i, m := range s.members {
+		if err := ctx.Err(); err != nil {
+			return graph.Node{}, fmt.Errorf("federated: lookup timeout: %w", err)
+		}
 		n, err := m.Store.GetNodeByURI(canonical)
 		if err == nil {
 			s.pin(n.ID, i)
@@ -248,6 +346,7 @@ func (s *Store) overlayOut(from graph.NodeID, edgeType graph.EdgeType) ([]graph.
 	for _, e := range raw {
 		toNode, err := s.GetNodeByURI(string(e.To))
 		if err != nil {
+			s.warn(fmt.Sprintf("overlay edge %s → %s unresolved: %v", e.From, e.To, err))
 			continue
 		}
 		out = append(out, graph.Edge{
@@ -286,6 +385,7 @@ func (s *Store) overlayIn(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edg
 	for _, e := range raw {
 		fromNode, err := s.GetNodeByURI(string(e.From))
 		if err != nil {
+			s.warn(fmt.Sprintf("overlay edge %s → %s unresolved: %v", e.From, e.To, err))
 			continue
 		}
 		out = append(out, graph.Edge{

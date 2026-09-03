@@ -35,6 +35,20 @@ func resetPersistentFlags(t *testing.T, cmd *cobra.Command) {
 	if err := cmd.PersistentFlags().Set("data-dir", ".synapse"); err != nil {
 		t.Fatal(err)
 	}
+	// Local graph flags persist across Execute; clear between invocations.
+	if f := cmd.Flags().Lookup("output"); f != nil {
+		_ = f.Value.Set("-")
+	}
+	for _, name := range []string{"graph", "export"} {
+		_ = name
+	}
+	if exportCmd, _, err := cmd.Find([]string{"graph", "export"}); err == nil {
+		_ = exportCmd.Flags().Set("output", "-")
+		_ = exportCmd.Flags().Set("overlay", "false")
+	}
+	if importCmd, _, err := cmd.Find([]string{"graph", "import"}); err == nil {
+		_ = importCmd.Flags().Set("overlay", "false")
+	}
 }
 
 func TestWorkspaceIndexAndQuery(t *testing.T) {

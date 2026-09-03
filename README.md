@@ -109,6 +109,18 @@ root), then binds stubs with `implements` / `consumes` (method-name folds,
 
 Details: [docs/protobuf.md](docs/protobuf.md).
 
+## Federation / snapshots
+
+Move graph shards between machines with NDJSON snapshots (no cloud required):
+
+```bash
+./synapse graph export --data-dir .synapse --repo api -o api.ndjson
+./synapse graph import --data-dir /tmp/shards --repo api api.ndjson
+```
+
+Federated workspace queries soft-fail missing shards (partial results + warnings).
+Details: [docs/federation.md](docs/federation.md).
+
 ### Makefile targets
 
 | Target       | Description                                      |
@@ -128,6 +140,7 @@ Details: [docs/protobuf.md](docs/protobuf.md).
 | [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |
 | [docs/graphql.md](docs/graphql.md) | GraphQL SDL contracts and edges |
 | [docs/protobuf.md](docs/protobuf.md) | Protobuf / gRPC contracts and edges |
+| [docs/federation.md](docs/federation.md) | Federated shards and NDJSON snapshots |
 | [docs/mcp.md](docs/mcp.md) | MCP IDE wiring |
 | [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
 

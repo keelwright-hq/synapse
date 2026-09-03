@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/taricsa/synapse/internal/rank"
@@ -60,13 +61,17 @@ var queryNeighborhoodCmd = &cobra.Command{
 }
 
 func runWorkspaceNeighborhood(cmd *cobra.Command, symbol string) error {
-	store, ws, c, err := openWorkspaceStore(workspacePath, dataDir, repoName)
+	opened, err := openWorkspaceStore(workspacePath, dataDir, repoName)
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer opened.Closer.Close()
 
-	seed, err := rank.ResolveSeed(store, symbol)
+	logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{
+		Level: slog.LevelWarn,
+	}))
+
+	seed, err := rank.ResolveSeed(opened.Store, symbol)
 	if err != nil {
 		return err
 	}
@@ -74,19 +79,24 @@ func runWorkspaceNeighborhood(cmd *cobra.Command, symbol string) error {
 		Depth:     queryDepth,
 		MaxNodes:  queryMaxNodes,
 		Budget:    queryBudget,
-		RepoRoots: ws.RepoRoots(),
+		RepoRoots: opened.Workspace.RepoRoots(),
 	}
 	if repoName != "" {
-		member, err := ws.Lookup(repoName)
+		member, err := opened.Workspace.Lookup(repoName)
 		if err != nil {
 			return err
 		}
 		opts.RootDir = member.Path
 	}
-	res, err := rank.Neighborhood(store, seed, opts)
+	res, err := rank.Neighborhood(opened.Store, seed, opts)
 	if err != nil {
 		return err
 	}
+	res.Warnings = append(res.Warnings, opened.Warnings...)
+	if opened.Fed != nil {
+		res.Warnings = append(res.Warnings, opened.Fed.TakeWarnings()...)
+	}
+	logWarnings(logger, res.Warnings)
 	return writeNeighborhood(cmd, res)
 }
 
