@@ -37,7 +37,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := funcID(b.path, name)
-			b.put(graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
+			b.putSpan(n, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
 			walkTS(b, field(n, "body"), module, id)
 			return
@@ -48,7 +48,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := methodID(b.path, containingTSClassName(b, n), name)
-			b.put(graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path})
+			b.putSpan(n, graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
 			walkTS(b, field(n, "body"), module, id)
 			return
@@ -59,7 +59,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := typeID(b.path, name)
-			b.put(graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
+			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
@@ -80,7 +80,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				(value.Kind() == "arrow_function" || value.Kind() == "function_expression") {
 				name := b.text(nameNode)
 				id := funcID(b.path, name)
-				b.put(graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
+				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 				b.edge(module, id, EdgeContains)
 				walkTS(b, field(value, "body"), module, id)
 				continue

@@ -12,19 +12,31 @@
       "id": "func:tsx/sample/app.tsx#App",
       "kind": "function",
       "name": "App",
-      "path": "tsx/sample/app.tsx"
+      "path": "tsx/sample/app.tsx",
+      "props": {
+        "end_line": "11",
+        "start_line": "9"
+      }
     },
     {
       "id": "func:tsx/sample/app.tsx#Badge",
       "kind": "function",
       "name": "Badge",
-      "path": "tsx/sample/app.tsx"
+      "path": "tsx/sample/app.tsx",
+      "props": {
+        "end_line": "7",
+        "start_line": "5"
+      }
     },
     {
       "id": "func:tsx/sample/app.tsx#format",
       "kind": "function",
       "name": "format",
-      "path": "tsx/sample/app.tsx"
+      "path": "tsx/sample/app.tsx",
+      "props": {
+        "end_line": "15",
+        "start_line": "13"
+      }
     },
     {
       "id": "import:tsx/sample/app.tsx#react",
@@ -54,7 +66,11 @@
       "id": "type:tsx/sample/app.tsx#Props",
       "kind": "type",
       "name": "Props",
-      "path": "tsx/sample/app.tsx"
+      "path": "tsx/sample/app.tsx",
+      "props": {
+        "end_line": "3",
+        "start_line": "3"
+      }
     }
   ],
   "edges": [

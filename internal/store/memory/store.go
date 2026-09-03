@@ -9,16 +9,20 @@ import (
 
 // Store is an in-memory graph.Store for tests and fast local use.
 type Store struct {
-	mu    sync.RWMutex
-	nodes map[graph.NodeID]graph.Node
-	edges map[string]graph.Edge
+	mu           sync.RWMutex
+	nodes        map[graph.NodeID]graph.Node
+	edges        map[string]graph.Edge
+	fingerprints map[string]string
+	owned        map[string][]graph.NodeID
 }
 
 // New returns an empty in-memory store.
 func New() *Store {
 	return &Store{
-		nodes: make(map[graph.NodeID]graph.Node),
-		edges: make(map[string]graph.Edge),
+		nodes:        make(map[graph.NodeID]graph.Node),
+		edges:        make(map[string]graph.Edge),
+		fingerprints: make(map[string]string),
+		owned:        make(map[string][]graph.NodeID),
 	}
 }
 
@@ -118,6 +122,18 @@ func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge,
 		in = append(in, cloneEdge(edge))
 	}
 	return in, nil
+}
+
+// ForEachNode invokes fn for every node. Iteration stops early if fn returns false.
+func (s *Store) ForEachNode(fn func(graph.Node) bool) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, node := range s.nodes {
+		if !fn(cloneNode(node)) {
+			return nil
+		}
+	}
+	return nil
 }
 
 func edgeKey(edge graph.Edge) string {

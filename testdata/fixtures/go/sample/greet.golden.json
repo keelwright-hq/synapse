@@ -12,13 +12,21 @@
       "id": "func:go/sample/greet.go#helper",
       "kind": "function",
       "name": "helper",
-      "path": "go/sample/greet.go"
+      "path": "go/sample/greet.go",
+      "props": {
+        "end_line": "7",
+        "start_line": "5"
+      }
     },
     {
       "id": "func:go/sample/greet.go#main",
       "kind": "function",
       "name": "main",
-      "path": "go/sample/greet.go"
+      "path": "go/sample/greet.go",
+      "props": {
+        "end_line": "20",
+        "start_line": "16"
+      }
     },
     {
       "id": "import:go/sample/greet.go#fmt",
@@ -32,7 +40,9 @@
       "name": "Greet",
       "path": "go/sample/greet.go",
       "props": {
-        "receiver": "Greeter"
+        "end_line": "14",
+        "receiver": "Greeter",
+        "start_line": "11"
       }
     },
     {
@@ -69,7 +79,11 @@
       "id": "type:go/sample/greet.go#Greeter",
       "kind": "type",
       "name": "Greeter",
-      "path": "go/sample/greet.go"
+      "path": "go/sample/greet.go",
+      "props": {
+        "end_line": "9",
+        "start_line": "9"
+      }
     }
   ],
   "edges": [

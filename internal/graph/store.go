@@ -21,4 +21,7 @@ type Store interface {
 
 	// InEdges returns edges entering to. If edgeType is non-empty, results are filtered.
 	InEdges(to NodeID, edgeType EdgeType) ([]Edge, error)
+
+	// ForEachNode invokes fn for every node. Iteration stops early if fn returns false.
+	ForEachNode(fn func(Node) bool) error
 }
