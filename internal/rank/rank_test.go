@@ -65,6 +65,8 @@ func TestPackBudgetTightTruncatesSnippet(t *testing.T) {
 		t.Fatalf("expected truncated snippet, got len=%d", len(out[0].Snippet))
 	}
 }
+
+func TestPackBudgetDeterministic(t *testing.T) {
 	hits := []rank.Hit{
 		{ID: "a", Kind: "function", Name: "A", Snippet: "aaaaaaaaaa"},
 		{ID: "b", Kind: "function", Name: "B", Snippet: "bbbbbbbbbb"},
