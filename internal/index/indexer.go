@@ -14,6 +14,7 @@ import (
 
 	"github.com/taricsa/synapse/internal/contract/graphql"
 	"github.com/taricsa/synapse/internal/contract/openapi"
+	"github.com/taricsa/synapse/internal/contract/protobuf"
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/parse"
 	"github.com/taricsa/synapse/internal/uri"
@@ -98,13 +99,18 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	if err != nil {
 		return Stats{}, err
 	}
+	protoSpecs, err := protobuf.ListSpecFiles(root, opts.IgnoreDirNames)
+	if err != nil {
+		return Stats{}, err
+	}
 	type contractKind byte
 	const (
 		contractNone contractKind = iota
 		contractOpenAPI
 		contractGraphQL
+		contractProtobuf
 	)
-	specKind := make(map[string]contractKind, len(oasSpecs)+len(gqlSpecs))
+	specKind := make(map[string]contractKind, len(oasSpecs)+len(gqlSpecs)+len(protoSpecs))
 	for _, abs := range oasSpecs {
 		specKind[abs] = contractOpenAPI
 	}
@@ -113,9 +119,14 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 			specKind[abs] = contractGraphQL
 		}
 	}
+	for _, abs := range protoSpecs {
+		if _, ok := specKind[abs]; !ok {
+			specKind[abs] = contractProtobuf
+		}
+	}
 	// Avoid double-processing if a path somehow appears in both lists.
-	merged := make([]string, 0, len(files)+len(oasSpecs)+len(gqlSpecs))
-	seenAbs := make(map[string]struct{}, len(files)+len(oasSpecs)+len(gqlSpecs))
+	merged := make([]string, 0, len(files)+len(oasSpecs)+len(gqlSpecs)+len(protoSpecs))
+	seenAbs := make(map[string]struct{}, len(files)+len(oasSpecs)+len(gqlSpecs)+len(protoSpecs))
 	for _, abs := range files {
 		if _, ok := seenAbs[abs]; ok {
 			continue
@@ -131,6 +142,13 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 		merged = append(merged, abs)
 	}
 	for _, abs := range gqlSpecs {
+		if _, ok := seenAbs[abs]; ok {
+			continue
+		}
+		seenAbs[abs] = struct{}{}
+		merged = append(merged, abs)
+	}
+	for _, abs := range protoSpecs {
 		if _, ok := seenAbs[abs]; ok {
 			continue
 		}
@@ -197,6 +215,8 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 				res, err = openapi.ParseFile(j.absPath, j.relPath)
 			case contractGraphQL:
 				res, err = graphql.ParseFile(j.absPath, j.relPath)
+			case contractProtobuf:
+				res, err = protobuf.ParseFile(j.absPath, j.relPath, []string{root})
 			default:
 				res, err = parse.ParseFile(reg, j.absPath)
 			}

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package users;
+
+import "messages.proto";
+
+service UserService {
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}

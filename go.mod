@@ -3,6 +3,7 @@ module github.com/taricsa/synapse
 go 1.27.0
 
 require (
+	github.com/bufbuild/protocompile v0.14.1
 	github.com/dgraph-io/badger/v4 v4.9.6
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/mark3labs/mcp-go v0.32.0
@@ -11,11 +12,11 @@ require (
 	github.com/tree-sitter/tree-sitter-go v0.25.0
 	github.com/tree-sitter/tree-sitter-typescript v0.23.2
 	github.com/vektah/gqlparser/v2 v2.5.37
+	google.golang.org/protobuf v1.36.7
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -38,7 +39,7 @@ require (
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	google.golang.org/protobuf v1.36.7 // indirect
 )

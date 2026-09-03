@@ -1,4 +1,4 @@
-// Package bind links code symbols to contract operations (OpenAPI / GraphQL)
+// Package bind links code symbols to contract operations (OpenAPI / GraphQL / gRPC)
 // via best-effort heuristics.
 package bind
 
@@ -36,9 +36,10 @@ type operationRef struct {
 	repo    string
 	store   graph.Store
 	opID    string // props.operation_id
-	path    string // props.path
+	path    string // props.path or props.grpc_path
 	method  string
 	gqlRoot string // props.gql_root (Query|Mutation|Subscription)
+	service string // props.service (gRPC)
 	repoURI string
 }
 
@@ -76,8 +77,12 @@ func Bind(opts Options) error {
 				if n.Props != nil {
 					op.opID = n.Props["operation_id"]
 					op.path = n.Props["path"]
+					if op.path == "" {
+						op.path = n.Props["grpc_path"]
+					}
 					op.method = n.Props["method"]
 					op.gqlRoot = n.Props["gql_root"]
+					op.service = n.Props["service"]
 				}
 				ops = append(ops, op)
 			case parse.KindFunction, parse.KindMethod:
@@ -290,6 +295,10 @@ func operationNameFolds(op operationRef) []string {
 		add("Resolve" + field)
 		add("Get" + field)
 		add(op.gqlRoot + "_" + field)
+	}
+	if op.service != "" {
+		add(op.service + "_" + field)
+		add(op.service + field)
 	}
 	return out
 }

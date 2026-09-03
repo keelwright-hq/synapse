@@ -112,3 +112,53 @@ func ResolveUsers() {}
 	t.Fatalf("missing implements edge for ResolveUsers: %+v", edges)
 }
 
+func TestBindGRPCStubVariants(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "users.proto"), []byte(`
+syntax = "proto3";
+package users;
+service UserService {
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+message ListUsersRequest {}
+message ListUsersResponse {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "handler.go"), []byte(`package main
+func UserService_ListUsers() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Repo: "api", Workers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bind.Bind(bind.Options{
+		Members: []bind.Member{{Name: "api", Root: root, Store: store}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	handler, err := store.GetNodeByURI("repo://api/handler.go#func:UserService_ListUsers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := store.GetNodeByURI("repo://api/users.proto#operation:UserService.ListUsers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edges, err := store.OutEdges(handler.ID, parse.EdgeImplements)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range edges {
+		if e.To == op.ID {
+			return
+		}
+	}
+	t.Fatalf("missing implements edge for UserService_ListUsers: %+v", edges)
+}
+
+

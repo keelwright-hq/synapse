@@ -14,3 +14,9 @@ func FetchUsers() string {
 func Users() string {
 	return "users"
 }
+
+// CallListUsers consumes gRPC UserService.ListUsers via method path literal.
+func CallListUsers() string {
+	method := "/users.UserService/ListUsers"
+	return method
+}

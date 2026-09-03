@@ -2,8 +2,8 @@
 
 Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single static binary.
 
-It also indexes **OpenAPI 3.x** and **GraphQL SDL** specs into the graph and links
-handlers/clients across repos with `implements` / `consumes` edges.
+It also indexes **OpenAPI 3.x**, **GraphQL SDL**, and **Protobuf / gRPC** specs into the
+graph and links handlers/clients across repos with `implements` / `consumes` edges.
 
 ## Requirements
 
@@ -94,6 +94,21 @@ common variants (`Resolve{Field}`, `Get{Field}`, `{Root}_{Field}`).
 
 Details: [docs/graphql.md](docs/graphql.md).
 
+## Protobuf / gRPC contracts
+
+On index, Synapse content-sniffs `.proto` for proto3, creates `service` /
+`operation` / `schema` / `field` nodes (resolving imports against the repo
+root), then binds stubs with `implements` / `consumes` (method-name folds,
+`{Service}_{Method}`, and `grpc_path` literals).
+
+```bash
+./synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
+./synapse query neighborhood 'repo://api/users.proto#operation:UserService.ListUsers' \
+  --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
+```
+
+Details: [docs/protobuf.md](docs/protobuf.md).
+
 ### Makefile targets
 
 | Target       | Description                                      |
@@ -112,6 +127,7 @@ Details: [docs/graphql.md](docs/graphql.md).
 | [docs/workspace.md](docs/workspace.md) | Polyrepo workspace |
 | [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |
 | [docs/graphql.md](docs/graphql.md) | GraphQL SDL contracts and edges |
+| [docs/protobuf.md](docs/protobuf.md) | Protobuf / gRPC contracts and edges |
 | [docs/mcp.md](docs/mcp.md) | MCP IDE wiring |
 | [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
 
