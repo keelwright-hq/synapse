@@ -108,6 +108,10 @@ func swiftDeclName(b *builder, n *tree_sitter.Node) string {
 
 func containingSwiftType(b *builder, n *tree_sitter.Node) string {
 	for p := n.Parent(); p != nil; p = p.Parent() {
+		if p.Kind() == "function_declaration" || p.Kind() == "init_declaration" {
+			// Nested local function, not a type method.
+			return ""
+		}
 		switch p.Kind() {
 		case "class_declaration", "struct_declaration", "enum_declaration", "protocol_declaration", "actor_declaration", "extension_declaration":
 			if name := swiftDeclName(b, p); name != "" {

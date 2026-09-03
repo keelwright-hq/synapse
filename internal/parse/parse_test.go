@@ -295,6 +295,81 @@ export class Beta {
 	}
 }
 
+func TestNestedPythonFunctionNotMethod(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nested.py")
+	mustWrite(t, path, `
+class Greeter:
+    def greet(self):
+        def helper():
+            print("hi")
+        helper()
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	for _, n := range res.Nodes {
+		if n.Name == "helper" && n.Kind == parse.KindMethod {
+			t.Fatalf("nested helper should be function, got method %s", n.ID)
+		}
+	}
+}
+
+func TestNestedSwiftFunctionNotMethod(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "nested.swift")
+	mustWrite(t, path, `
+class Greeter {
+    func greet() {
+        func helper() {
+            print("hi")
+        }
+        helper()
+    }
+}
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	for _, n := range res.Nodes {
+		if n.Name == "helper" && n.Kind == parse.KindMethod {
+			t.Fatalf("nested helper should be function, got method %s", n.ID)
+		}
+	}
+}
+
+func TestJSDefaultParamCallsCaptured(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "defaults.js")
+	mustWrite(t, path, `
+const foo = (x = bar()) => {
+  return x;
+};
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindFunction, "foo")
+	assertHasKind(t, res, parse.KindSymbol, "bar")
+	found := false
+	for _, e := range res.Edges {
+		if e.Type == parse.EdgeCalls && strings.Contains(string(e.From), "#foo") && string(e.To) == "symbol:bar" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("want foo -> symbol:bar calls edge, got %+v", res.Edges)
+	}
+}
+
 func TestNormalizeDeduplicatesEdges(t *testing.T) {
 	res := parse.Result{
 		Edges: []graph.Edge{

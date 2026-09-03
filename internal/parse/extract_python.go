@@ -87,13 +87,16 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 
 func containingPythonClass(b *builder, n *tree_sitter.Node) string {
 	for p := n.Parent(); p != nil; p = p.Parent() {
-		if p.Kind() != "class_definition" {
-			continue
+		if p.Kind() == "function_definition" {
+			// Nested local function, not a class method.
+			return ""
 		}
-		if nameNode := field(p, "name"); nameNode != nil {
-			return b.text(nameNode)
+		if p.Kind() == "class_definition" {
+			if nameNode := field(p, "name"); nameNode != nil {
+				return b.text(nameNode)
+			}
+			return ""
 		}
-		break
 	}
 	return ""
 }
