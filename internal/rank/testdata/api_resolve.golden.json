@@ -1,0 +1,60 @@
+[
+  {
+    "query": "GET /users",
+    "op_uri": "repo://api/openapi.yaml#operation:GET%20/users",
+    "op_name": "GET /users",
+    "providers": [
+      {
+        "repo_uri": "repo://api/svc/handler.go#func:ListUsers",
+        "name": "ListUsers",
+        "kind": "function",
+        "match": "operation_id",
+        "note": "matched via operationId / name fold heuristic",
+        "edge": "implements"
+      }
+    ],
+    "consumers": [
+      {
+        "repo_uri": "repo://worker/svc/handler.go#func:FetchUsers",
+        "name": "FetchUsers",
+        "kind": "function",
+        "match": "path_literal",
+        "note": "matched via path/grpc_path string literal in source",
+        "edge": "consumes"
+      },
+      {
+        "repo_uri": "repo://worker/svc/handler.go#func:Users",
+        "name": "Users",
+        "kind": "function",
+        "match": "path_literal",
+        "note": "matched via path/grpc_path string literal in source",
+        "edge": "consumes"
+      }
+    ]
+  },
+  {
+    "query": "repo://api/users.proto#operation:UserService.ListUsers",
+    "op_uri": "repo://api/users.proto#operation:UserService.ListUsers",
+    "op_name": "UserService.ListUsers",
+    "providers": [
+      {
+        "repo_uri": "repo://api/svc/handler.go#func:ListUsers",
+        "name": "ListUsers",
+        "kind": "function",
+        "match": "operation_id",
+        "note": "matched via operationId / name fold heuristic",
+        "edge": "implements"
+      }
+    ],
+    "consumers": [
+      {
+        "repo_uri": "repo://worker/svc/handler.go#func:CallListUsers",
+        "name": "CallListUsers",
+        "kind": "function",
+        "match": "path_literal",
+        "note": "matched via path/grpc_path string literal in source",
+        "edge": "consumes"
+      }
+    ]
+  }
+]

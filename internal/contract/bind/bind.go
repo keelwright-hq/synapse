@@ -54,6 +54,12 @@ type symbolRef struct {
 
 var quotedStringRe = regexp.MustCompile(`["'\x60]([^"'\x60\\]|\\.)*["'\x60]`)
 
+// Match reasons stored on implements/consumes edge props["match"] (SYN-17).
+const (
+	MatchOperationID = "operation_id"
+	MatchPathLiteral = "path_literal"
+)
+
 // Bind clears the overlay (if any), then writes implements/consumes edges.
 func Bind(opts Options) error {
 	if opts.Overlay != nil {
@@ -108,15 +114,20 @@ func Bind(opts Options) error {
 	}
 	seen := map[edgeKey]struct{}{}
 
-	put := func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType) error {
+	put := func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType, match string) error {
 		key := edgeKey{from: from.ID, to: to.ID, typ: typ}
 		if _, ok := seen[key]; ok {
 			return nil
 		}
 		seen[key] = struct{}{}
 
+		var edgeProps map[string]string
+		if match != "" {
+			edgeProps = map[string]string{"match": match}
+		}
+
 		if fromRepo == toRepo {
-			return fromStore.PutEdge(graph.Edge{From: from.ID, To: to.ID, Type: typ})
+			return fromStore.PutEdge(graph.Edge{From: from.ID, To: to.ID, Type: typ, Props: edgeProps})
 		}
 		if opts.Overlay == nil {
 			return nil
@@ -145,9 +156,10 @@ func Bind(opts Options) error {
 			return err
 		}
 		return opts.Overlay.PutEdge(graph.Edge{
-			From: graph.NodeID(fromURI),
-			To:   graph.NodeID(toURI),
-			Type: typ,
+			From:  graph.NodeID(fromURI),
+			To:    graph.NodeID(toURI),
+			Type:  typ,
+			Props: edgeProps,
 		})
 	}
 
@@ -163,11 +175,11 @@ func Bind(opts Options) error {
 				continue
 			}
 			if sym.repo == op.repo {
-				if err := put(sym.repo, sym.store, sym.node, op.repo, op.node, parse.EdgeImplements); err != nil {
+				if err := put(sym.repo, sym.store, sym.node, op.repo, op.node, parse.EdgeImplements, MatchOperationID); err != nil {
 					return err
 				}
 			} else {
-				if err := put(sym.repo, sym.store, sym.node, op.repo, op.node, parse.EdgeConsumes); err != nil {
+				if err := put(sym.repo, sym.store, sym.node, op.repo, op.node, parse.EdgeConsumes, MatchOperationID); err != nil {
 					return err
 				}
 			}
@@ -237,7 +249,7 @@ func Bind(opts Options) error {
 					continue
 				}
 				for _, op := range opsForPath {
-					if err := put(sym.repo, sym.store, sym.node, op.repo, op.node, parse.EdgeConsumes); err != nil {
+					if err := put(sym.repo, sym.store, sym.node, op.repo, op.node, parse.EdgeConsumes, MatchPathLiteral); err != nil {
 						return err
 					}
 				}
