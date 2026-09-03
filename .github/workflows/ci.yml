@@ -28,6 +28,11 @@ jobs:
           CGO_ENABLED: "1"
         run: go test ./...
 
+      - name: Race (indexer)
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race ./internal/index/ ./internal/store/...
+
       - name: Build
         env:
           CGO_ENABLED: "1"

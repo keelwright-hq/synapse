@@ -39,6 +39,17 @@ func (b *builder) put(n graph.Node) {
 	b.nodes[n.ID] = n
 }
 
+func (b *builder) putSpan(ts *tree_sitter.Node, n graph.Node) {
+	if ts != nil {
+		if n.Props == nil {
+			n.Props = map[string]string{}
+		}
+		n.Props["start_line"] = fmt.Sprintf("%d", ts.StartPosition().Row+1)
+		n.Props["end_line"] = fmt.Sprintf("%d", ts.EndPosition().Row+1)
+	}
+	b.put(n)
+}
+
 func (b *builder) edge(from, to graph.NodeID, typ graph.EdgeType) {
 	if from == "" || to == "" || from == to {
 		return

@@ -217,6 +217,34 @@ func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge,
 	return edges, err
 }
 
+// ForEachNode invokes fn for every node. Iteration stops early if fn returns false.
+func (s *Store) ForEachNode(fn func(graph.Node) bool) error {
+	prefix := []byte("n\x00")
+	return s.db.View(func(txn *badgerdb.Txn) error {
+		opts := badgerdb.DefaultIteratorOptions
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			var node graph.Node
+			if err := item.Value(func(val []byte) error {
+				parsed, err := unmarshalNode(val)
+				if err != nil {
+					return err
+				}
+				node = parsed
+				return nil
+			}); err != nil {
+				return err
+			}
+			if !fn(node) {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
 func deleteEdgesForNode(txn *badgerdb.Txn, id graph.NodeID) error {
 	outPrefix := outEdgePrefix(id)
 	it := txn.NewIterator(badgerdb.DefaultIteratorOptions)

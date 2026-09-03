@@ -32,4 +32,4 @@ CGO_ENABLED=1 make build
 
 ## Package surface
 
-Parsing lives in `internal/parse` and emits `graph.Node` / `graph.Edge` IR. Wiring into `synapse index` is [SYN-6](https://keelwright.atlassian.net/browse/SYN-6).
+Parsing lives in `internal/parse` and emits `graph.Node` / `graph.Edge` IR. The incremental indexer (`synapse index`) lives in `internal/index` ([SYN-6](https://keelwright.atlassian.net/browse/SYN-6)).

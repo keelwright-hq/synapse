@@ -1,0 +1,42 @@
+{
+  "seed": "func:a.go#Alpha",
+  "hits": [
+    {
+      "id": "func:a.go#Alpha",
+      "kind": "function",
+      "name": "Alpha",
+      "path": "a.go",
+      "score": 1,
+      "depth": 0,
+      "edge_reason": "seed",
+      "start_line": 3,
+      "end_line": 5
+    },
+    {
+      "id": "file:a.go",
+      "kind": "file",
+      "name": "a.go",
+      "path": "a.go",
+      "score": 1,
+      "depth": 1,
+      "edge_reason": "in:contains"
+    },
+    {
+      "id": "func:a.go#Beta",
+      "kind": "function",
+      "name": "Beta",
+      "path": "a.go",
+      "score": 1,
+      "depth": 2,
+      "edge_reason": "out:contains"
+    },
+    {
+      "id": "symbol:Printf",
+      "kind": "symbol",
+      "name": "Printf",
+      "score": 0.8,
+      "depth": 1,
+      "edge_reason": "out:calls"
+    }
+  ]
+}

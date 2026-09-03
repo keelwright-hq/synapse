@@ -12,13 +12,21 @@
       "id": "func:ts/sample/greet.ts#format",
       "kind": "function",
       "name": "format",
-      "path": "ts/sample/greet.ts"
+      "path": "ts/sample/greet.ts",
+      "props": {
+        "end_line": "15",
+        "start_line": "13"
+      }
     },
     {
       "id": "func:ts/sample/greet.ts#greet",
       "kind": "function",
       "name": "greet",
-      "path": "ts/sample/greet.ts"
+      "path": "ts/sample/greet.ts",
+      "props": {
+        "end_line": "11",
+        "start_line": "8"
+      }
     },
     {
       "id": "import:ts/sample/greet.ts#fs",
@@ -30,7 +38,11 @@
       "id": "method:ts/sample/greet.ts#Greeter.say",
       "kind": "method",
       "name": "say",
-      "path": "ts/sample/greet.ts"
+      "path": "ts/sample/greet.ts",
+      "props": {
+        "end_line": "20",
+        "start_line": "18"
+      }
     },
     {
       "id": "module:ts/sample/greet.ts",
@@ -60,13 +72,21 @@
       "id": "type:ts/sample/greet.ts#Greeter",
       "kind": "type",
       "name": "Greeter",
-      "path": "ts/sample/greet.ts"
+      "path": "ts/sample/greet.ts",
+      "props": {
+        "end_line": "21",
+        "start_line": "17"
+      }
     },
     {
       "id": "type:ts/sample/greet.ts#User",
       "kind": "type",
       "name": "User",
-      "path": "ts/sample/greet.ts"
+      "path": "ts/sample/greet.ts",
+      "props": {
+        "end_line": "6",
+        "start_line": "3"
+      }
     }
   ],
   "edges": [

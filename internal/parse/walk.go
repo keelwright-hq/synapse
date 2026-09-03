@@ -135,13 +135,6 @@ func ListSourceFiles(root string, reg *Registry, ignoreDirNames []string) ([]str
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
 		if reg.Lookup(path) == nil {
 			return nil
 		}

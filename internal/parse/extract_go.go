@@ -57,7 +57,7 @@ func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.Nod
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := funcID(b.path, name)
-			b.put(graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
+			b.putSpan(n, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 			parent := file
 			if *pkgID != "" {
 				parent = *pkgID
@@ -74,7 +74,7 @@ func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.Nod
 			name := b.text(nameNode)
 			recv := receiverTypeName(b, field(n, "receiver"))
 			id := methodID(b.path, recv, name)
-			b.put(graph.Node{
+			b.putSpan(n, graph.Node{
 				ID: id, Kind: KindMethod, Name: name, Path: b.path,
 				Props: map[string]string{"receiver": recv},
 			})
@@ -93,7 +93,7 @@ func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.Nod
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := typeID(b.path, name)
-			b.put(graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
+			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
 			parent := file
 			if *pkgID != "" {
 				parent = *pkgID
