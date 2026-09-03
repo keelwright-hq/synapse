@@ -48,7 +48,11 @@ Each member is its own Badger database. Federated queries wrap those stores in a
 federated wrapper across concurrent requests — keep the Badger members open and
 call `New` / `Session` once per query.
 
-Single-repo `synapse index .` still uses `.synapse/graph/` unchanged.
+Single-repo `synapse index .` (or `synapse index /path/to/repo`) defaults
+`--data-dir` to **`<target-repo>/.synapse`** when the flag is omitted—the
+embedded Badger graph database for that repository, not a human-readable
+report. Workspace `--data-dir` layout below is unchanged (out of scope for
+SYN-98).
 
 Do not pass a positional path together with `--workspace`.
 
