@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/index"
@@ -201,3 +202,59 @@ func TestSessionIsolatesPins(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxShardsWarnsAndTruncates(t *testing.T) {
+	members := make([]federated.Member, 0, 3)
+	for _, name := range []string{"a", "b", "c"} {
+		s := memory.New()
+		_ = s.PutNode(graph.Node{ID: graph.NodeID("file:" + name), Kind: "file", Name: name,
+			Props: map[string]string{uri.PropKey: "repo://" + name + "/" + name + "#file"}})
+		members = append(members, federated.Member{Name: name, Store: s})
+	}
+	fed, err := federated.NewWithOptions(members, federated.Options{MaxShards: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fed.Close()
+	if got := fed.MemberNames(); len(got) != 2 {
+		t.Fatalf("members=%v", got)
+	}
+	warns := fed.TakeWarnings()
+	if len(warns) == 0 || !strings.Contains(warns[0], "max shards") {
+		t.Fatalf("warnings=%v", warns)
+	}
+}
+
+type slowStore struct {
+	graph.Store
+	delay time.Duration
+}
+
+func (s slowStore) GetNodeByURI(repoURI string) (graph.Node, error) {
+	time.Sleep(s.delay)
+	return s.Store.GetNodeByURI(repoURI)
+}
+
+func (s slowStore) GetNode(id graph.NodeID) (graph.Node, error) {
+	time.Sleep(s.delay)
+	return s.Store.GetNode(id)
+}
+
+func TestLookupTimeout(t *testing.T) {
+	inner := memory.New()
+	_ = inner.PutNode(graph.Node{ID: "file:x", Kind: "file", Name: "x",
+		Props: map[string]string{uri.PropKey: "repo://slow/x#file"}})
+	fed, err := federated.NewWithOptions([]federated.Member{
+		{Name: "slow", Store: slowStore{Store: inner, delay: 50 * time.Millisecond}},
+		{Name: "other", Store: slowStore{Store: memory.New(), delay: 50 * time.Millisecond}},
+	}, federated.Options{LookupTimeout: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fed.Close()
+	_, err = fed.GetNodeByURI("repo://missing/x#file")
+	if err == nil || !strings.Contains(err.Error(), "timeout") {
+		t.Fatalf("want timeout, got %v", err)
+	}
+}
+

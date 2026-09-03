@@ -53,6 +53,7 @@ type Result struct {
 	Seed      graph.NodeID `json:"seed"`
 	Hits      []Hit        `json:"hits"`
 	Truncated bool         `json:"truncated,omitempty"`
+	Warnings  []string     `json:"warnings,omitempty"`
 }
 
 // Neighborhood BFS-ranks nodes around seed with edge weights and optional budget.
