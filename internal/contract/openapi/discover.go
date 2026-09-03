@@ -18,7 +18,7 @@ var candidateExts = map[string]struct{}{
 // Directories named in ignoreDirNames are skipped (defaults match parse.DefaultIgnoreDirNames).
 func ListSpecFiles(root string, ignoreDirNames []string) ([]string, error) {
 	if ignoreDirNames == nil {
-		ignoreDirNames = []string{"vendor", "node_modules", ".git", ".synapse"}
+		ignoreDirNames = []string{"vendor", "node_modules", ".git", ".synapse", ".synapse-out"}
 	}
 	ignoreSet := make(map[string]struct{}, len(ignoreDirNames))
 	for _, d := range ignoreDirNames {

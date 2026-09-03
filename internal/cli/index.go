@@ -2,14 +2,22 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"path/filepath"
+	"time"
 
 	"github.com/keelwright-hq/synapse/internal/config"
 	"github.com/keelwright-hq/synapse/internal/contract/bind"
 	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/report"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 	"github.com/spf13/cobra"
+)
+
+var (
+	indexReport    bool
+	indexReportDir string
 )
 
 var indexCmd = &cobra.Command{
@@ -23,6 +31,10 @@ For a single-repo index (no --workspace), when --data-dir is omitted the
 default is <target-repo>/.synapse (the embedded Badger graph database under
 the repository being indexed—not a human-readable report folder).
 
+Pass --report to also write readable dry-run artifacts under
+<target-repo>/.synapse-out/ (override with --report-dir): manifest.json,
+graph.json, and GRAPH_REPORT.md. See docs/report.md.
+
 OpenAPI 3.x YAML/JSON specs are content-sniffed and mapped to operation/schema
 nodes. After indexing, a heuristic binder links handlers/clients to operations
 (implements/consumes).
@@ -30,10 +42,14 @@ nodes. After indexing, a heuristic binder links handlers/clients to operations
 With --workspace, indexes every member listed in synapse.yaml into
 <data-dir>/repos/<name>/graph, then binds cross-repo contract edges into
 <data-dir>/overlay. Do not pass a positional path in workspace mode.
-Workspace mode keeps the --data-dir / CWD default unchanged.`,
+Workspace mode keeps the --data-dir / CWD default unchanged.
+--report is not supported with --workspace yet.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if workspacePath != "" {
+			if indexReport {
+				return fmt.Errorf("index: --report is not supported with --workspace yet")
+			}
 			if len(args) > 0 {
 				return fmt.Errorf("index: do not pass a path with --workspace (members come from synapse.yaml)")
 			}
@@ -77,8 +93,18 @@ Workspace mode keeps the --data-dir / CWD default unchanged.`,
 		if stats.Errors > 0 {
 			return fmt.Errorf("index finished with %d error(s)", stats.Errors)
 		}
+		if indexReport {
+			if err := writeIndexReport(cmd.OutOrStdout(), path, repo, stats, store); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
+}
+
+func init() {
+	indexCmd.Flags().BoolVar(&indexReport, "report", false, "Write readable artifacts under --report-dir (single-repo only)")
+	indexCmd.Flags().StringVar(&indexReportDir, "report-dir", ".synapse-out", "Readable artifact directory relative to the target repo (or absolute)")
 }
 
 // resolveSingleRepoDataDir returns the Badger root for a single-repo index.
@@ -98,6 +124,40 @@ func resolveSingleRepoDataDir(cmd *cobra.Command, root string) (string, error) {
 		return "", fmt.Errorf("index: resolve data-dir: %w", err)
 	}
 	return absDir, nil
+}
+
+func writeIndexReport(w io.Writer, root, repo string, stats index.Stats, store *badger.Store) error {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("index report: resolve root: %w", err)
+	}
+	reportRoot := indexReportDir
+	if reportRoot == "" {
+		reportRoot = ".synapse-out"
+	}
+	if !filepath.IsAbs(reportRoot) {
+		reportRoot = filepath.Join(absRoot, reportRoot)
+	}
+	runID := time.Now().UTC().Format("20060102T150405Z")
+	runDir := filepath.Join(reportRoot, runID)
+	latestDir := filepath.Join(reportRoot, "latest")
+
+	res, err := report.Write(report.Options{
+		Repo:   repo,
+		Root:   absRoot,
+		OutDir: runDir,
+		Stats:  stats,
+		Store:  store,
+	})
+	if err != nil {
+		return fmt.Errorf("index report: %w", err)
+	}
+	if err := report.CopyArtifacts(runDir, latestDir); err != nil {
+		return fmt.Errorf("index report: refresh latest: %w", err)
+	}
+	fmt.Fprintf(w, "report written: %s\n", res.ReportPath)
+	fmt.Fprintf(w, "report latest:  %s\n", filepath.Join(latestDir, "GRAPH_REPORT.md"))
+	return nil
 }
 
 func runWorkspaceIndex(cmd *cobra.Command) error {
