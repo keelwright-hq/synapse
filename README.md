@@ -2,6 +2,8 @@
 
 Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single static binary.
 
+It also indexes **OpenAPI 3.x** specs into the graph and links handlers/clients across repos with `implements` / `consumes` edges.
+
 ## Requirements
 
 - Go 1.22+ (developed with Go 1.27)
@@ -55,6 +57,27 @@ repos:
 
 Details: [docs/workspace.md](docs/workspace.md).
 
+## OpenAPI contracts
+
+On index, Synapse content-sniffs `.yaml` / `.yml` / `.json` for OpenAPI 3.x, creates `operation` / `schema` nodes, then heuristically binds:
+
+- **implements** — handler whose name matches `operationId` (same repo as the spec)
+- **consumes** — client call sites (path string literals or cross-repo `operationId` match)
+
+Cross-repo links are stored under `{data-dir}/overlay/` and show up in federated workspace queries.
+
+Example with the bundled fixture:
+
+```bash
+./synapse index --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws
+./synapse query neighborhood 'repo://api/openapi.yaml#operation:GET /users' \
+  --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
+./synapse query neighborhood 'repo://worker/svc/handler.go#func:FetchUsers' \
+  --workspace testdata/fixtures/workspace --data-dir /tmp/synapse-ws --json
+```
+
+Details: [docs/openapi.md](docs/openapi.md).
+
 ### Makefile targets
 
 | Target       | Description                                      |
@@ -64,11 +87,16 @@ Details: [docs/workspace.md](docs/workspace.md).
 | `make cross` | Native CGO build into `dist/` (no cross-OS yet)  |
 | `make clean` | Remove `synapse` and `dist/`                     |
 
-Graph store benchmarks: see [docs/benchmarks.md](docs/benchmarks.md).  
-Tree-sitter / CGO notes: see [docs/tree-sitter.md](docs/tree-sitter.md).  
-MCP IDE wiring: see [docs/mcp.md](docs/mcp.md).  
-Global `repo://` identifiers: see [docs/repo-uri.md](docs/repo-uri.md).  
-Polyrepo workspace: see [docs/workspace.md](docs/workspace.md).
+## Docs
+
+| Doc | Topic |
+|-----|--------|
+| [docs/tree-sitter.md](docs/tree-sitter.md) | Tree-sitter / CGO |
+| [docs/repo-uri.md](docs/repo-uri.md) | Global `repo://` identifiers |
+| [docs/workspace.md](docs/workspace.md) | Polyrepo workspace |
+| [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |
+| [docs/mcp.md](docs/mcp.md) | MCP IDE wiring |
+| [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
 
 ## License
 

@@ -30,6 +30,8 @@ repo://{repo}/{path}#{kind}:{symbol}
 | `type` | `type` |
 | `import` | `import` |
 | `symbol` | `symbol` |
+| `operation` | `operation` |
+| `schema` | `schema` |
 
 ### Examples
 
@@ -42,6 +44,8 @@ repo://{repo}/{path}#{kind}:{symbol}
 | type | `repo://synapse/internal/parse/builder.go#type:Builder` |
 | import | `repo://synapse/internal/parse/builder.go#import:github.com/taricsa/synapse/internal/graph` |
 | symbol (file-scoped) | `repo://synapse/internal/parse/builder.go#symbol:Name` |
+| operation | `repo://api/openapi.yaml#operation:GET%20/users` |
+| schema | `repo://api/openapi.yaml#schema:User` |
 
 Unresolved call targets without an owning file keep the Phase-1 id `symbol:Name`
 and **do not** receive a `repo://` URI until they can be scoped.

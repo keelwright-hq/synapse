@@ -35,7 +35,7 @@ func (m multiCloser) Close() error {
 // openWorkspaceStore loads the workspace and opens either one scoped member DB
 // or a per-query federated view of all members. scopeRepo is the --repo flag
 // (empty = federate). The returned closer owns Badger member lifetime;
-// federated.Store does not close members.
+// federated.Store does not close members or the overlay.
 func openWorkspaceStore(wsPath, dataDir, scopeRepo string) (graph.Store, *config.Workspace, closer, error) {
 	ws, err := config.Load(wsPath)
 	if err != nil {
@@ -66,15 +66,26 @@ func openWorkspaceStore(wsPath, dataDir, scopeRepo string) (graph.Store, *config
 		stores = append(stores, s)
 		members = append(members, federated.Member{Name: r.Name, Store: s})
 	}
-	fed, err := federated.New(members)
+
+	overlay, err := badger.OpenOverlay(dataDir)
 	if err != nil {
+		for _, opened := range stores {
+			_ = opened.Close()
+		}
+		return nil, nil, nil, fmt.Errorf("open overlay: %w", err)
+	}
+
+	fed, err := federated.NewWithOverlay(members, overlay)
+	if err != nil {
+		_ = overlay.Close()
 		for _, opened := range stores {
 			_ = opened.Close()
 		}
 		return nil, nil, nil, err
 	}
-	closers := make(multiCloser, 0, len(stores)+1)
+	closers := make(multiCloser, 0, len(stores)+2)
 	closers = append(closers, fed) // clears pins
+	closers = append(closers, overlay)
 	for _, s := range stores {
 		closers = append(closers, s)
 	}

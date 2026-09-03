@@ -110,9 +110,13 @@ func (s *Store) GetNode(id graph.NodeID) (graph.Node, error) {
 }
 
 func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
+	canonical, err := uri.Normalize(repoURI)
+	if err != nil {
+		return graph.Node{}, err
+	}
 	var node graph.Node
-	err := s.db.View(func(txn *badgerdb.Txn) error {
-		item, err := txn.Get(uriIndexKey(repoURI))
+	err = s.db.View(func(txn *badgerdb.Txn) error {
+		item, err := txn.Get(uriIndexKey(canonical))
 		if err != nil {
 			if err == badgerdb.ErrKeyNotFound {
 				return graph.ErrNotFound

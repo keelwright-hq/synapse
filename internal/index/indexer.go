@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/taricsa/synapse/internal/contract/openapi"
 	"github.com/taricsa/synapse/internal/graph"
 	"github.com/taricsa/synapse/internal/parse"
 	"github.com/taricsa/synapse/internal/uri"
@@ -88,16 +89,42 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	if err != nil {
 		return Stats{}, err
 	}
+	specs, err := openapi.ListSpecFiles(root, opts.IgnoreDirNames)
+	if err != nil {
+		return Stats{}, err
+	}
+	specSet := make(map[string]struct{}, len(specs))
+	for _, abs := range specs {
+		specSet[abs] = struct{}{}
+	}
+	// Avoid double-processing if a path somehow appears in both lists.
+	merged := make([]string, 0, len(files)+len(specs))
+	seenAbs := make(map[string]struct{}, len(files)+len(specs))
+	for _, abs := range files {
+		if _, ok := seenAbs[abs]; ok {
+			continue
+		}
+		seenAbs[abs] = struct{}{}
+		merged = append(merged, abs)
+	}
+	for _, abs := range specs {
+		if _, ok := seenAbs[abs]; ok {
+			continue
+		}
+		seenAbs[abs] = struct{}{}
+		merged = append(merged, abs)
+	}
 
 	existing, err := idx.store.ListFingerprints()
 	if err != nil {
 		return Stats{}, err
 	}
 
-	seen := make(map[string]struct{}, len(files))
+	seen := make(map[string]struct{}, len(merged))
 	type job struct {
 		absPath string
 		relPath string
+		spec    bool
 	}
 	jobs := make(chan job, workers*2)
 	var (
@@ -140,7 +167,13 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 				log.Debug("index skip unchanged", "path", j.relPath)
 				continue
 			}
-			res, err := parse.ParseFile(reg, j.absPath)
+
+			var res parse.Result
+			if j.spec {
+				res, err = openapi.ParseFile(j.absPath, j.relPath)
+			} else {
+				res, err = parse.ParseFile(reg, j.absPath)
+			}
 			if err != nil {
 				errMu.Lock()
 				errs = append(errs, fmt.Errorf("%s: parse: %w", j.relPath, err))
@@ -153,7 +186,9 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 				inc(&stats.Skipped)
 				continue
 			}
-			res = rewritePaths(res, j.absPath, j.relPath)
+			if !j.spec {
+				res = rewritePaths(res, j.absPath, j.relPath)
+			}
 			res = assignRepoURIs(res, repo)
 			if err := idx.replaceFile(j.relPath, hash, res); err != nil {
 				errMu.Lock()
@@ -172,7 +207,7 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	for i := 0; i < workers; i++ {
 		go worker()
 	}
-	for _, abs := range files {
+	for _, abs := range merged {
 		rel, err := filepath.Rel(root, abs)
 		if err != nil {
 			close(jobs)
@@ -181,7 +216,8 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		seen[rel] = struct{}{}
-		jobs <- job{absPath: abs, relPath: rel}
+		_, isSpec := specSet[abs]
+		jobs <- job{absPath: abs, relPath: rel, spec: isSpec}
 	}
 	close(jobs)
 	wg.Wait()

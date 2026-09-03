@@ -15,9 +15,11 @@ import (
 
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).
 var DefaultEdgeWeights = map[graph.EdgeType]float64{
-	parse.EdgeContains: 1.0,
-	parse.EdgeCalls:    0.8,
-	parse.EdgeImports:  0.5,
+	parse.EdgeContains:   1.0,
+	parse.EdgeCalls:      0.8,
+	parse.EdgeImplements: 0.9,
+	parse.EdgeConsumes:   0.9,
+	parse.EdgeImports:    0.5,
 }
 
 // Options configure neighborhood ranking.

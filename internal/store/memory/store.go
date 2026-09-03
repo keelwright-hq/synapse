@@ -83,9 +83,13 @@ func (s *Store) GetNode(id graph.NodeID) (graph.Node, error) {
 }
 
 func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
+	canonical, err := uri.Normalize(repoURI)
+	if err != nil {
+		return graph.Node{}, err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	id, ok := s.uriIndex[repoURI]
+	id, ok := s.uriIndex[canonical]
 	if !ok {
 		return graph.Node{}, graph.ErrNotFound
 	}
