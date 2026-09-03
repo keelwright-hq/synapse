@@ -44,7 +44,10 @@ func TestToolsAgainstFixtureGraph(t *testing.T) {
 		"method":  "tools/list",
 	})))
 	listBody, _ := json.Marshal(listRes)
-	for _, want := range []string{"get_symbol", "find_references", "get_neighborhood", "search_graph"} {
+	for _, want := range []string{
+		"get_symbol", "find_references", "get_neighborhood", "search_graph",
+		"resolve_api", "list_providers", "list_consumers",
+	} {
 		if !strings.Contains(string(listBody), want) {
 			t.Fatalf("missing tool %q in %s", want, listBody)
 		}

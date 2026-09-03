@@ -75,4 +75,5 @@ or a `repo://` URI.
 
 - [`repo-uri.md`](repo-uri.md) — `repo://` grammar
 - [`federation.md`](federation.md) — NDJSON snapshots, soft-fail missing shards, guardrails
+- [`mcp.md`](mcp.md) — IDE MCP setup, including workspace `resolve_api` tools
 - Fixture: `testdata/fixtures/workspace/`

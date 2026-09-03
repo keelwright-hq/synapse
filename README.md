@@ -54,9 +54,10 @@ repos:
 ./synapse query neighborhood Handle --workspace . --data-dir .synapse --repo api --json
 ./synapse query neighborhood 'repo://worker/svc/handler.go#func:Handle' \
   --workspace . --data-dir .synapse --json
+./synapse mcp --workspace . --data-dir .synapse
 ```
 
-Details: [docs/workspace.md](docs/workspace.md).
+Details: [docs/workspace.md](docs/workspace.md). Cross-repo MCP tools (`resolve_api`, `list_providers`, `list_consumers`): [docs/mcp.md](docs/mcp.md).
 
 ## OpenAPI contracts
 

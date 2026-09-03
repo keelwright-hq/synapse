@@ -57,6 +57,9 @@ func ListUsers() {}
 	}
 	for _, e := range edges {
 		if e.To == op.ID {
+			if e.Props["match"] != bind.MatchOperationID {
+				t.Fatalf("match prop: got %q want %q", e.Props["match"], bind.MatchOperationID)
+			}
 			return
 		}
 	}
