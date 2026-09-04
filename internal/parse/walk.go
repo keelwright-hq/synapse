@@ -20,7 +20,7 @@ type WalkOptions struct {
 }
 
 // DefaultIgnoreDirNames are skipped unless overridden.
-var DefaultIgnoreDirNames = []string{"vendor", "node_modules", ".git", ".synapse"}
+var DefaultIgnoreDirNames = []string{"vendor", "node_modules", ".git", ".synapse", ".synapse-out"}
 
 // WalkResult aggregates per-file parse results and errors.
 type WalkResult struct {

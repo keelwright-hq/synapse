@@ -38,6 +38,10 @@ func clearDataDirFlag(t *testing.T) {
 	if err := cmd.PersistentFlags().Set("repo", ""); err != nil {
 		t.Fatal(err)
 	}
+	if indexCmd, _, err := cmd.Find([]string{"index"}); err == nil {
+		_ = indexCmd.Flags().Set("report", "false")
+		_ = indexCmd.Flags().Set("report-dir", ".synapse-out")
+	}
 }
 
 func TestIndexDefaultsDataDirInsideRepoCWD(t *testing.T) {

@@ -74,6 +74,7 @@ From any target repository (with `synapse` on your `PATH`):
 synapse --help
 synapse version
 synapse --repo synapse index .
+synapse --repo synapse index . --report
 synapse query neighborhood main --root . --json
 synapse mcp --root . --repo synapse
 ```
@@ -84,6 +85,11 @@ already on Synapse’s ignore list when walking source. Override with
 `--data-dir /tmp/synapse-test` for disposable runs. If you indexed an absolute
 path from outside the repo, pass the same `--data-dir` (or `cd` into the repo)
 for later `query` / `mcp` commands.
+
+Pass `--report` to also write readable dry-run artifacts under
+`<repo>/.synapse-out/` (`manifest.json`, `graph.json`, `GRAPH_REPORT.md`).
+Open `.synapse-out/latest/` for the newest run; dated subfolders keep history.
+Details: [docs/report.md](docs/report.md).
 
 ## Multi-repo workspace
 
@@ -192,6 +198,7 @@ Details: [docs/federation.md](docs/federation.md).
 | Doc | Topic |
 |-----|--------|
 | [docs/tree-sitter.md](docs/tree-sitter.md) | Tree-sitter / CGO |
+| [docs/report.md](docs/report.md) | Readable dry-run artifacts (`--report`) |
 | [docs/repo-uri.md](docs/repo-uri.md) | Global `repo://` identifiers |
 | [docs/workspace.md](docs/workspace.md) | Polyrepo workspace |
 | [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |

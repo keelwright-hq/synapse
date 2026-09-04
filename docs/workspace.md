@@ -51,8 +51,9 @@ call `New` / `Session` once per query.
 Single-repo `synapse index .` (or `synapse index /path/to/repo`) defaults
 `--data-dir` to **`<target-repo>/.synapse`** when the flag is omitted—the
 embedded Badger graph database for that repository, not a human-readable
-report. Workspace `--data-dir` layout below is unchanged (out of scope for
-SYN-98).
+report. Pass `--report` for readable artifacts under `.synapse-out/`
+([report.md](report.md)). Workspace `--data-dir` layout below is unchanged
+(out of scope for SYN-98 / SYN-99).
 
 Do not pass a positional path together with `--workspace`.
 

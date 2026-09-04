@@ -35,6 +35,11 @@ func resetPersistentFlags(t *testing.T, cmd *cobra.Command) {
 	if err := cmd.PersistentFlags().Set("data-dir", ".synapse"); err != nil {
 		t.Fatal(err)
 	}
+	// Index --report persists on the shared RootCommand across Execute calls.
+	if indexCmd, _, err := cmd.Find([]string{"index"}); err == nil {
+		_ = indexCmd.Flags().Set("report", "false")
+		_ = indexCmd.Flags().Set("report-dir", ".synapse-out")
+	}
 	// Local graph flags persist across Execute; clear between invocations.
 	if f := cmd.Flags().Lookup("output"); f != nil {
 		_ = f.Value.Set("-")
