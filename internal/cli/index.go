@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
-	"time"
 
 	"github.com/keelwright-hq/synapse/internal/config"
 	"github.com/keelwright-hq/synapse/internal/contract/bind"
@@ -138,7 +137,7 @@ func writeIndexReport(w io.Writer, root, repo string, stats index.Stats, store *
 	if !filepath.IsAbs(reportRoot) {
 		reportRoot = filepath.Join(absRoot, reportRoot)
 	}
-	runID := time.Now().UTC().Format("20060102T150405Z")
+	runID := report.NewRunID()
 	runDir := filepath.Join(reportRoot, runID)
 	latestDir := filepath.Join(reportRoot, "latest")
 

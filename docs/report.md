@@ -27,7 +27,7 @@ Layout after a report run:
 
 ```text
 .synapse-out/
-  20260903T120000Z/     # run id (UTC)
+  20260903T120000.123Z-a1b2c3/   # run id: UTC ms + random suffix
     manifest.json
     graph.json
     GRAPH_REPORT.md
@@ -36,6 +36,9 @@ Layout after a report run:
     graph.json
     GRAPH_REPORT.md
 ```
+
+Run IDs include millisecond precision and a short random suffix so repeated
+dry-runs in the same second keep separate history folders.
 
 `.synapse-out` is ignored when walking source (same as `.synapse`).
 

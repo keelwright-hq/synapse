@@ -94,3 +94,35 @@ func TestIndexWithoutReportSkipsArtifacts(t *testing.T) {
 		t.Fatalf("unexpected report line:\n%s", buf.String())
 	}
 }
+
+func TestIndexReportKeepsDistinctRunDirs(t *testing.T) {
+	repo := t.TempDir()
+	writeTinyGoRepo(t, repo)
+	t.Chdir(repo)
+
+	for i := 0; i < 2; i++ {
+		clearDataDirFlag(t)
+		cmd := cli.RootCommand()
+		buf := new(bytes.Buffer)
+		cmd.SetOut(buf)
+		cmd.SetErr(buf)
+		cmd.SetArgs([]string{"index", ".", "--repo", "sample", "--report"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("index --report #%d: %v\n%s", i+1, err, buf.String())
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join(repo, ".synapse-out"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runDirs int
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != "latest" {
+			runDirs++
+		}
+	}
+	if runDirs != 2 {
+		t.Fatalf("want 2 historical run dirs, got %d", runDirs)
+	}
+}

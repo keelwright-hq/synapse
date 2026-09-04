@@ -3,6 +3,7 @@ package report
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -339,4 +340,20 @@ func CopyArtifacts(srcDir, dstDir string) error {
 		}
 	}
 	return nil
+}
+
+// NewRunID returns a unique run folder name: UTC timestamp with milliseconds
+// plus a short random suffix so back-to-back runs in the same second do not collide.
+func NewRunID() string {
+	return newRunID(time.Now().UTC())
+}
+
+func newRunID(now time.Time) string {
+	now = now.UTC()
+	stamp := now.Format("20060102T150405.000") + "Z"
+	var b [3]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%s-%09d", stamp, now.Nanosecond())
+	}
+	return fmt.Sprintf("%s-%x", stamp, b)
 }
