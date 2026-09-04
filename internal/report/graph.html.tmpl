@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Synapse graph</title>
+<style>
+:root {
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --border: #2d3a4d;
+  --text: #e7ecf3;
+  --muted: #8b9bb4;
+  --accent: #3d8bfd;
+  --file: #56d364;
+  --fn: #79c0ff;
+  --type: #d2a8ff;
+  --sym: #8b949e;
+  --other: #ffa657;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: baseline;
+}
+header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+header .meta { color: var(--muted); font-size: 0.85rem; }
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+  min-height: 0;
+}
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; grid-template-rows: auto 50vh auto; }
+}
+aside, .detail {
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  overflow: auto;
+  padding: 12px;
+}
+.detail { border-right: none; border-left: 1px solid var(--border); }
+label { display: block; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; }
+input[type="search"], select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.kinds { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.kinds label { text-transform: none; letter-spacing: 0; font-size: 0.85rem; color: var(--text); display: flex; gap: 8px; align-items: center; margin: 0; }
+#list { list-style: none; margin: 8px 0 0; padding: 0; }
+#list li {
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+}
+#list li:hover, #list li.active { background: var(--bg); border-color: var(--border); }
+#list .kind { color: var(--muted); font-size: 0.75rem; }
+.stage { position: relative; min-height: 0; background: #0b1016; }
+canvas { display: block; width: 100%; height: 100%; }
+.note {
+  position: absolute; left: 12px; bottom: 12px;
+  background: rgba(26,35,50,0.9); border: 1px solid var(--border);
+  padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: 0.8rem;
+  max-width: 90%;
+}
+.detail h2 { margin: 0 0 8px; font-size: 1rem; }
+.detail dl { margin: 0; }
+.detail dt { color: var(--muted); font-size: 0.75rem; margin-top: 8px; }
+.detail dd { margin: 2px 0 0; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+.detail ul { margin: 4px 0 0; padding-left: 1.1rem; font-size: 0.8rem; }
+.detail a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.detail a:hover { text-decoration: underline; }
+.empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Synapse graph</h1>
+  <div class="meta" id="subtitle"></div>
+</header>
+<div class="layout">
+  <aside>
+    <label for="search">Search</label>
+    <input id="search" type="search" placeholder="name, path, or id" autocomplete="off"/>
+    <label>Kinds</label>
+    <div class="kinds" id="kinds"></div>
+    <label>Nodes <span id="list-count"></span></label>
+    <ul id="list"></ul>
+  </aside>
+  <div class="stage">
+    <canvas id="canvas"></canvas>
+    <div class="note" id="note"></div>
+  </div>
+  <div class="detail" id="detail">
+    <p class="empty">Select a node to inspect.</p>
+  </div>
+</div>
+<script type="application/json" id="synapse-meta">__SYNAPSE_META_JSON__</script>
+<script type="application/json" id="synapse-graph">__SYNAPSE_GRAPH_JSON__</script>
+<script>
+(function () {
+  const MAX_VISIBLE = 400;
+  const meta = JSON.parse(document.getElementById("synapse-meta").textContent);
+  const graph = JSON.parse(document.getElementById("synapse-graph").textContent);
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+
+  document.getElementById("title").textContent = "Synapse · " + (meta.repo || "graph");
+  const mix = (meta.languages || []).map(function (k) {
+    return k + "=" + ((meta.language_mix && meta.language_mix[k]) || 0);
+  }).join(", ");
+  document.getElementById("subtitle").textContent =
+    (meta.node_count || nodes.length) + " nodes · " +
+    (meta.edge_count || edges.length) + " edges" +
+    (mix ? " · " + mix : "") +
+    (meta.commit ? " · " + meta.commit.slice(0, 12) : "");
+
+  const byId = {};
+  nodes.forEach(function (n) { byId[n.id] = n; });
+
+  const degree = {};
+  edges.forEach(function (e) {
+    degree[e.from] = (degree[e.from] || 0) + 1;
+    degree[e.to] = (degree[e.to] || 0) + 1;
+  });
+
+  const kindSet = {};
+  nodes.forEach(function (n) { kindSet[n.kind || "other"] = true; });
+  const kinds = Object.keys(kindSet).sort();
+  const enabled = {};
+  kinds.forEach(function (k) { enabled[k] = k !== "symbol"; });
+
+  const kindsEl = document.getElementById("kinds");
+  kinds.forEach(function (k) {
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = enabled[k];
+    cb.addEventListener("change", function () {
+      enabled[k] = cb.checked;
+      refresh();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(" " + k));
+    kindsEl.appendChild(lab);
+  });
+
+  const searchEl = document.getElementById("search");
+  const listEl = document.getElementById("list");
+  const detailEl = document.getElementById("detail");
+  const noteEl = document.getElementById("note");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  let selected = null;
+  let simNodes = [];
+  let simEdges = [];
+  let dragging = null;
+
+  function matchesSearch(n, q) {
+    if (!q) return true;
+    const hay = ((n.name || "") + " " + (n.path || "") + " " + n.id).toLowerCase();
+    return hay.indexOf(q) !== -1;
+  }
+
+  function filteredNodes() {
+    const q = searchEl.value.trim().toLowerCase();
+    return nodes.filter(function (n) {
+      return enabled[n.kind || "other"] && matchesSearch(n, q);
+    });
+  }
+
+  function colorFor(kind) {
+    if (kind === "file") return getComputedStyle(document.documentElement).getPropertyValue("--file").trim();
+    if (kind === "function" || kind === "method") return getComputedStyle(document.documentElement).getPropertyValue("--fn").trim();
+    if (kind === "type" || kind === "schema" || kind === "field") return getComputedStyle(document.documentElement).getPropertyValue("--type").trim();
+    if (kind === "symbol") return getComputedStyle(document.documentElement).getPropertyValue("--sym").trim();
+    return getComputedStyle(document.documentElement).getPropertyValue("--other").trim();
+  }
+
+  function showDetail(n) {
+    selected = n ? n.id : null;
+    if (!n) {
+      detailEl.innerHTML = '<p class="empty">Select a node to inspect.</p>';
+      return;
+    }
+    const props = n.props || {};
+    const adj = edges.filter(function (e) { return e.from === n.id || e.to === n.id; }).slice(0, 40);
+    let html = "<h2>" + esc(n.name || n.id) + "</h2><dl>";
+    html += "<dt>id</dt><dd>" + esc(n.id) + "</dd>";
+    html += "<dt>kind</dt><dd>" + esc(n.kind || "") + "</dd>";
+    if (n.path) html += "<dt>path</dt><dd>" + esc(n.path) + "</dd>";
+    if (props.repo_uri) html += "<dt>repo_uri</dt><dd>" + esc(props.repo_uri) + "</dd>";
+    html += "<dt>degree</dt><dd>" + (degree[n.id] || 0) + "</dd></dl>";
+    html += "<dt style='display:block;color:var(--muted);font-size:0.75rem;margin-top:12px'>Adjacent edges (" + adj.length + (adj.length === 40 ? "+" : "") + ")</dt><ul>";
+    adj.forEach(function (e) {
+      const other = e.from === n.id ? e.to : e.from;
+      const dir = e.from === n.id ? "→" : "←";
+      html += "<li><a data-id=\"" + escAttr(other) + "\">" + esc(dir + " " + e.type + " " + other) + "</a></li>";
+    });
+    html += "</ul>";
+    detailEl.innerHTML = html;
+    detailEl.querySelectorAll("a[data-id]").forEach(function (a) {
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        const t = byId[a.getAttribute("data-id")];
+        if (t) {
+          showDetail(t);
+          refreshListHighlight();
+        }
+      });
+    });
+    refreshListHighlight();
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+  function escAttr(s) { return esc(s).replace(/`/g, "&#96;"); }
+
+  function refreshListHighlight() {
+    listEl.querySelectorAll("li").forEach(function (li) {
+      li.classList.toggle("active", li.dataset.id === selected);
+    });
+  }
+
+  function rebuildSim(visible) {
+    const ranked = visible.slice().sort(function (a, b) {
+      return (degree[b.id] || 0) - (degree[a.id] || 0) || (a.id < b.id ? -1 : 1);
+    });
+    const truncated = ranked.length > MAX_VISIBLE;
+    const take = ranked.slice(0, MAX_VISIBLE);
+    const ids = {};
+    take.forEach(function (n) { ids[n.id] = true; });
+    simNodes = take.map(function (n, i) {
+      const angle = (i / Math.max(take.length, 1)) * Math.PI * 2;
+      return {
+        id: n.id,
+        kind: n.kind,
+        name: n.name || n.id,
+        x: Math.cos(angle) * 180,
+        y: Math.sin(angle) * 180,
+        vx: 0,
+        vy: 0
+      };
+    });
+    simEdges = edges.filter(function (e) { return ids[e.from] && ids[e.to]; });
+    noteEl.textContent = truncated
+      ? ("Showing top " + MAX_VISIBLE + " of " + visible.length + " filtered nodes by degree (hide fewer kinds or search to focus).")
+      : ("Showing " + visible.length + " filtered nodes · " + simEdges.length + " edges in view.");
+  }
+
+  function refresh() {
+    const visible = filteredNodes();
+    document.getElementById("list-count").textContent = "(" + visible.length + ")";
+    listEl.innerHTML = "";
+    visible.slice(0, 200).forEach(function (n) {
+      const li = document.createElement("li");
+      li.dataset.id = n.id;
+      li.innerHTML = "<div>" + esc(n.name || n.id) + "</div><div class=\"kind\">" + esc(n.kind) + (n.path ? " · " + esc(n.path) : "") + "</div>";
+      li.addEventListener("click", function () { showDetail(n); });
+      listEl.appendChild(li);
+    });
+    if (visible.length > 200) {
+      const more = document.createElement("li");
+      more.className = "empty";
+      more.textContent = "…" + (visible.length - 200) + " more (narrow search)";
+      listEl.appendChild(more);
+    }
+    rebuildSim(visible);
+    refreshListHighlight();
+  }
+
+  function resize() {
+    const stage = canvas.parentElement;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = stage.clientWidth * dpr;
+    canvas.height = stage.clientHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function tick() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+    const n = simNodes.length;
+    // Repulsion
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let dx = simNodes[i].x - simNodes[j].x;
+        let dy = simNodes[i].y - simNodes[j].y;
+        let dist2 = dx * dx + dy * dy + 0.01;
+        let f = 800 / dist2;
+        let dist = Math.sqrt(dist2);
+        dx /= dist; dy /= dist;
+        simNodes[i].vx += dx * f;
+        simNodes[i].vy += dy * f;
+        simNodes[j].vx -= dx * f;
+        simNodes[j].vy -= dy * f;
+      }
+    }
+    // Springs
+    const nodeIndex = {};
+    simNodes.forEach(function (sn, i) { nodeIndex[sn.id] = i; });
+    simEdges.forEach(function (e) {
+      const a = simNodes[nodeIndex[e.from]];
+      const b = simNodes[nodeIndex[e.to]];
+      if (!a || !b) return;
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
+      let f = (dist - 80) * 0.02;
+      dx /= dist; dy /= dist;
+      a.vx += dx * f;
+      a.vy += dy * f;
+      b.vx -= dx * f;
+      b.vy -= dy * f;
+    });
+    // Center gravity + damp
+    simNodes.forEach(function (sn) {
+      sn.vx += -sn.x * 0.005;
+      sn.vy += -sn.y * 0.005;
+      sn.vx *= 0.85;
+      sn.vy *= 0.85;
+      if (dragging !== sn.id) {
+        sn.x += sn.vx;
+        sn.y += sn.vy;
+      }
+    });
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = "rgba(139,155,180,0.35)";
+    ctx.lineWidth = 1;
+    simEdges.forEach(function (e) {
+      const a = simNodes[nodeIndex[e.from]];
+      const b = simNodes[nodeIndex[e.to]];
+      if (!a || !b) return;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    });
+    simNodes.forEach(function (sn) {
+      const r = sn.id === selected ? 7 : 5;
+      ctx.beginPath();
+      ctx.fillStyle = colorFor(sn.kind);
+      ctx.arc(sn.x, sn.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (sn.id === selected || n < 60) {
+        ctx.fillStyle = "#e7ecf3";
+        ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText(sn.name.slice(0, 24), sn.x + 8, sn.y + 3);
+      }
+    });
+    ctx.restore();
+    requestAnimationFrame(tick);
+  }
+
+  function pick(mx, my) {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const x = mx - w / 2;
+    const y = my - h / 2;
+    let best = null;
+    let bestD = 12;
+    simNodes.forEach(function (sn) {
+      const d = Math.hypot(sn.x - x, sn.y - y);
+      if (d < bestD) { bestD = d; best = sn; }
+    });
+    return best;
+  }
+
+  canvas.addEventListener("mousedown", function (ev) {
+    const sn = pick(ev.offsetX, ev.offsetY);
+    if (sn) {
+      dragging = sn.id;
+      showDetail(byId[sn.id]);
+    }
+  });
+  window.addEventListener("mouseup", function () { dragging = null; });
+  canvas.addEventListener("mousemove", function (ev) {
+    if (!dragging) return;
+    const sn = simNodes.find(function (n) { return n.id === dragging; });
+    if (!sn) return;
+    sn.x = ev.offsetX - canvas.clientWidth / 2;
+    sn.y = ev.offsetY - canvas.clientHeight / 2;
+    sn.vx = 0; sn.vy = 0;
+  });
+
+  searchEl.addEventListener("input", refresh);
+  window.addEventListener("resize", resize);
+  resize();
+  refresh();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
