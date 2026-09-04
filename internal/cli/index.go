@@ -32,7 +32,7 @@ the repository being indexed—not a human-readable report folder).
 
 Pass --report to also write readable dry-run artifacts under
 <target-repo>/.synapse-out/ (override with --report-dir): manifest.json,
-graph.json, and GRAPH_REPORT.md. See docs/report.md.
+graph.json, GRAPH_REPORT.md, and graph.html. See docs/report.md.
 
 OpenAPI 3.x YAML/JSON specs are content-sniffed and mapped to operation/schema
 nodes. After indexing, a heuristic binder links handlers/clients to operations

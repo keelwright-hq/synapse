@@ -32,7 +32,7 @@ func TestIndexReportWritesArtifacts(t *testing.T) {
 	}
 
 	latest := filepath.Join(repo, ".synapse-out", "latest")
-	for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md"} {
+	for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md", "graph.html"} {
 		if _, err := os.Stat(filepath.Join(latest, name)); err != nil {
 			t.Fatalf("latest/%s: %v", name, err)
 		}
@@ -46,7 +46,7 @@ func TestIndexReportWritesArtifacts(t *testing.T) {
 	for _, e := range entries {
 		if e.IsDir() && e.Name() != "latest" {
 			runDirs++
-			for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md"} {
+			for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md", "graph.html"} {
 				if _, err := os.Stat(filepath.Join(repo, ".synapse-out", e.Name(), name)); err != nil {
 					t.Fatalf("run %s/%s: %v", e.Name(), name, err)
 				}

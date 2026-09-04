@@ -2,10 +2,11 @@
 package report
 
 import (
-	"bytes"
+	"bufio"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/keelwright-hq/synapse/internal/buildinfo"
 	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph/analysis"
 	"github.com/keelwright-hq/synapse/internal/index"
 	"github.com/keelwright-hq/synapse/internal/parse"
 )
@@ -37,6 +39,7 @@ type Result struct {
 	ManifestPath string
 	GraphPath    string
 	ReportPath   string
+	HTMLPath     string
 }
 
 type graphDoc struct {
@@ -61,7 +64,7 @@ type manifest struct {
 	Artifacts      map[string]string `json:"artifacts"`
 }
 
-// Write dumps manifest.json, graph.json, and GRAPH_REPORT.md into opts.OutDir.
+// Write dumps manifest.json, graph.json, GRAPH_REPORT.md, and graph.html into opts.OutDir.
 func Write(opts Options) (Result, error) {
 	if opts.Store == nil {
 		return Result{}, fmt.Errorf("report: nil store")
@@ -114,6 +117,7 @@ func Write(opts Options) (Result, error) {
 			"manifest": "manifest.json",
 			"graph":    "graph.json",
 			"report":   "GRAPH_REPORT.md",
+			"html":     "graph.html",
 		},
 	}
 	manifestPath := filepath.Join(opts.OutDir, "manifest.json")
@@ -127,10 +131,20 @@ func Write(opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("report: write markdown: %w", err)
 	}
 
+	htmlPath := filepath.Join(opts.OutDir, "graph.html")
+	html, err := renderHTML(man, gdoc)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := os.WriteFile(htmlPath, html, 0o644); err != nil {
+		return Result{}, fmt.Errorf("report: write html: %w", err)
+	}
+
 	return Result{
 		ManifestPath: manifestPath,
 		GraphPath:    graphPath,
 		ReportPath:   reportPath,
+		HTMLPath:     htmlPath,
 	}, nil
 }
 
@@ -166,15 +180,21 @@ func collect(store graph.Store) ([]graph.Node, []graph.Edge, error) {
 }
 
 func writeJSON(path string, v any) error {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("report: create %s: %w", filepath.Base(path), err)
+	}
+	defer f.Close()
+
+	buf := bufio.NewWriter(f)
+	enc := json.NewEncoder(buf)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
 		return fmt.Errorf("report: encode %s: %w", filepath.Base(path), err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("report: write %s: %w", filepath.Base(path), err)
+	if err := buf.Flush(); err != nil {
+		return fmt.Errorf("report: flush %s: %w", filepath.Base(path), err)
 	}
 	return nil
 }
@@ -215,18 +235,23 @@ func gitHEAD(root string) string {
 func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Synapse graph report\n\n")
+	fmt.Fprintf(&b, "## Corpus summary\n\n")
 	fmt.Fprintf(&b, "- **Repo:** `%s`\n", man.Repo)
 	fmt.Fprintf(&b, "- **Root:** `%s`\n", man.Root)
-	if man.Commit != "" {
-		fmt.Fprintf(&b, "- **Commit:** `%s`\n", man.Commit)
-	} else {
-		fmt.Fprintf(&b, "- **Commit:** _(unavailable)_\n")
-	}
 	fmt.Fprintf(&b, "- **Indexed at:** %s\n", man.Timestamp)
 	fmt.Fprintf(&b, "- **Synapse:** %s (%s)\n", man.SynapseVersion, man.SynapseCommit)
 	fmt.Fprintf(&b, "- **Index files:** processed=%d skipped=%d deleted=%d errors=%d\n",
 		man.Index.Processed, man.Index.Skipped, man.Index.Deleted, man.Index.Errors)
 	fmt.Fprintf(&b, "- **Graph:** %d nodes · %d edges\n", man.NodeCount, man.EdgeCount)
+
+	fmt.Fprintf(&b, "\n## Freshness\n\n")
+	if man.Commit != "" {
+		fmt.Fprintf(&b, "- **Commit:** `%s`\n", man.Commit)
+		fmt.Fprintf(&b, "- Graph reflects the store after this index run; re-index if the working tree moved on.\n")
+	} else {
+		fmt.Fprintf(&b, "- **Commit:** _(unavailable)_\n")
+		fmt.Fprintf(&b, "- Without a git SHA, treat the graph as potentially stale relative to other checkouts.\n")
+	}
 
 	if len(man.LanguageMix) > 0 {
 		fmt.Fprintf(&b, "\n## Language mix (file nodes)\n\n")
@@ -249,15 +274,76 @@ func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string
 		}
 	}
 
-	hubs := topHubs(nodes, edges, 10)
-	if len(hubs) > 0 {
-		fmt.Fprintf(&b, "\n## Top hubs (by degree)\n\n")
-		for _, h := range hubs {
-			label := h.Name
-			if label == "" {
-				label = string(h.ID)
+	writeHubSection(&b, "Important files",
+		"File nodes ranked by imports/calls rolled up from modules/functions (contains excluded).",
+		ImportantFiles(nodes, edges, 10))
+	writeHubSection(&b, "Important symbols",
+		"Resolved functions/methods/types/contracts by calls/implements/consumes degree. Unresolved `symbol` hubs are excluded.",
+		ImportantSymbols(nodes, edges, 10))
+	writeHubSection(&b, "Top imports",
+		"Most-used dependencies (import specs grouped across files; relative paths resolved).",
+		TopImports(nodes, edges, 10))
+
+	// Pure-Go Analytical Engine
+	comms := analysis.DetectCommunities(nodes, edges)
+	ranks := analysis.RankCentrality(nodes, edges, 10)
+	cycles := analysis.DetectCycles(nodes, edges, 10)
+	traces := analysis.FindIndirectTraces(nodes, edges, 10)
+	gaps := analysis.AnalyzeKnowledgeGaps(nodes, edges, comms)
+	questions := analysis.GenerateQuestions(nodes, comms, ranks, cycles)
+
+	if len(ranks) > 0 {
+		fmt.Fprintf(&b, "\n## God Nodes (PageRank Centrality)\n\n")
+		for i, r := range ranks {
+			pathBit := ""
+			if r.Path != "" {
+				pathBit = fmt.Sprintf(" `%s`", r.Path)
 			}
-			fmt.Fprintf(&b, "- **%s** `%s` (%s) — degree %d\n", label, h.ID, h.Kind, h.Degree)
+			fmt.Fprintf(&b, "%d. **%s** `%s` (%s)%s — PageRank: %.4f\n", i+1, r.Name, r.ID, r.Kind, pathBit, r.PageRank)
+		}
+	}
+
+	if len(comms) > 0 {
+		fmt.Fprintf(&b, "\n## Communities (%d total)\n\n", len(comms))
+		limit := 10
+		if len(comms) < limit {
+			limit = len(comms)
+		}
+		for i := 0; i < limit; i++ {
+			c := comms[i]
+			fmt.Fprintf(&b, "### Community %s - \"%s\"\n", c.ID, c.Name)
+			fmt.Fprintf(&b, "Cohesion: %.2f | Nodes: %d\n\n", c.Cohesion, len(c.NodeIDs))
+		}
+	}
+
+	if len(traces) > 0 {
+		fmt.Fprintf(&b, "\n## Surprising Connections (Indirect Call Traces)\n\n")
+		for _, tr := range traces {
+			fmt.Fprintf(&b, "- `%s` --indirect_call (%d hops)--> `%s` [EXTRACTED]\n", tr.From, tr.Hops, tr.To)
+		}
+	}
+
+	if len(cycles) > 0 {
+		fmt.Fprintf(&b, "\n## Dependency Cycles (%d detected)\n\n", len(cycles))
+		for _, cyc := range cycles {
+			fmt.Fprintf(&b, "- Loop length %d: `%s`\n", cyc.Length, cyc.Path[0])
+		}
+	} else {
+		fmt.Fprintf(&b, "\n## Dependency Cycles\n\n- None detected.\n")
+	}
+
+	if len(gaps.IsolatedNodes) > 0 {
+		fmt.Fprintf(&b, "\n## Knowledge Gaps & Isolated Nodes\n\n")
+		fmt.Fprintf(&b, "- **%d isolated node(s):** with ≤1 connections.\n", len(gaps.IsolatedNodes))
+		if len(gaps.ThinCommunities) > 0 {
+			fmt.Fprintf(&b, "- **%d thin community(ies)** (<3 nodes).\n", len(gaps.ThinCommunities))
+		}
+	}
+
+	if len(questions) > 0 {
+		fmt.Fprintf(&b, "\n## Suggested Navigation & Refactoring Questions\n\n")
+		for _, q := range questions {
+			fmt.Fprintf(&b, "- **%s**\n  _%s_\n", q.Text, q.Rationale)
 		}
 	}
 
@@ -271,75 +357,72 @@ func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string
 	if man.NodeCount == 0 {
 		warnings = append(warnings, "graph has zero nodes")
 	}
-	if len(warnings) > 0 {
-		fmt.Fprintf(&b, "\n## Warnings\n\n")
-		for _, w := range warnings {
-			fmt.Fprintf(&b, "- %s\n", w)
-		}
+	warnings = append(warnings,
+		"Unresolved call targets use kind `symbol` and are omitted from Important symbols",
+		"Cross-language and dynamic calls may be under-linked; contracts require discoverable specs")
+	fmt.Fprintf(&b, "\n## Warnings and limitations\n\n")
+	for _, w := range warnings {
+		fmt.Fprintf(&b, "- %s\n", w)
 	}
 
 	fmt.Fprintf(&b, "\n## Artifacts\n\n")
 	fmt.Fprintf(&b, "- `manifest.json` — run metadata\n")
 	fmt.Fprintf(&b, "- `graph.json` — full node/edge dump (schema_version=%d)\n", SchemaVersion)
 	fmt.Fprintf(&b, "- `GRAPH_REPORT.md` — this summary\n")
+	fmt.Fprintf(&b, "- `graph.html` — interactive local viewer (open in a browser; works via `file://`)\n")
 	fmt.Fprintf(&b, "\n`.synapse/` remains the Badger query database; this folder is for humans and agents.\n")
 	return b.String()
 }
 
-type hub struct {
-	ID     graph.NodeID
-	Kind   string
-	Name   string
-	Degree int
+func writeHubSection(b *strings.Builder, title, blurb string, hubs []Hub) {
+	if len(hubs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n## %s\n\n", title)
+	fmt.Fprintf(b, "%s\n\n", blurb)
+	for _, h := range hubs {
+		label := h.Name
+		if label == "" {
+			label = string(h.ID)
+		}
+		pathBit := ""
+		if h.Path != "" {
+			pathBit = fmt.Sprintf(" `%s`", h.Path)
+		}
+		fmt.Fprintf(b, "- **%s** `%s` (%s)%s — degree %d\n", label, h.ID, h.Kind, pathBit, h.Degree)
+	}
 }
 
-func topHubs(nodes []graph.Node, edges []graph.Edge, limit int) []hub {
-	deg := map[graph.NodeID]int{}
-	for _, e := range edges {
-		deg[e.From]++
-		deg[e.To]++
-	}
-	byID := map[graph.NodeID]graph.Node{}
-	for _, n := range nodes {
-		byID[n.ID] = n
-	}
-	var hubs []hub
-	for id, d := range deg {
-		if d == 0 {
-			continue
-		}
-		n := byID[id]
-		hubs = append(hubs, hub{ID: id, Kind: n.Kind, Name: n.Name, Degree: d})
-	}
-	sort.Slice(hubs, func(i, j int) bool {
-		if hubs[i].Degree != hubs[j].Degree {
-			return hubs[i].Degree > hubs[j].Degree
-		}
-		return hubs[i].ID < hubs[j].ID
-	})
-	if limit > 0 && len(hubs) > limit {
-		hubs = hubs[:limit]
-	}
-	return hubs
-}
-
-// CopyArtifacts copies the three standard files from srcDir into dstDir.
+// CopyArtifacts copies the standard report files from srcDir into dstDir.
 func CopyArtifacts(srcDir, dstDir string) error {
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
 		return err
 	}
-	for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md"} {
+	for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md", "graph.html"} {
 		src := filepath.Join(srcDir, name)
 		dst := filepath.Join(dstDir, name)
-		data, err := os.ReadFile(src)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
-			return err
+		if err := copyFileStream(src, dst); err != nil {
+			return fmt.Errorf("report: copy %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+func copyFileStream(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // NewRunID returns a unique run folder name: UTC timestamp with milliseconds

@@ -87,9 +87,10 @@ path from outside the repo, pass the same `--data-dir` (or `cd` into the repo)
 for later `query` / `mcp` commands.
 
 Pass `--report` to also write readable dry-run artifacts under
-`<repo>/.synapse-out/` (`manifest.json`, `graph.json`, `GRAPH_REPORT.md`).
-Open `.synapse-out/latest/` for the newest run; dated subfolders keep history.
-Details: [docs/report.md](docs/report.md).
+`<repo>/.synapse-out/` (`manifest.json`, `graph.json`, `GRAPH_REPORT.md`,
+`graph.html`). Open `.synapse-out/latest/graph.html` in a browser for an
+interactive view; dated subfolders keep history. Details:
+[docs/report.md](docs/report.md).
 
 ## Multi-repo workspace
 
