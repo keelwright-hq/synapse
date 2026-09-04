@@ -101,9 +101,9 @@ Markdown summary for humans and agents:
 
 - Corpus summary and freshness (git commit when available)
 - Language mix
-- **Important files** — `file` nodes by imports/calls degree (`contains` excluded)
+- **Important files** — file nodes by imports/calls activity rolled up from modules/functions (`contains` excluded)
 - **Important symbols** — resolved functions/methods/types/contracts; unresolved `kind=symbol` hubs are excluded
-- **Top imports** — most-imported targets
+- **Top imports** — dependency specs grouped across files (relative paths resolved; degree = distinct importing files)
 - Warnings / extraction limitations
 - Pointers to sibling artifacts including `graph.html`
 
@@ -114,7 +114,7 @@ page so it opens from Finder/`file://`. Features:
 
 - Repo name, node/edge counts, language mix
 - Searchable node list and kind filters (`symbol` hidden by default)
-- Force-directed canvas capped at ~400 highest-degree filtered nodes
+- Force-directed canvas capped at ~400 highest-degree filtered nodes, with fit-to-view, pan, and zoom
 - Click a node for id, kind, path, `repo_uri`, and adjacent edges
 
 `graph.json` remains the canonical machine-readable dump; HTML complements it.

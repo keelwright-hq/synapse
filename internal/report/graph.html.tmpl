@@ -76,14 +76,23 @@ input[type="search"], select {
 }
 #list li:hover, #list li.active { background: var(--bg); border-color: var(--border); }
 #list .kind { color: var(--muted); font-size: 0.75rem; }
-.stage { position: relative; min-height: 0; background: #0b1016; }
-canvas { display: block; width: 100%; height: 100%; }
+.stage { position: relative; min-height: 0; background: #0b1016; overflow: hidden; }
+canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+canvas.panning { cursor: grabbing; }
 .note {
   position: absolute; left: 12px; bottom: 12px;
   background: rgba(26,35,50,0.9); border: 1px solid var(--border);
   padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: 0.8rem;
-  max-width: 90%;
+  max-width: calc(100% - 100px);
 }
+.view-controls {
+  position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px;
+}
+.view-controls button {
+  background: rgba(26,35,50,0.95); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.8rem;
+}
+.view-controls button:hover { border-color: var(--accent); }
 .detail h2 { margin: 0 0 8px; font-size: 1rem; }
 .detail dl { margin: 0; }
 .detail dt { color: var(--muted); font-size: 0.75rem; margin-top: 8px; }
@@ -111,6 +120,9 @@ canvas { display: block; width: 100%; height: 100%; }
   <div class="stage">
     <canvas id="canvas"></canvas>
     <div class="note" id="note"></div>
+    <div class="view-controls">
+      <button type="button" id="fit-btn" title="Fit all nodes in view">Fit</button>
+    </div>
   </div>
   <div class="detail" id="detail">
     <p class="empty">Select a node to inspect.</p>
@@ -177,6 +189,12 @@ canvas { display: block; width: 100%; height: 100%; }
   let simNodes = [];
   let simEdges = [];
   let dragging = null;
+  let panning = false;
+  let panLast = null;
+  let userAdjustedView = false;
+  let settleFrames = 0;
+  // Camera: screen = world * scale + (tx, ty)
+  const cam = { scale: 1, tx: 0, ty: 0 };
 
   function matchesSearch(n, q) {
     if (!q) return true;
@@ -247,6 +265,48 @@ canvas { display: block; width: 100%; height: 100%; }
     });
   }
 
+  function worldBounds() {
+    if (!simNodes.length) return null;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    simNodes.forEach(function (sn) {
+      if (sn.x < minX) minX = sn.x;
+      if (sn.x > maxX) maxX = sn.x;
+      if (sn.y < minY) minY = sn.y;
+      if (sn.y > maxY) maxY = sn.y;
+    });
+    if (!isFinite(minX)) return null;
+    if (maxX - minX < 1) { maxX = minX + 1; }
+    if (maxY - minY < 1) { maxY = minY + 1; }
+    return { minX: minX, maxX: maxX, minY: minY, maxY: maxY };
+  }
+
+  function fitView() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const b = worldBounds();
+    if (!b || w < 2 || h < 2) {
+      cam.scale = 1;
+      cam.tx = w / 2;
+      cam.ty = h / 2;
+      return;
+    }
+    const pad = 48;
+    const bw = b.maxX - b.minX;
+    const bh = b.maxY - b.minY;
+    const scale = Math.min((w - pad * 2) / bw, (h - pad * 2) / bh, 3);
+    cam.scale = Math.max(scale, 0.05);
+    cam.tx = w / 2 - ((b.minX + b.maxX) / 2) * cam.scale;
+    cam.ty = h / 2 - ((b.minY + b.maxY) / 2) * cam.scale;
+    userAdjustedView = false;
+  }
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - cam.tx) / cam.scale,
+      y: (sy - cam.ty) / cam.scale
+    };
+  }
+
   function rebuildSim(visible) {
     const ranked = visible.slice().sort(function (a, b) {
       return (degree[b.id] || 0) - (degree[a.id] || 0) || (a.id < b.id ? -1 : 1);
@@ -257,20 +317,23 @@ canvas { display: block; width: 100%; height: 100%; }
     take.forEach(function (n) { ids[n.id] = true; });
     simNodes = take.map(function (n, i) {
       const angle = (i / Math.max(take.length, 1)) * Math.PI * 2;
+      const r = 40 + Math.sqrt(take.length) * 12;
       return {
         id: n.id,
         kind: n.kind,
         name: n.name || n.id,
-        x: Math.cos(angle) * 180,
-        y: Math.sin(angle) * 180,
+        x: Math.cos(angle) * r,
+        y: Math.sin(angle) * r,
         vx: 0,
         vy: 0
       };
     });
     simEdges = edges.filter(function (e) { return ids[e.from] && ids[e.to]; });
+    settleFrames = 0;
+    fitView();
     noteEl.textContent = truncated
-      ? ("Showing top " + MAX_VISIBLE + " of " + visible.length + " filtered nodes by degree (hide fewer kinds or search to focus).")
-      : ("Showing " + visible.length + " filtered nodes · " + simEdges.length + " edges in view.");
+      ? ("Showing top " + MAX_VISIBLE + " of " + visible.length + " filtered nodes by degree. Scroll to zoom, drag empty space to pan, Fit to reset.")
+      : ("Showing " + visible.length + " filtered nodes · " + simEdges.length + " edges. Scroll to zoom, drag empty space to pan.");
   }
 
   function refresh() {
@@ -300,13 +363,12 @@ canvas { display: block; width: 100%; height: 100%; }
     canvas.width = stage.clientWidth * dpr;
     canvas.height = stage.clientHeight * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (!userAdjustedView) fitView();
   }
 
   function tick() {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
-    const cx = w / 2;
-    const cy = h / 2;
     const n = simNodes.length;
     // Repulsion
     for (let i = 0; i < n; i++) {
@@ -314,7 +376,7 @@ canvas { display: block; width: 100%; height: 100%; }
         let dx = simNodes[i].x - simNodes[j].x;
         let dy = simNodes[i].y - simNodes[j].y;
         let dist2 = dx * dx + dy * dy + 0.01;
-        let f = 800 / dist2;
+        let f = 1200 / dist2;
         let dist = Math.sqrt(dist2);
         dx /= dist; dy /= dist;
         simNodes[i].vx += dx * f;
@@ -333,30 +395,37 @@ canvas { display: block; width: 100%; height: 100%; }
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
-      let f = (dist - 80) * 0.02;
+      let f = (dist - 90) * 0.015;
       dx /= dist; dy /= dist;
       a.vx += dx * f;
       a.vy += dy * f;
       b.vx -= dx * f;
       b.vy -= dy * f;
     });
-    // Center gravity + damp
+    // Weak center gravity + damp
     simNodes.forEach(function (sn) {
-      sn.vx += -sn.x * 0.005;
-      sn.vy += -sn.y * 0.005;
-      sn.vx *= 0.85;
-      sn.vy *= 0.85;
+      sn.vx += -sn.x * 0.002;
+      sn.vy += -sn.y * 0.002;
+      sn.vx *= 0.86;
+      sn.vy *= 0.86;
       if (dragging !== sn.id) {
         sn.x += sn.vx;
         sn.y += sn.vy;
       }
     });
 
+    settleFrames++;
+    // Keep the graph framed while the layout settles, unless the user panned/zoomed.
+    if (!userAdjustedView && settleFrames % 15 === 0) {
+      fitView();
+    }
+
     ctx.clearRect(0, 0, w, h);
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(cam.tx, cam.ty);
+    ctx.scale(cam.scale, cam.scale);
     ctx.strokeStyle = "rgba(139,155,180,0.35)";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 / cam.scale;
     simEdges.forEach(function (e) {
       const a = simNodes[nodeIndex[e.from]];
       const b = simNodes[nodeIndex[e.to]];
@@ -367,30 +436,27 @@ canvas { display: block; width: 100%; height: 100%; }
       ctx.stroke();
     });
     simNodes.forEach(function (sn) {
-      const r = sn.id === selected ? 7 : 5;
+      const r = (sn.id === selected ? 7 : 5) / Math.sqrt(cam.scale);
       ctx.beginPath();
       ctx.fillStyle = colorFor(sn.kind);
-      ctx.arc(sn.x, sn.y, r, 0, Math.PI * 2);
+      ctx.arc(sn.x, sn.y, Math.max(r, 3 / cam.scale), 0, Math.PI * 2);
       ctx.fill();
       if (sn.id === selected || n < 60) {
         ctx.fillStyle = "#e7ecf3";
-        ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillText(sn.name.slice(0, 24), sn.x + 8, sn.y + 3);
+        ctx.font = (11 / cam.scale) + "px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillText(sn.name.slice(0, 24), sn.x + 8 / cam.scale, sn.y + 3 / cam.scale);
       }
     });
     ctx.restore();
     requestAnimationFrame(tick);
   }
 
-  function pick(mx, my) {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    const x = mx - w / 2;
-    const y = my - h / 2;
+  function pick(sx, sy) {
+    const world = screenToWorld(sx, sy);
     let best = null;
-    let bestD = 12;
+    let bestD = 12 / cam.scale;
     simNodes.forEach(function (sn) {
-      const d = Math.hypot(sn.x - x, sn.y - y);
+      const d = Math.hypot(sn.x - world.x, sn.y - world.y);
       if (d < bestD) { bestD = d; best = sn; }
     });
     return best;
@@ -401,16 +467,48 @@ canvas { display: block; width: 100%; height: 100%; }
     if (sn) {
       dragging = sn.id;
       showDetail(byId[sn.id]);
+      return;
+    }
+    panning = true;
+    panLast = { x: ev.offsetX, y: ev.offsetY };
+    canvas.classList.add("panning");
+  });
+  window.addEventListener("mouseup", function () {
+    dragging = null;
+    panning = false;
+    panLast = null;
+    canvas.classList.remove("panning");
+  });
+  canvas.addEventListener("mousemove", function (ev) {
+    if (dragging) {
+      const world = screenToWorld(ev.offsetX, ev.offsetY);
+      const sn = simNodes.find(function (n) { return n.id === dragging; });
+      if (!sn) return;
+      sn.x = world.x;
+      sn.y = world.y;
+      sn.vx = 0; sn.vy = 0;
+      return;
+    }
+    if (panning && panLast) {
+      cam.tx += ev.offsetX - panLast.x;
+      cam.ty += ev.offsetY - panLast.y;
+      panLast = { x: ev.offsetX, y: ev.offsetY };
+      userAdjustedView = true;
     }
   });
-  window.addEventListener("mouseup", function () { dragging = null; });
-  canvas.addEventListener("mousemove", function (ev) {
-    if (!dragging) return;
-    const sn = simNodes.find(function (n) { return n.id === dragging; });
-    if (!sn) return;
-    sn.x = ev.offsetX - canvas.clientWidth / 2;
-    sn.y = ev.offsetY - canvas.clientHeight / 2;
-    sn.vx = 0; sn.vy = 0;
+  canvas.addEventListener("wheel", function (ev) {
+    ev.preventDefault();
+    const world = screenToWorld(ev.offsetX, ev.offsetY);
+    const factor = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const next = Math.min(8, Math.max(0.05, cam.scale * factor));
+    cam.tx = ev.offsetX - world.x * next;
+    cam.ty = ev.offsetY - world.y * next;
+    cam.scale = next;
+    userAdjustedView = true;
+  }, { passive: false });
+
+  document.getElementById("fit-btn").addEventListener("click", function () {
+    fitView();
   });
 
   searchEl.addEventListener("input", refresh);

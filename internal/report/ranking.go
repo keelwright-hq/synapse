@@ -1,7 +1,9 @@
 package report
 
 import (
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
@@ -16,12 +18,28 @@ type Hub struct {
 	Degree int
 }
 
-// ImportantFiles ranks file nodes by undirected degree over imports and calls
-// edges only (contains is ignored so large files do not win by child count).
+// ImportantFiles ranks file nodes by imports/calls activity attributed to them.
+// Parsers attach imports to modules/packages and calls to functions/methods, so
+// those edges are rolled up to the owning file via Path / contains ownership.
 func ImportantFiles(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
-	return rankHubs(nodes, edges, limit, func(e graph.Edge) bool {
-		return e.Type == parse.EdgeImports || e.Type == parse.EdgeCalls
-	}, func(n graph.Node) bool {
+	byID := map[graph.NodeID]graph.Node{}
+	for _, n := range nodes {
+		byID[n.ID] = n
+	}
+	owner := fileOwners(nodes, edges)
+	deg := map[graph.NodeID]int{}
+	for _, e := range edges {
+		if e.Type != parse.EdgeImports && e.Type != parse.EdgeCalls {
+			continue
+		}
+		if fid, ok := owner[e.From]; ok {
+			deg[fid]++
+		}
+		if fid, ok := owner[e.To]; ok {
+			deg[fid]++
+		}
+	}
+	return hubsFromDegree(byID, deg, limit, func(n graph.Node) bool {
 		return n.Kind == parse.KindFile
 	})
 }
@@ -50,20 +68,181 @@ func isImportantSymbolKind(n graph.Node) bool {
 	}
 }
 
-// TopImports ranks nodes by inbound imports-edge count (most-imported targets).
+// TopImports ranks external/local dependency specs by how many distinct files
+// import them. Per-file import nodes (import:path#spec) are grouped by a
+// normalized target: package names stay as-is, relative specs are resolved
+// against the importing file directory.
 func TopImports(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
 	byID := map[graph.NodeID]graph.Node{}
 	for _, n := range nodes {
 		byID[n.ID] = n
 	}
-	deg := map[graph.NodeID]int{}
+	owner := fileOwners(nodes, edges)
+	// target -> set of importing file paths
+	importers := map[string]map[string]struct{}{}
 	for _, e := range edges {
 		if e.Type != parse.EdgeImports {
 			continue
 		}
-		deg[e.To]++
+		to, ok := byID[e.To]
+		if !ok {
+			continue
+		}
+		spec := to.Name
+		if spec == "" {
+			spec = string(to.ID)
+		}
+		importerPath := ""
+		if from, ok := byID[e.From]; ok && from.Path != "" {
+			importerPath = from.Path
+		} else if fid, ok := owner[e.From]; ok {
+			if f, ok := byID[fid]; ok {
+				importerPath = f.Path
+			}
+		}
+		if importerPath == "" && to.Path != "" {
+			importerPath = to.Path
+		}
+		key := NormalizeImportTarget(importerPath, spec)
+		if key == "" {
+			continue
+		}
+		fileKey := importerPath
+		if fid, ok := owner[e.From]; ok {
+			if f, ok := byID[fid]; ok && f.Path != "" {
+				fileKey = f.Path
+			}
+		} else if to.Path != "" {
+			fileKey = to.Path
+		}
+		if fileKey == "" {
+			fileKey = string(e.From)
+		}
+		set, ok := importers[key]
+		if !ok {
+			set = map[string]struct{}{}
+			importers[key] = set
+		}
+		set[fileKey] = struct{}{}
 	}
-	return hubsFromDegree(byID, deg, limit, nil)
+
+	var hubs []Hub
+	for key, files := range importers {
+		hubs = append(hubs, Hub{
+			ID:     graph.NodeID("dep:" + key),
+			Kind:   parse.KindImport,
+			Name:   key,
+			Degree: len(files),
+		})
+	}
+	sort.Slice(hubs, func(i, j int) bool {
+		if hubs[i].Degree != hubs[j].Degree {
+			return hubs[i].Degree > hubs[j].Degree
+		}
+		return hubs[i].Name < hubs[j].Name
+	})
+	if limit > 0 && len(hubs) > limit {
+		hubs = hubs[:limit]
+	}
+	return hubs
+}
+
+// NormalizeImportTarget groups import specs for ranking.
+// Relative paths are resolved against the importing file; bare package names
+// are kept (scoped npm packages reduced to @scope/name).
+func NormalizeImportTarget(importerPath, spec string) string {
+	spec = strings.TrimSpace(spec)
+	spec = strings.Trim(spec, `"'`)
+	if spec == "" {
+		return ""
+	}
+	if strings.HasPrefix(spec, ".") {
+		base := "."
+		if importerPath != "" {
+			base = filepath.Dir(importerPath)
+		}
+		return filepath.ToSlash(filepath.Clean(filepath.Join(base, spec)))
+	}
+	if strings.HasPrefix(spec, "/") {
+		return filepath.ToSlash(filepath.Clean(spec))
+	}
+	// Scoped package: @org/pkg[/...]
+	if strings.HasPrefix(spec, "@") {
+		parts := strings.Split(spec, "/")
+		if len(parts) >= 2 {
+			return parts[0] + "/" + parts[1]
+		}
+		return spec
+	}
+	// Go-style module paths keep the full import path.
+	if strings.Contains(spec, ".") && strings.Contains(spec, "/") {
+		return spec
+	}
+	// npm-style subpath: lodash/fp → lodash
+	if i := strings.IndexByte(spec, '/'); i > 0 {
+		return spec[:i]
+	}
+	return spec
+}
+
+// fileOwners maps each node ID to its owning file node ID.
+func fileOwners(nodes []graph.Node, edges []graph.Edge) map[graph.NodeID]graph.NodeID {
+	byID := map[graph.NodeID]graph.Node{}
+	filesByPath := map[string]graph.NodeID{}
+	owner := map[graph.NodeID]graph.NodeID{}
+	for _, n := range nodes {
+		byID[n.ID] = n
+		if n.Kind == parse.KindFile {
+			owner[n.ID] = n.ID
+			if n.Path != "" {
+				filesByPath[n.Path] = n.ID
+			}
+			// Also index bare file:path IDs.
+			if strings.HasPrefix(string(n.ID), "file:") {
+				filesByPath[strings.TrimPrefix(string(n.ID), "file:")] = n.ID
+			}
+		}
+	}
+	// Parent via contains: child <- parent
+	parent := map[graph.NodeID]graph.NodeID{}
+	for _, e := range edges {
+		if e.Type == parse.EdgeContains {
+			parent[e.To] = e.From
+		}
+	}
+	var resolve func(graph.NodeID) (graph.NodeID, bool)
+	resolve = func(id graph.NodeID) (graph.NodeID, bool) {
+		if fid, ok := owner[id]; ok {
+			return fid, true
+		}
+		n, ok := byID[id]
+		if !ok {
+			return "", false
+		}
+		if n.Path != "" {
+			if fid, ok := filesByPath[n.Path]; ok {
+				owner[id] = fid
+				return fid, true
+			}
+			// Synthesize lookup for file:path even if missing from map.
+			cand := graph.NodeID("file:" + n.Path)
+			if _, ok := byID[cand]; ok {
+				owner[id] = cand
+				return cand, true
+			}
+		}
+		if p, ok := parent[id]; ok {
+			if fid, ok := resolve(p); ok {
+				owner[id] = fid
+				return fid, true
+			}
+		}
+		return "", false
+	}
+	for _, n := range nodes {
+		_, _ = resolve(n.ID)
+	}
+	return owner
 }
 
 func rankHubs(
