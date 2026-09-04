@@ -32,11 +32,13 @@ func ImportantFiles(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
 		if e.Type != parse.EdgeImports && e.Type != parse.EdgeCalls {
 			continue
 		}
-		if fid, ok := owner[e.From]; ok {
-			deg[fid]++
+		fromFile, hasFrom := owner[e.From]
+		toFile, hasTo := owner[e.To]
+		if hasFrom {
+			deg[fromFile]++
 		}
-		if fid, ok := owner[e.To]; ok {
-			deg[fid]++
+		if hasTo && (!hasFrom || fromFile != toFile) {
+			deg[toFile]++
 		}
 	}
 	return hubsFromDegree(byID, deg, limit, func(n graph.Node) bool {
@@ -210,11 +212,17 @@ func fileOwners(nodes []graph.Node, edges []graph.Edge) map[graph.NodeID]graph.N
 			parent[e.To] = e.From
 		}
 	}
+	visited := map[graph.NodeID]bool{}
 	var resolve func(graph.NodeID) (graph.NodeID, bool)
 	resolve = func(id graph.NodeID) (graph.NodeID, bool) {
 		if fid, ok := owner[id]; ok {
 			return fid, true
 		}
+		if visited[id] {
+			return "", false
+		}
+		visited[id] = true
+		defer func() { visited[id] = false }()
 		n, ok := byID[id]
 		if !ok {
 			return "", false

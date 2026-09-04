@@ -163,3 +163,27 @@ func TestNormalizeImportTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestImportantFilesCyclicContainsSafety(t *testing.T) {
+	// A contains B, B contains A with no file paths - must not stack overflow.
+	nodes := []graph.Node{
+		{ID: "group:A", Kind: parse.KindModule, Name: "A"},
+		{ID: "group:B", Kind: parse.KindModule, Name: "B"},
+	}
+	edges := []graph.Edge{
+		{From: "group:A", To: "group:B", Type: parse.EdgeContains},
+		{From: "group:B", To: "group:A", Type: parse.EdgeContains},
+		{From: "group:A", To: "group:B", Type: parse.EdgeCalls},
+	}
+	hubs := report.ImportantFiles(nodes, edges, 10)
+	if len(hubs) != 0 {
+		t.Fatalf("expected 0 file hubs when no files exist, got %+v", hubs)
+	}
+}
+
+func TestImportantFilesEmptyGraph(t *testing.T) {
+	hubs := report.ImportantFiles(nil, nil, 10)
+	if len(hubs) != 0 {
+		t.Fatalf("expected empty hubs on empty graph, got %+v", hubs)
+	}
+}

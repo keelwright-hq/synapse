@@ -4,6 +4,7 @@
 
 # Local graph store
 .synapse/
+.synapse-out/
 
 # Go
 *.exe

@@ -3,519 +3,434 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Synapse graph</title>
+<title>Synapse Graph</title>
 <style>
 :root {
-  --bg: #0f1419;
-  --panel: #1a2332;
-  --border: #2d3a4d;
-  --text: #e7ecf3;
-  --muted: #8b9bb4;
-  --accent: #3d8bfd;
-  --file: #56d364;
-  --fn: #79c0ff;
-  --type: #d2a8ff;
-  --sym: #8b949e;
-  --other: #ffa657;
+  --bg-base: #090d16;
+  --bg-surface: rgba(17, 24, 39, 0.85);
+  --bg-elevated: rgba(30, 41, 59, 0.9);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(99, 102, 241, 0.5);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent: #6366f1;
+  --accent-glow: rgba(99, 102, 241, 0.35);
+  --kind-file: #10b981;
+  --kind-fn: #06b6d4;
+  --kind-type: #a855f7;
+  --kind-contract: #f59e0b;
+  --kind-sym: #64748b;
+  --kind-other: #f43f5e;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-main);
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 header {
-  padding: 12px 16px;
+  padding: 10px 16px;
+  background: var(--bg-surface);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  background: var(--panel);
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px 24px;
-  align-items: baseline;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
 }
-header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
-header .meta { color: var(--muted); font-size: 0.85rem; }
-.layout {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 280px 1fr 300px;
-  min-height: 0;
-}
-@media (max-width: 960px) {
-  .layout { grid-template-columns: 1fr; grid-template-rows: auto 50vh auto; }
-}
+header h1 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+header h1 span { color: var(--accent); }
+header .meta { color: var(--text-muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.layout { flex: 1; display: grid; grid-template-columns: 280px 1fr 340px; min-height: 0; }
+@media (max-width: 1024px) { .layout { grid-template-columns: 240px 1fr; } .detail { display: none; } }
 aside, .detail {
+  background: var(--bg-surface);
+  backdrop-filter: blur(16px);
   border-right: 1px solid var(--border);
-  background: var(--panel);
-  overflow: auto;
-  padding: 12px;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .detail { border-right: none; border-left: 1px solid var(--border); }
-label { display: block; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 4px; }
+.section-title { color: var(--text-muted); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin: 4px 0 2px; }
 input[type="search"], select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(15, 23, 42, 0.6); color: var(--text-main); font-size: 0.85rem; outline: none; transition: all 0.15s ease;
 }
-.kinds { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-.kinds label { text-transform: none; letter-spacing: 0; font-size: 0.85rem; color: var(--text); display: flex; gap: 8px; align-items: center; margin: 0; }
-#list { list-style: none; margin: 8px 0 0; padding: 0; }
-#list li {
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  font-size: 0.85rem;
-}
-#list li:hover, #list li.active { background: var(--bg); border-color: var(--border); }
-#list .kind { color: var(--muted); font-size: 0.75rem; }
-.stage { position: relative; min-height: 0; background: #0b1016; overflow: hidden; }
+input[type="search"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+.kinds { display: flex; flex-direction: column; gap: 6px; }
+.kind-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.82rem; cursor: pointer; user-select: none; }
+.kind-label { display: flex; align-items: center; gap: 8px; }
+.kind-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+#list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; border-radius: 6px; background: rgba(0, 0, 0, 0.2); }
+#list li { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; transition: background 0.1s; }
+#list li:hover, #list li.active { background: rgba(99, 102, 241, 0.15); }
+#list .item-name { font-weight: 500; word-break: break-all; }
+#list .item-meta { color: var(--text-muted); font-size: 0.75rem; margin-top: 2px; }
+.stage { position: relative; min-height: 0; background: var(--bg-base); overflow: hidden; }
 canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 canvas.panning { cursor: grabbing; }
-.note {
-  position: absolute; left: 12px; bottom: 12px;
-  background: rgba(26,35,50,0.9); border: 1px solid var(--border);
-  padding: 6px 10px; border-radius: 6px; color: var(--muted); font-size: 0.8rem;
-  max-width: calc(100% - 100px);
+.hud-controls { position: absolute; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+.hud-btn {
+  background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-main);
+  border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 0.9rem; font-weight: bold; transition: all 0.15s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
-.view-controls {
-  position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px;
+.hud-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.hud-status {
+  position: absolute; left: 14px; bottom: 14px; background: var(--bg-elevated); border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: 6px; color: var(--text-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(8px);
 }
-.view-controls button {
-  background: rgba(26,35,50,0.95); border: 1px solid var(--border);
-  color: var(--text); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 0.8rem;
-}
-.view-controls button:hover { border-color: var(--accent); }
-.detail h2 { margin: 0 0 8px; font-size: 1rem; }
-.detail dl { margin: 0; }
-.detail dt { color: var(--muted); font-size: 0.75rem; margin-top: 8px; }
-.detail dd { margin: 2px 0 0; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
-.detail ul { margin: 4px 0 0; padding-left: 1.1rem; font-size: 0.8rem; }
-.detail a { color: var(--accent); cursor: pointer; text-decoration: none; }
-.detail a:hover { text-decoration: underline; }
-.empty { color: var(--muted); }
+.tab-group { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.tab-btn { flex: 1; padding: 6px; text-align: center; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; border-bottom: 2px solid transparent; }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.detail-prop { margin-bottom: 8px; }
+.detail-prop label { color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; }
+.detail-prop div { font-family: ui-monospace, monospace; font-size: 0.8rem; word-break: break-all; margin-top: 2px; }
+.badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; margin-left: 4px; }
+.badge-extracted { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); }
+.badge-inferred { background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); }
 </style>
 </head>
 <body>
 <header>
-  <h1 id="title">Synapse graph</h1>
-  <div class="meta" id="subtitle"></div>
+  <h1><span>Synapse</span> · <span id="title-repo">graph</span></h1>
+  <div class="meta" id="subtitle-meta"></div>
 </header>
 <div class="layout">
   <aside>
-    <label for="search">Search</label>
-    <input id="search" type="search" placeholder="name, path, or id" autocomplete="off"/>
-    <label>Kinds</label>
+    <div class="section-title">Search</div>
+    <input id="search" type="search" placeholder="Search node, path, ID..." autocomplete="off"/>
+    <div class="section-title">Node Kinds</div>
     <div class="kinds" id="kinds"></div>
-    <label>Nodes <span id="list-count"></span></label>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+      <div class="section-title">Filtered Nodes</div>
+      <span id="list-count" style="color:var(--text-muted); font-size:0.75rem;"></span>
+    </div>
     <ul id="list"></ul>
   </aside>
   <div class="stage">
     <canvas id="canvas"></canvas>
-    <div class="note" id="note"></div>
-    <div class="view-controls">
-      <button type="button" id="fit-btn" title="Fit all nodes in view">Fit</button>
+    <div class="hud-status" id="hud-status">Initializing graph...</div>
+    <div class="hud-controls">
+      <button class="hud-btn" id="btn-zoom-in" title="Zoom In">+</button>
+      <button class="hud-btn" id="btn-zoom-out" title="Zoom Out">−</button>
+      <button class="hud-btn" id="btn-fit" title="Fit Graph">Fit</button>
     </div>
   </div>
   <div class="detail" id="detail">
-    <p class="empty">Select a node to inspect.</p>
+    <div style="color: var(--text-muted); text-align: center; margin-top: 40px;">Select a node on the canvas or sidebar to inspect properties and dependency links.</div>
   </div>
 </div>
 <script type="application/json" id="synapse-meta">__SYNAPSE_META_JSON__</script>
 <script type="application/json" id="synapse-graph">__SYNAPSE_GRAPH_JSON__</script>
 <script>
 (function () {
-  const MAX_VISIBLE = 400;
-  const meta = JSON.parse(document.getElementById("synapse-meta").textContent);
-  const graph = JSON.parse(document.getElementById("synapse-graph").textContent);
+  const meta = JSON.parse(document.getElementById("synapse-meta").textContent || "{}");
+  const graph = JSON.parse(document.getElementById("synapse-graph").textContent || "{}");
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
 
-  document.getElementById("title").textContent = "Synapse · " + (meta.repo || "graph");
-  const mix = (meta.languages || []).map(function (k) {
-    return k + "=" + ((meta.language_mix && meta.language_mix[k]) || 0);
-  }).join(", ");
-  document.getElementById("subtitle").textContent =
-    (meta.node_count || nodes.length) + " nodes · " +
-    (meta.edge_count || edges.length) + " edges" +
-    (mix ? " · " + mix : "") +
-    (meta.commit ? " · " + meta.commit.slice(0, 12) : "");
-
-  const byId = {};
-  nodes.forEach(function (n) { byId[n.id] = n; });
+  document.getElementById("title-repo").textContent = meta.repo || "graph";
+  document.getElementById("subtitle-meta").textContent = `${nodes.length} nodes · ${edges.length} edges`;
 
   const degree = {};
-  edges.forEach(function (e) {
+  const inEdges = {}, outEdges = {};
+  edges.forEach(e => {
     degree[e.from] = (degree[e.from] || 0) + 1;
     degree[e.to] = (degree[e.to] || 0) + 1;
+    (outEdges[e.from] = outEdges[e.from] || []).push(e);
+    (inEdges[e.to] = inEdges[e.to] || []).push(e);
   });
 
   const kindSet = {};
-  nodes.forEach(function (n) { kindSet[n.kind || "other"] = true; });
+  nodes.forEach(n => kindSet[n.kind || "other"] = true);
   const kinds = Object.keys(kindSet).sort();
-  const enabled = {};
-  kinds.forEach(function (k) { enabled[k] = k !== "symbol"; });
+  const enabledKinds = {};
+  kinds.forEach(k => enabledKinds[k] = k !== "symbol");
 
+  function colorFor(kind) {
+    if (kind === "file") return "#10b981";
+    if (kind === "function" || kind === "method") return "#06b6d4";
+    if (kind === "type" || kind === "schema") return "#a855f7";
+    if (kind === "contract" || kind === "interface") return "#f59e0b";
+    if (kind === "symbol") return "#64748b";
+    return "#f43f5e";
+  }
+
+  // Kind Checkboxes Render
   const kindsEl = document.getElementById("kinds");
-  kinds.forEach(function (k) {
-    const lab = document.createElement("label");
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = enabled[k];
-    cb.addEventListener("change", function () {
-      enabled[k] = cb.checked;
-      refresh();
-    });
-    lab.appendChild(cb);
-    lab.appendChild(document.createTextNode(" " + k));
-    kindsEl.appendChild(lab);
+  kinds.forEach(k => {
+    const row = document.createElement("div");
+    row.className = "kind-row";
+    row.innerHTML = `<div class="kind-label"><span class="kind-dot" style="background:${colorFor(k)}"></span>${k}</div><input type="checkbox" ${enabledKinds[k]?'checked':''}>`;
+    const cb = row.querySelector("input");
+    cb.addEventListener("change", () => { enabledKinds[k] = cb.checked; refresh(); });
+    kindsEl.appendChild(row);
   });
 
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
   const searchEl = document.getElementById("search");
   const listEl = document.getElementById("list");
   const detailEl = document.getElementById("detail");
-  const noteEl = document.getElementById("note");
-  const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d");
+  const hudStatus = document.getElementById("hud-status");
 
-  let selected = null;
+  let selectedId = null;
   let simNodes = [];
   let simEdges = [];
+  let nodePosMap = {};
+  let simAlpha = 1.0;
   let dragging = null;
-  let panning = false;
-  let panLast = null;
-  let userAdjustedView = false;
-  let settleFrames = 0;
-  // Camera: screen = world * scale + (tx, ty)
+  let panning = false, panLast = null;
   const cam = { scale: 1, tx: 0, ty: 0 };
 
-  function matchesSearch(n, q) {
-    if (!q) return true;
-    const hay = ((n.name || "") + " " + (n.path || "") + " " + n.id).toLowerCase();
-    return hay.indexOf(q) !== -1;
+  function nodeRadius(sn, isSel) {
+    const deg = degree[sn.id] || 0;
+    const base = Math.max(4, Math.min(20, 4 + Math.log2(deg + 1) * 2.8));
+    return isSel ? base + 4 : base;
   }
 
   function filteredNodes() {
     const q = searchEl.value.trim().toLowerCase();
-    return nodes.filter(function (n) {
-      return enabled[n.kind || "other"] && matchesSearch(n, q);
+    return nodes.filter(n => {
+      if (!enabledKinds[n.kind || "other"]) return false;
+      if (!q) return true;
+      return ((n.name||"") + " " + (n.path||"") + " " + n.id).toLowerCase().includes(q);
     });
-  }
-
-  function colorFor(kind) {
-    if (kind === "file") return getComputedStyle(document.documentElement).getPropertyValue("--file").trim();
-    if (kind === "function" || kind === "method") return getComputedStyle(document.documentElement).getPropertyValue("--fn").trim();
-    if (kind === "type" || kind === "schema" || kind === "field") return getComputedStyle(document.documentElement).getPropertyValue("--type").trim();
-    if (kind === "symbol") return getComputedStyle(document.documentElement).getPropertyValue("--sym").trim();
-    return getComputedStyle(document.documentElement).getPropertyValue("--other").trim();
-  }
-
-  function showDetail(n) {
-    selected = n ? n.id : null;
-    if (!n) {
-      detailEl.innerHTML = '<p class="empty">Select a node to inspect.</p>';
-      return;
-    }
-    const props = n.props || {};
-    const adj = edges.filter(function (e) { return e.from === n.id || e.to === n.id; }).slice(0, 40);
-    let html = "<h2>" + esc(n.name || n.id) + "</h2><dl>";
-    html += "<dt>id</dt><dd>" + esc(n.id) + "</dd>";
-    html += "<dt>kind</dt><dd>" + esc(n.kind || "") + "</dd>";
-    if (n.path) html += "<dt>path</dt><dd>" + esc(n.path) + "</dd>";
-    if (props.repo_uri) html += "<dt>repo_uri</dt><dd>" + esc(props.repo_uri) + "</dd>";
-    html += "<dt>degree</dt><dd>" + (degree[n.id] || 0) + "</dd></dl>";
-    html += "<dt style='display:block;color:var(--muted);font-size:0.75rem;margin-top:12px'>Adjacent edges (" + adj.length + (adj.length === 40 ? "+" : "") + ")</dt><ul>";
-    adj.forEach(function (e) {
-      const other = e.from === n.id ? e.to : e.from;
-      const dir = e.from === n.id ? "→" : "←";
-      html += "<li><a data-id=\"" + escAttr(other) + "\">" + esc(dir + " " + e.type + " " + other) + "</a></li>";
-    });
-    html += "</ul>";
-    detailEl.innerHTML = html;
-    detailEl.querySelectorAll("a[data-id]").forEach(function (a) {
-      a.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        const t = byId[a.getAttribute("data-id")];
-        if (t) {
-          showDetail(t);
-          refreshListHighlight();
-        }
-      });
-    });
-    refreshListHighlight();
-  }
-
-  function esc(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
-    });
-  }
-  function escAttr(s) { return esc(s).replace(/`/g, "&#96;"); }
-
-  function refreshListHighlight() {
-    listEl.querySelectorAll("li").forEach(function (li) {
-      li.classList.toggle("active", li.dataset.id === selected);
-    });
-  }
-
-  function worldBounds() {
-    if (!simNodes.length) return null;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    simNodes.forEach(function (sn) {
-      if (sn.x < minX) minX = sn.x;
-      if (sn.x > maxX) maxX = sn.x;
-      if (sn.y < minY) minY = sn.y;
-      if (sn.y > maxY) maxY = sn.y;
-    });
-    if (!isFinite(minX)) return null;
-    if (maxX - minX < 1) { maxX = minX + 1; }
-    if (maxY - minY < 1) { maxY = minY + 1; }
-    return { minX: minX, maxX: maxX, minY: minY, maxY: maxY };
-  }
-
-  function fitView() {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    const b = worldBounds();
-    if (!b || w < 2 || h < 2) {
-      cam.scale = 1;
-      cam.tx = w / 2;
-      cam.ty = h / 2;
-      return;
-    }
-    const pad = 48;
-    const bw = b.maxX - b.minX;
-    const bh = b.maxY - b.minY;
-    const scale = Math.min((w - pad * 2) / bw, (h - pad * 2) / bh, 3);
-    cam.scale = Math.max(scale, 0.05);
-    cam.tx = w / 2 - ((b.minX + b.maxX) / 2) * cam.scale;
-    cam.ty = h / 2 - ((b.minY + b.maxY) / 2) * cam.scale;
-    userAdjustedView = false;
-  }
-
-  function screenToWorld(sx, sy) {
-    return {
-      x: (sx - cam.tx) / cam.scale,
-      y: (sy - cam.ty) / cam.scale
-    };
-  }
-
-  function rebuildSim(visible) {
-    const ranked = visible.slice().sort(function (a, b) {
-      return (degree[b.id] || 0) - (degree[a.id] || 0) || (a.id < b.id ? -1 : 1);
-    });
-    const truncated = ranked.length > MAX_VISIBLE;
-    const take = ranked.slice(0, MAX_VISIBLE);
-    const ids = {};
-    take.forEach(function (n) { ids[n.id] = true; });
-    simNodes = take.map(function (n, i) {
-      const angle = (i / Math.max(take.length, 1)) * Math.PI * 2;
-      const r = 40 + Math.sqrt(take.length) * 12;
-      return {
-        id: n.id,
-        kind: n.kind,
-        name: n.name || n.id,
-        x: Math.cos(angle) * r,
-        y: Math.sin(angle) * r,
-        vx: 0,
-        vy: 0
-      };
-    });
-    simEdges = edges.filter(function (e) { return ids[e.from] && ids[e.to]; });
-    settleFrames = 0;
-    fitView();
-    noteEl.textContent = truncated
-      ? ("Showing top " + MAX_VISIBLE + " of " + visible.length + " filtered nodes by degree. Scroll to zoom, drag empty space to pan, Fit to reset.")
-      : ("Showing " + visible.length + " filtered nodes · " + simEdges.length + " edges. Scroll to zoom, drag empty space to pan.");
   }
 
   function refresh() {
     const visible = filteredNodes();
-    document.getElementById("list-count").textContent = "(" + visible.length + ")";
+    document.getElementById("list-count").textContent = visible.length;
+    
+    // Preserve existing coordinates during simulation rebuild
+    const take = visible.slice(0, 400);
+    const takeIds = new Set(take.map(n => n.id));
+    simNodes = take.map((n, i) => {
+      if (nodePosMap[n.id]) return nodePosMap[n.id];
+      const angle = (i / Math.max(take.length, 1)) * Math.PI * 2;
+      const r = 50 + Math.sqrt(take.length) * 14;
+      const pos = { id: n.id, kind: n.kind, name: n.name||n.id, x: Math.cos(angle)*r, y: Math.sin(angle)*r, vx: 0, vy: 0 };
+      nodePosMap[n.id] = pos;
+      return pos;
+    });
+
+    simEdges = edges.filter(e => takeIds.has(e.from) && takeIds.has(e.to));
+    simAlpha = 1.0; // Wake simulation up on filter change
+    renderSidebarList(visible.slice(0, 150));
+    hudStatus.textContent = `Displaying ${simNodes.length} of ${visible.length} nodes · ${simEdges.length} edges`;
+  }
+
+  function renderSidebarList(items) {
     listEl.innerHTML = "";
-    visible.slice(0, 200).forEach(function (n) {
+    items.forEach(n => {
       const li = document.createElement("li");
-      li.dataset.id = n.id;
-      li.innerHTML = "<div>" + esc(n.name || n.id) + "</div><div class=\"kind\">" + esc(n.kind) + (n.path ? " · " + esc(n.path) : "") + "</div>";
-      li.addEventListener("click", function () { showDetail(n); });
+      if (n.id === selectedId) li.className = "active";
+      li.innerHTML = `<div class="item-name">${escapeHTML(n.name||n.id)}</div><div class="item-meta">${n.kind} ${n.path?'· '+n.path:''}</div>`;
+      li.addEventListener("click", () => selectNode(n.id));
       listEl.appendChild(li);
     });
-    if (visible.length > 200) {
-      const more = document.createElement("li");
-      more.className = "empty";
-      more.textContent = "…" + (visible.length - 200) + " more (narrow search)";
-      listEl.appendChild(more);
-    }
-    rebuildSim(visible);
-    refreshListHighlight();
   }
 
-  function resize() {
-    const stage = canvas.parentElement;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = stage.clientWidth * dpr;
-    canvas.height = stage.clientHeight * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (!userAdjustedView) fitView();
+  function selectNode(id) {
+    selectedId = id;
+    const n = nodes.find(x => x.id === id);
+    renderDetail(n);
+    refresh();
   }
+
+  function renderDetail(n) {
+    if (!n) { detailEl.innerHTML = '<div style="color:var(--text-muted);text-align:center;margin-top:40px;">Select a node to inspect.</div>'; return; }
+    const outs = outEdges[n.id] || [];
+    const ins = inEdges[n.id] || [];
+    detailEl.innerHTML = `
+      <h2 style="margin:0 0 10px;font-size:1.1rem;word-break:break-all;">${escapeHTML(n.name||n.id)}</h2>
+      <div class="detail-prop"><label>Kind</label><div>${n.kind}</div></div>
+      ${n.path ? `<div class="detail-prop"><label>Path</label><div>${escapeHTML(n.path)}</div></div>` : ''}
+      <div class="detail-prop"><label>Degree</label><div>${degree[n.id]||0} (${ins.length} in / ${outs.length} out)</div></div>
+      <div class="tab-group">
+        <button class="tab-btn active" id="tab-out">Outgoing (${outs.length})</button>
+        <button class="tab-btn" id="tab-in">Incoming (${ins.length})</button>
+      </div>
+      <div id="tab-content" style="font-size:0.8rem; overflow-y:auto; max-height: 400px;"></div>
+    `;
+    const content = document.getElementById("tab-content");
+    function showTab(list) {
+      if (!list.length) { content.innerHTML = '<div style="color:var(--text-muted);padding:8px 0;">None</div>'; return; }
+      content.innerHTML = list.map(e => {
+        const targetId = e.from === n.id ? e.to : e.from;
+        const provenance = e.props && e.props.provenance ? e.props.provenance : "EXTRACTED";
+        const badgeClass = provenance === "INFERRED" ? "badge-inferred" : "badge-extracted";
+        return `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:space-between;"><a style="color:var(--accent);cursor:pointer;word-break:break-all;" onclick="window.selectNodeRef('${escapeHTML(targetId)}')">${escapeHTML(e.type)} → ${escapeHTML(targetId)}</a><span class="badge ${badgeClass}">${provenance}</span></div>`;
+      }).join('');
+    }
+    window.selectNodeRef = selectNode;
+    showTab(outs);
+    document.getElementById("tab-out").onclick = (e) => { showTab(outs); e.target.classList.add("active"); document.getElementById("tab-in").classList.remove("active"); };
+    document.getElementById("tab-in").onclick = (e) => { showTab(ins); e.target.classList.add("active"); document.getElementById("tab-out").classList.remove("active"); };
+  }
+
+  function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
   function tick() {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    const n = simNodes.length;
-    // Repulsion
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        let dx = simNodes[i].x - simNodes[j].x;
-        let dy = simNodes[i].y - simNodes[j].y;
-        let dist2 = dx * dx + dy * dy + 0.01;
-        let f = 1200 / dist2;
-        let dist = Math.sqrt(dist2);
+    if (simAlpha > 0.001) {
+      const n = simNodes.length;
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          let dx = simNodes[i].x - simNodes[j].x, dy = simNodes[i].y - simNodes[j].y;
+          let dist2 = dx * dx + dy * dy + 0.01;
+          let f = (1000 / dist2) * simAlpha;
+          let dist = Math.sqrt(dist2);
+          dx /= dist; dy /= dist;
+          simNodes[i].vx += dx * f; simNodes[i].vy += dy * f;
+          simNodes[j].vx -= dx * f; simNodes[j].vy -= dy * f;
+        }
+      }
+      const idxMap = {}; simNodes.forEach((sn, i) => idxMap[sn.id] = i);
+      simEdges.forEach(e => {
+        const a = simNodes[idxMap[e.from]], b = simNodes[idxMap[e.to]];
+        if (!a || !b) return;
+        let dx = b.x - a.x, dy = b.y - a.y, dist = Math.sqrt(dx*dx + dy*dy) + 0.01;
+        let f = (dist - 80) * 0.02 * simAlpha;
         dx /= dist; dy /= dist;
-        simNodes[i].vx += dx * f;
-        simNodes[i].vy += dy * f;
-        simNodes[j].vx -= dx * f;
-        simNodes[j].vy -= dy * f;
-      }
-    }
-    // Springs
-    const nodeIndex = {};
-    simNodes.forEach(function (sn, i) { nodeIndex[sn.id] = i; });
-    simEdges.forEach(function (e) {
-      const a = simNodes[nodeIndex[e.from]];
-      const b = simNodes[nodeIndex[e.to]];
-      if (!a || !b) return;
-      let dx = b.x - a.x;
-      let dy = b.y - a.y;
-      let dist = Math.sqrt(dx * dx + dy * dy) + 0.01;
-      let f = (dist - 90) * 0.015;
-      dx /= dist; dy /= dist;
-      a.vx += dx * f;
-      a.vy += dy * f;
-      b.vx -= dx * f;
-      b.vy -= dy * f;
-    });
-    // Weak center gravity + damp
-    simNodes.forEach(function (sn) {
-      sn.vx += -sn.x * 0.002;
-      sn.vy += -sn.y * 0.002;
-      sn.vx *= 0.86;
-      sn.vy *= 0.86;
-      if (dragging !== sn.id) {
-        sn.x += sn.vx;
-        sn.y += sn.vy;
-      }
-    });
-
-    settleFrames++;
-    // Keep the graph framed while the layout settles, unless the user panned/zoomed.
-    if (!userAdjustedView && settleFrames % 15 === 0) {
-      fitView();
+        a.vx += dx * f; a.vy += dy * f;
+        b.vx -= dx * f; b.vy -= dy * f;
+      });
+      simNodes.forEach(sn => {
+        sn.vx *= 0.85; sn.vy *= 0.85;
+        if (dragging !== sn.id) { sn.x += sn.vx; sn.y += sn.vy; }
+      });
+      simAlpha *= 0.96;
     }
 
+    const w = canvas.width / (window.devicePixelRatio||1);
+    const h = canvas.height / (window.devicePixelRatio||1);
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     ctx.translate(cam.tx, cam.ty);
     ctx.scale(cam.scale, cam.scale);
-    ctx.strokeStyle = "rgba(139,155,180,0.35)";
-    ctx.lineWidth = 1 / cam.scale;
-    simEdges.forEach(function (e) {
-      const a = simNodes[nodeIndex[e.from]];
-      const b = simNodes[nodeIndex[e.to]];
+
+    const activeSet = new Set();
+    if (selectedId) {
+      activeSet.add(selectedId);
+      (outEdges[selectedId]||[]).forEach(e => activeSet.add(e.to));
+      (inEdges[selectedId]||[]).forEach(e => activeSet.add(e.from));
+    }
+
+    const idxMap = {}; simNodes.forEach((sn, i) => idxMap[sn.id] = i);
+
+    // Draw Edges
+    simEdges.forEach(e => {
+      const a = simNodes[idxMap[e.from]], b = simNodes[idxMap[e.to]];
       if (!a || !b) return;
+      const isHighlighted = selectedId && (e.from === selectedId || e.to === selectedId);
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = isHighlighted ? "#6366f1" : (selectedId ? "rgba(255,255,255,0.04)" : "rgba(148,163,184,0.2)");
+      ctx.lineWidth = (isHighlighted ? 2.5 : 1) / cam.scale;
       ctx.stroke();
     });
-    simNodes.forEach(function (sn) {
-      const r = (sn.id === selected ? 7 : 5) / Math.sqrt(cam.scale);
+
+    // Draw Nodes
+    simNodes.forEach(sn => {
+      const isSel = sn.id === selectedId;
+      const isDimmed = selectedId && !activeSet.has(sn.id);
+      const r = nodeRadius(sn, isSel);
+      
+      ctx.save();
+      ctx.globalAlpha = isDimmed ? 0.15 : 1.0;
       ctx.beginPath();
+      ctx.arc(sn.x, sn.y, r, 0, Math.PI * 2);
       ctx.fillStyle = colorFor(sn.kind);
-      ctx.arc(sn.x, sn.y, Math.max(r, 3 / cam.scale), 0, Math.PI * 2);
       ctx.fill();
-      if (sn.id === selected || n < 60) {
-        ctx.fillStyle = "#e7ecf3";
-        ctx.font = (11 / cam.scale) + "px ui-sans-serif, system-ui, sans-serif";
-        ctx.fillText(sn.name.slice(0, 24), sn.x + 8 / cam.scale, sn.y + 3 / cam.scale);
+      if (isSel) { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2 / cam.scale; ctx.stroke(); }
+      
+      // Label Rendering
+      if (isSel || (degree[sn.id] > 5 && cam.scale > 0.6)) {
+        ctx.font = `${Math.max(10, 12 / cam.scale)}px sans-serif`;
+        const text = sn.name.length > 22 ? sn.name.slice(0, 20) + '…' : sn.name;
+        const tw = ctx.measureText(text).width;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.fillRect(sn.x + r + 4, sn.y - 8, tw + 6, 16);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(text, sn.x + r + 7, sn.y + 4);
       }
+      ctx.restore();
     });
+
     ctx.restore();
     requestAnimationFrame(tick);
   }
 
-  function pick(sx, sy) {
-    const world = screenToWorld(sx, sy);
-    let best = null;
-    let bestD = 12 / cam.scale;
-    simNodes.forEach(function (sn) {
-      const d = Math.hypot(sn.x - world.x, sn.y - world.y);
-      if (d < bestD) { bestD = d; best = sn; }
+  function fitView() {
+    if (!simNodes.length) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    simNodes.forEach(sn => {
+      if (sn.x < minX) minX = sn.x; if (sn.x > maxX) maxX = sn.x;
+      if (sn.y < minY) minY = sn.y; if (sn.y > maxY) maxY = sn.y;
     });
-    return best;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const scale = Math.min((w - 100) / (maxX - minX || 1), (h - 100) / (maxY - minY || 1), 2.5);
+    cam.scale = Math.max(0.1, scale);
+    cam.tx = w / 2 - ((minX + maxX) / 2) * cam.scale;
+    cam.ty = h / 2 - ((minY + maxY) / 2) * cam.scale;
   }
 
-  canvas.addEventListener("mousedown", function (ev) {
-    const sn = pick(ev.offsetX, ev.offsetY);
-    if (sn) {
-      dragging = sn.id;
-      showDetail(byId[sn.id]);
-      return;
-    }
-    panning = true;
-    panLast = { x: ev.offsetX, y: ev.offsetY };
-    canvas.classList.add("panning");
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.parentElement.clientWidth * dpr;
+    canvas.height = canvas.parentElement.clientHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  document.getElementById("btn-fit").onclick = fitView;
+  document.getElementById("btn-zoom-in").onclick = () => { cam.scale *= 1.25; };
+  document.getElementById("btn-zoom-out").onclick = () => { cam.scale /= 1.25; };
+
+  canvas.addEventListener("mousedown", (ev) => {
+    const worldX = (ev.offsetX - cam.tx) / cam.scale;
+    const worldY = (ev.offsetY - cam.ty) / cam.scale;
+    const hit = simNodes.find(sn => Math.hypot(sn.x - worldX, sn.y - worldY) < nodeRadius(sn, false) + 4);
+    if (hit) { dragging = hit.id; selectNode(hit.id); return; }
+    panning = true; panLast = { x: ev.offsetX, y: ev.offsetY };
   });
-  window.addEventListener("mouseup", function () {
-    dragging = null;
-    panning = false;
-    panLast = null;
-    canvas.classList.remove("panning");
-  });
-  canvas.addEventListener("mousemove", function (ev) {
+
+  window.addEventListener("mousemove", (ev) => {
     if (dragging) {
-      const world = screenToWorld(ev.offsetX, ev.offsetY);
-      const sn = simNodes.find(function (n) { return n.id === dragging; });
-      if (!sn) return;
-      sn.x = world.x;
-      sn.y = world.y;
-      sn.vx = 0; sn.vy = 0;
+      const sn = simNodes.find(n => n.id === dragging);
+      if (sn) {
+        sn.x = (ev.offsetX - cam.tx) / cam.scale;
+        sn.y = (ev.offsetY - cam.ty) / cam.scale;
+        simAlpha = 0.5;
+      }
       return;
     }
     if (panning && panLast) {
-      cam.tx += ev.offsetX - panLast.x;
-      cam.ty += ev.offsetY - panLast.y;
+      cam.tx += ev.offsetX - panLast.x; cam.ty += ev.offsetY - panLast.y;
       panLast = { x: ev.offsetX, y: ev.offsetY };
-      userAdjustedView = true;
     }
   });
-  canvas.addEventListener("wheel", function (ev) {
+  window.addEventListener("mouseup", () => { dragging = null; panning = false; });
+  canvas.addEventListener("wheel", (ev) => {
     ev.preventDefault();
-    const world = screenToWorld(ev.offsetX, ev.offsetY);
-    const factor = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
-    const next = Math.min(8, Math.max(0.05, cam.scale * factor));
-    cam.tx = ev.offsetX - world.x * next;
-    cam.ty = ev.offsetY - world.y * next;
-    cam.scale = next;
-    userAdjustedView = true;
-  }, { passive: false });
-
-  document.getElementById("fit-btn").addEventListener("click", function () {
-    fitView();
+    const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const worldX = (ev.offsetX - cam.tx) / cam.scale, worldY = (ev.offsetY - cam.ty) / cam.scale;
+    cam.scale = Math.min(6, Math.max(0.08, cam.scale * factor));
+    cam.tx = ev.offsetX - worldX * cam.scale; cam.ty = ev.offsetY - worldY * cam.scale;
   });
 
   searchEl.addEventListener("input", refresh);
-  window.addEventListener("resize", resize);
-  resize();
-  refresh();
-  requestAnimationFrame(tick);
+  window.addEventListener("resize", () => { resize(); fitView(); });
+  resize(); refresh(); setTimeout(fitView, 50); requestAnimationFrame(tick);
 })();
 </script>
 </body>

@@ -2,10 +2,11 @@
 package report
 
 import (
-	"bytes"
+	"bufio"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/keelwright-hq/synapse/internal/buildinfo"
 	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/graph/analysis"
 	"github.com/keelwright-hq/synapse/internal/index"
 	"github.com/keelwright-hq/synapse/internal/parse"
 )
@@ -178,15 +180,21 @@ func collect(store graph.Store) ([]graph.Node, []graph.Edge, error) {
 }
 
 func writeJSON(path string, v any) error {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("report: create %s: %w", filepath.Base(path), err)
+	}
+	defer f.Close()
+
+	buf := bufio.NewWriter(f)
+	enc := json.NewEncoder(buf)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
 		return fmt.Errorf("report: encode %s: %w", filepath.Base(path), err)
 	}
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("report: write %s: %w", filepath.Base(path), err)
+	if err := buf.Flush(); err != nil {
+		return fmt.Errorf("report: flush %s: %w", filepath.Base(path), err)
 	}
 	return nil
 }
@@ -275,6 +283,70 @@ func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string
 	writeHubSection(&b, "Top imports",
 		"Most-used dependencies (import specs grouped across files; relative paths resolved).",
 		TopImports(nodes, edges, 10))
+
+	// Pure-Go Analytical Engine
+	comms := analysis.DetectCommunities(nodes, edges)
+	ranks := analysis.RankCentrality(nodes, edges, 10)
+	cycles := analysis.DetectCycles(nodes, edges, 10)
+	traces := analysis.FindIndirectTraces(nodes, edges, 10)
+	gaps := analysis.AnalyzeKnowledgeGaps(nodes, edges, comms)
+	questions := analysis.GenerateQuestions(nodes, comms, ranks, cycles)
+
+	if len(ranks) > 0 {
+		fmt.Fprintf(&b, "\n## God Nodes (PageRank Centrality)\n\n")
+		for i, r := range ranks {
+			pathBit := ""
+			if r.Path != "" {
+				pathBit = fmt.Sprintf(" `%s`", r.Path)
+			}
+			fmt.Fprintf(&b, "%d. **%s** `%s` (%s)%s — PageRank: %.4f\n", i+1, r.Name, r.ID, r.Kind, pathBit, r.PageRank)
+		}
+	}
+
+	if len(comms) > 0 {
+		fmt.Fprintf(&b, "\n## Communities (%d total)\n\n", len(comms))
+		limit := 10
+		if len(comms) < limit {
+			limit = len(comms)
+		}
+		for i := 0; i < limit; i++ {
+			c := comms[i]
+			fmt.Fprintf(&b, "### Community %s - \"%s\"\n", c.ID, c.Name)
+			fmt.Fprintf(&b, "Cohesion: %.2f | Nodes: %d\n\n", c.Cohesion, len(c.NodeIDs))
+		}
+	}
+
+	if len(traces) > 0 {
+		fmt.Fprintf(&b, "\n## Surprising Connections (Indirect Call Traces)\n\n")
+		for _, tr := range traces {
+			fmt.Fprintf(&b, "- `%s` --indirect_call (%d hops)--> `%s` [EXTRACTED]\n", tr.From, tr.Hops, tr.To)
+		}
+	}
+
+	if len(cycles) > 0 {
+		fmt.Fprintf(&b, "\n## Dependency Cycles (%d detected)\n\n", len(cycles))
+		for _, cyc := range cycles {
+			fmt.Fprintf(&b, "- Loop length %d: `%s`\n", cyc.Length, cyc.Path[0])
+		}
+	} else {
+		fmt.Fprintf(&b, "\n## Dependency Cycles\n\n- None detected.\n")
+	}
+
+	if len(gaps.IsolatedNodes) > 0 {
+		fmt.Fprintf(&b, "\n## Knowledge Gaps & Isolated Nodes\n\n")
+		fmt.Fprintf(&b, "- **%d isolated node(s):** with ≤1 connections.\n", len(gaps.IsolatedNodes))
+		if len(gaps.ThinCommunities) > 0 {
+			fmt.Fprintf(&b, "- **%d thin community(ies)** (<3 nodes).\n", len(gaps.ThinCommunities))
+		}
+	}
+
+	if len(questions) > 0 {
+		fmt.Fprintf(&b, "\n## Suggested Navigation & Refactoring Questions\n\n")
+		for _, q := range questions {
+			fmt.Fprintf(&b, "- **%s**\n  _%s_\n", q.Text, q.Rationale)
+		}
+	}
+
 	var warnings []string
 	if man.Index.Errors > 0 {
 		warnings = append(warnings, fmt.Sprintf("index reported %d file error(s)", man.Index.Errors))
@@ -329,15 +401,28 @@ func CopyArtifacts(srcDir, dstDir string) error {
 	for _, name := range []string{"manifest.json", "graph.json", "GRAPH_REPORT.md", "graph.html"} {
 		src := filepath.Join(srcDir, name)
 		dst := filepath.Join(dstDir, name)
-		data, err := os.ReadFile(src)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
-			return err
+		if err := copyFileStream(src, dst); err != nil {
+			return fmt.Errorf("report: copy %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+func copyFileStream(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // NewRunID returns a unique run folder name: UTC timestamp with milliseconds
