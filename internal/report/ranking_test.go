@@ -155,12 +155,115 @@ func TestNormalizeImportTarget(t *testing.T) {
 		{"src/api.js", "../lib/util", "lib/util"},
 		{"main.go", "github.com/foo/bar", "github.com/foo/bar"},
 		{"main.go", "fmt", "fmt"},
+		{"main.go", "net/http", "net/http"},
+		{"main.go", "net/url", "net/url"},
+		{"pkg/main.py", "os.path", "os.path"},
+		{"pkg/main.py", "./util", "pkg/util"},
 	}
 	for _, tc := range cases {
 		got := report.NormalizeImportTarget(tc.importer, tc.spec)
 		if got != tc.want {
 			t.Fatalf("NormalizeImportTarget(%q,%q)=%q want %q", tc.importer, tc.spec, got, tc.want)
 		}
+	}
+}
+
+func TestTopImportsKeepsGoPackagePaths(t *testing.T) {
+	nodes := []graph.Node{
+		{ID: "file:main.go", Kind: parse.KindFile, Name: "main.go", Path: "main.go"},
+		{ID: "package:main", Kind: parse.KindPackage, Name: "main", Path: "main.go"},
+		{ID: "import:main.go#net/http", Kind: parse.KindImport, Name: "net/http", Path: "main.go"},
+		{ID: "import:main.go#net/url", Kind: parse.KindImport, Name: "net/url", Path: "main.go"},
+	}
+	edges := []graph.Edge{
+		{From: "file:main.go", To: "package:main", Type: parse.EdgeContains},
+		{From: "package:main", To: "import:main.go#net/http", Type: parse.EdgeImports},
+		{From: "package:main", To: "import:main.go#net/url", Type: parse.EdgeImports},
+	}
+	imps := report.TopImports(nodes, edges, 10)
+	byName := map[string]int{}
+	for _, h := range imps {
+		byName[h.Name] = h.Degree
+	}
+	if byName["net/http"] != 1 {
+		t.Fatalf("want distinct net/http, got %+v", imps)
+	}
+	if byName["net/url"] != 1 {
+		t.Fatalf("want distinct net/url, got %+v", imps)
+	}
+	if _, ok := byName["net"]; ok {
+		t.Fatalf("must not truncate Go packages to net: %+v", imps)
+	}
+}
+
+func TestImportantFilesSharedBuiltinEqual(t *testing.T) {
+	// a.js alpha calls console.log, b.js beta calls console.log — both file
+	// scores should be 1 (only From-side credit; shared symbol:log must not
+	// skew To-side ownership even when Path points at one defining file).
+	nodes := []graph.Node{
+		{ID: "file:a.js", Kind: parse.KindFile, Name: "a.js", Path: "a.js"},
+		{ID: "func:a.js#alpha", Kind: parse.KindFunction, Name: "alpha", Path: "a.js"},
+		{ID: "file:b.js", Kind: parse.KindFile, Name: "b.js", Path: "b.js"},
+		{ID: "func:b.js#beta", Kind: parse.KindFunction, Name: "beta", Path: "b.js"},
+		// Path set from one occurrence — must not assign ownership via Path.
+		{ID: "symbol:log", Kind: parse.KindSymbol, Name: "log", Path: "a.js"},
+	}
+	edges := []graph.Edge{
+		{From: "file:a.js", To: "func:a.js#alpha", Type: parse.EdgeContains},
+		{From: "file:b.js", To: "func:b.js#beta", Type: parse.EdgeContains},
+		{From: "func:a.js#alpha", To: "symbol:log", Type: parse.EdgeCalls},
+		{From: "func:b.js#beta", To: "symbol:log", Type: parse.EdgeCalls},
+	}
+	files := report.ImportantFiles(nodes, edges, 10)
+	byID := map[graph.NodeID]report.Hub{}
+	for _, h := range files {
+		byID[h.ID] = h
+	}
+	if byID["file:a.js"].Degree != 1 {
+		t.Fatalf("a.js want degree 1, got %+v", byID["file:a.js"])
+	}
+	if byID["file:b.js"].Degree != 1 {
+		t.Fatalf("b.js want degree 1, got %+v", byID["file:b.js"])
+	}
+
+	// Resolved cross-file call still credits both files once.
+	nodes2 := []graph.Node{
+		{ID: "file:a.js", Kind: parse.KindFile, Name: "a.js", Path: "a.js"},
+		{ID: "func:a.js#alpha", Kind: parse.KindFunction, Name: "alpha", Path: "a.js"},
+		{ID: "file:b.js", Kind: parse.KindFile, Name: "b.js", Path: "b.js"},
+		{ID: "func:b.js#beta", Kind: parse.KindFunction, Name: "beta", Path: "b.js"},
+	}
+	edges2 := []graph.Edge{
+		{From: "file:a.js", To: "func:a.js#alpha", Type: parse.EdgeContains},
+		{From: "file:b.js", To: "func:b.js#beta", Type: parse.EdgeContains},
+		{From: "func:a.js#alpha", To: "func:b.js#beta", Type: parse.EdgeCalls},
+	}
+	files2 := report.ImportantFiles(nodes2, edges2, 10)
+	by2 := map[graph.NodeID]report.Hub{}
+	for _, h := range files2 {
+		by2[h.ID] = h
+	}
+	if by2["file:a.js"].Degree != 1 {
+		t.Fatalf("cross-file From a.js want 1, got %+v", by2["file:a.js"])
+	}
+	if by2["file:b.js"].Degree != 1 {
+		t.Fatalf("cross-file To b.js want 1, got %+v", by2["file:b.js"])
+	}
+
+	// Intra-file edge credits once.
+	nodes3 := []graph.Node{
+		{ID: "file:a.js", Kind: parse.KindFile, Name: "a.js", Path: "a.js"},
+		{ID: "func:a.js#alpha", Kind: parse.KindFunction, Name: "alpha", Path: "a.js"},
+		{ID: "func:a.js#helper", Kind: parse.KindFunction, Name: "helper", Path: "a.js"},
+	}
+	edges3 := []graph.Edge{
+		{From: "file:a.js", To: "func:a.js#alpha", Type: parse.EdgeContains},
+		{From: "file:a.js", To: "func:a.js#helper", Type: parse.EdgeContains},
+		{From: "func:a.js#alpha", To: "func:a.js#helper", Type: parse.EdgeCalls},
+	}
+	files3 := report.ImportantFiles(nodes3, edges3, 10)
+	if len(files3) != 1 || files3[0].Degree != 1 {
+		t.Fatalf("intra-file want single credit degree 1, got %+v", files3)
 	}
 }
 

@@ -21,6 +21,7 @@ type Hub struct {
 // ImportantFiles ranks file nodes by imports/calls activity attributed to them.
 // Parsers attach imports to modules/packages and calls to functions/methods, so
 // those edges are rolled up to the owning file via Path / contains ownership.
+// Unresolved KindSymbol / KindImport targets never receive To-side credit.
 func ImportantFiles(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
 	byID := map[graph.NodeID]graph.Node{}
 	for _, n := range nodes {
@@ -38,12 +39,26 @@ func ImportantFiles(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
 			deg[fromFile]++
 		}
 		if hasTo && (!hasFrom || fromFile != toFile) {
-			deg[toFile]++
+			if to, ok := byID[e.To]; ok && isResolvedDefinition(to) {
+				deg[toFile]++
+			}
 		}
 	}
 	return hubsFromDegree(byID, deg, limit, func(n graph.Node) bool {
 		return n.Kind == parse.KindFile
 	})
+}
+
+// isResolvedDefinition reports whether a node is a real definition that may
+// own file credit on the To side of imports/calls. KindSymbol and KindImport
+// are unresolved/occurrence placeholders and must not.
+func isResolvedDefinition(n graph.Node) bool {
+	switch n.Kind {
+	case parse.KindSymbol, parse.KindImport:
+		return false
+	default:
+		return true
+	}
 }
 
 // ImportantSymbols ranks resolved symbols (functions, methods, types, contracts)
@@ -149,9 +164,29 @@ func TopImports(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
 	return hubs
 }
 
-// NormalizeImportTarget groups import specs for ranking.
-// Relative paths are resolved against the importing file; bare package names
-// are kept (scoped npm packages reduced to @scope/name).
+// languageFromPath maps a source file extension to a language id used for
+// import-target normalization. Unknown extensions return "".
+func languageFromPath(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".go":
+		return "go"
+	case ".js", ".mjs", ".cjs", ".jsx":
+		return "javascript"
+	case ".ts", ".tsx":
+		return "typescript"
+	case ".py":
+		return "python"
+	case ".swift":
+		return "swift"
+	default:
+		return ""
+	}
+}
+
+// NormalizeImportTarget groups import specs for ranking using the importer's
+// language. Relative specs are resolved against the importing file directory.
+// Go keeps full package paths; JS/TS apply npm scoped/subpath rules; Python
+// keeps dotted modules as-is. Unknown languages are conservative (no npm truncation).
 func NormalizeImportTarget(importerPath, spec string) string {
 	spec = strings.TrimSpace(spec)
 	spec = strings.Trim(spec, `"'`)
@@ -165,26 +200,39 @@ func NormalizeImportTarget(importerPath, spec string) string {
 		}
 		return filepath.ToSlash(filepath.Clean(filepath.Join(base, spec)))
 	}
-	if strings.HasPrefix(spec, "/") {
-		return filepath.ToSlash(filepath.Clean(spec))
-	}
-	// Scoped package: @org/pkg[/...]
-	if strings.HasPrefix(spec, "@") {
-		parts := strings.Split(spec, "/")
-		if len(parts) >= 2 {
-			return parts[0] + "/" + parts[1]
+
+	lang := languageFromPath(importerPath)
+	switch lang {
+	case "go":
+		// Never truncate on / — net/http stays net/http.
+		return spec
+	case "javascript", "typescript":
+		if strings.HasPrefix(spec, "/") {
+			return filepath.ToSlash(filepath.Clean(spec))
+		}
+		// Scoped package: @org/pkg[/...]
+		if strings.HasPrefix(spec, "@") {
+			parts := strings.Split(spec, "/")
+			if len(parts) >= 2 {
+				return parts[0] + "/" + parts[1]
+			}
+			return spec
+		}
+		// npm-style subpath: lodash/fp → lodash
+		if i := strings.IndexByte(spec, '/'); i > 0 {
+			return spec[:i]
+		}
+		return spec
+	case "python":
+		// Dotted modules (os.path) stay as-is; relative already handled above.
+		return spec
+	default:
+		// Conservative: go-like host paths keep full; otherwise no npm truncation.
+		if strings.HasPrefix(spec, "/") {
+			return filepath.ToSlash(filepath.Clean(spec))
 		}
 		return spec
 	}
-	// Go-style module paths keep the full import path.
-	if strings.Contains(spec, ".") && strings.Contains(spec, "/") {
-		return spec
-	}
-	// npm-style subpath: lodash/fp → lodash
-	if i := strings.IndexByte(spec, '/'); i > 0 {
-		return spec[:i]
-	}
-	return spec
 }
 
 // fileOwners maps each node ID to its owning file node ID.
@@ -227,7 +275,9 @@ func fileOwners(nodes []graph.Node, edges []graph.Edge) map[graph.NodeID]graph.N
 		if !ok {
 			return "", false
 		}
-		if n.Path != "" {
+		// Path on KindSymbol / KindImport is occurrence metadata, not ownership.
+		// Those kinds only inherit a file via the EdgeContains parent chain.
+		if n.Path != "" && n.Kind != parse.KindSymbol && n.Kind != parse.KindImport {
 			if fid, ok := filesByPath[n.Path]; ok {
 				owner[id] = fid
 				return fid, true

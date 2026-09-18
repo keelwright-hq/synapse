@@ -121,9 +121,10 @@ func Bind(opts Options) error {
 		}
 		seen[key] = struct{}{}
 
-		var edgeProps map[string]string
+		// Heuristic binder matches are inferred, never extracted AST facts.
+		edgeProps := map[string]string{"provenance": "INFERRED"}
 		if match != "" {
-			edgeProps = map[string]string{"match": match}
+			edgeProps["match"] = match
 		}
 
 		if fromRepo == toRepo {
