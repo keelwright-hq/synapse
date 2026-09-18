@@ -49,7 +49,7 @@ Download versioned archives for macOS (arm64 / amd64) and Linux (amd64 / arm64) 
 [GitHub Releases](https://github.com/keelwright-hq/synapse/releases). Unpack the archive
 for your OS/arch, place `synapse` on your `PATH`, then run `synapse version`.
 
-### Homebrew
+### Homebrew (macOS only)
 
 ```bash
 brew install keelwright-hq/synapse/synapse
@@ -71,6 +71,7 @@ brew uninstall synapse
 
 Tap repo: [keelwright-hq/homebrew-synapse](https://github.com/keelwright-hq/homebrew-synapse)
 (prebuilt macOS binaries from GitHub Releases; not compiled from source during install).
+Linux Homebrew is not supported — use `go install` or a release tarball above.
 
 
 ### Development (from source)
