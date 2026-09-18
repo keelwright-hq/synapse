@@ -1,0 +1,133 @@
+{
+  "path": "java/sample/Overloads.java",
+  "lang": "java",
+  "nodes": [
+    {
+      "id": "file:java/sample/Overloads.java",
+      "kind": "file",
+      "name": "java/sample/Overloads.java",
+      "path": "java/sample/Overloads.java"
+    },
+    {
+      "id": "method:java/sample/Overloads.java#Overloads.Overloads()",
+      "kind": "method",
+      "name": "Overloads",
+      "path": "java/sample/Overloads.java",
+      "props": {
+        "end_line": "4",
+        "start_line": "4"
+      }
+    },
+    {
+      "id": "method:java/sample/Overloads.java#Overloads.Overloads(String)",
+      "kind": "method",
+      "name": "Overloads",
+      "path": "java/sample/Overloads.java",
+      "props": {
+        "end_line": "6",
+        "start_line": "6"
+      }
+    },
+    {
+      "id": "method:java/sample/Overloads.java#Overloads.overloaded(String)",
+      "kind": "method",
+      "name": "overloaded",
+      "path": "java/sample/Overloads.java",
+      "props": {
+        "end_line": "12",
+        "start_line": "12"
+      }
+    },
+    {
+      "id": "method:java/sample/Overloads.java#Overloads.overloaded(int)",
+      "kind": "method",
+      "name": "overloaded",
+      "path": "java/sample/Overloads.java",
+      "props": {
+        "end_line": "10",
+        "start_line": "8"
+      }
+    },
+    {
+      "id": "module:java/sample/Overloads.java",
+      "kind": "module",
+      "name": "Overloads",
+      "path": "java/sample/Overloads.java"
+    },
+    {
+      "id": "package:java/sample/Overloads.java#demo",
+      "kind": "package",
+      "name": "demo",
+      "path": "java/sample/Overloads.java"
+    },
+    {
+      "id": "symbol:overloaded",
+      "kind": "symbol",
+      "name": "overloaded",
+      "path": "java/sample/Overloads.java"
+    },
+    {
+      "id": "symbol:valueOf",
+      "kind": "symbol",
+      "name": "valueOf",
+      "path": "java/sample/Overloads.java"
+    },
+    {
+      "id": "type:java/sample/Overloads.java#Overloads",
+      "kind": "type",
+      "name": "Overloads",
+      "path": "java/sample/Overloads.java",
+      "props": {
+        "end_line": "13",
+        "start_line": "3"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:java/sample/Overloads.java",
+      "to": "module:java/sample/Overloads.java",
+      "type": "contains"
+    },
+    {
+      "from": "method:java/sample/Overloads.java#Overloads.overloaded(int)",
+      "to": "symbol:overloaded",
+      "type": "calls"
+    },
+    {
+      "from": "method:java/sample/Overloads.java#Overloads.overloaded(int)",
+      "to": "symbol:valueOf",
+      "type": "calls"
+    },
+    {
+      "from": "module:java/sample/Overloads.java",
+      "to": "method:java/sample/Overloads.java#Overloads.Overloads()",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Overloads.java",
+      "to": "method:java/sample/Overloads.java#Overloads.Overloads(String)",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Overloads.java",
+      "to": "method:java/sample/Overloads.java#Overloads.overloaded(String)",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Overloads.java",
+      "to": "method:java/sample/Overloads.java#Overloads.overloaded(int)",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Overloads.java",
+      "to": "package:java/sample/Overloads.java#demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Overloads.java",
+      "to": "type:java/sample/Overloads.java#Overloads",
+      "type": "contains"
+    }
+  ]
+}

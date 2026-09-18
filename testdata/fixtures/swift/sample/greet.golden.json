@@ -41,15 +41,15 @@
       "path": "swift/sample/greet.swift"
     },
     {
-      "id": "symbol:.greet",
-      "kind": "symbol",
-      "name": ".greet",
-      "path": "swift/sample/greet.swift"
-    },
-    {
       "id": "symbol:Greeter",
       "kind": "symbol",
       "name": "Greeter",
+      "path": "swift/sample/greet.swift"
+    },
+    {
+      "id": "symbol:greet",
+      "kind": "symbol",
+      "name": "greet",
       "path": "swift/sample/greet.swift"
     },
     {
@@ -87,12 +87,12 @@
     },
     {
       "from": "func:swift/sample/greet.swift#helper",
-      "to": "symbol:.greet",
+      "to": "symbol:Greeter",
       "type": "calls"
     },
     {
       "from": "func:swift/sample/greet.swift#helper",
-      "to": "symbol:Greeter",
+      "to": "symbol:greet",
       "type": "calls"
     },
     {

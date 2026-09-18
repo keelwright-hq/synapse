@@ -33,7 +33,10 @@ func TestRegistryRouting(t *testing.T) {
 		"g.cjs":   "javascript",
 		"h.py":    "python",
 		"i.SWIFT": "swift",
-		"j.txt":   "",
+		"j.java":  "java",
+		"k.KT":    "kotlin",
+		"l.kts":   "kotlin",
+		"m.txt":   "",
 		"noext":   "",
 	}
 	for path, want := range cases {
@@ -146,6 +149,32 @@ func TestParseSmokeJSPythonSwift(t *testing.T) {
 	assertHasKind(t, res, parse.KindType, "Greeter")
 	assertHasKind(t, res, parse.KindMethod, "greet")
 	assertHasKind(t, res, parse.KindImport, "Foundation")
+
+	javaPath := filepath.Join(root, "java", "sample", "Greeter.java")
+	res, err = parse.ParseFile(reg, javaPath)
+	if err != nil {
+		t.Fatalf("parse java: %v", err)
+	}
+	if res.Lang != "java" {
+		t.Fatalf("want java, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindMethod, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "java.util.List")
+
+	kotlinPath := filepath.Join(root, "kotlin", "sample", "Greeter.kt")
+	res, err = parse.ParseFile(reg, kotlinPath)
+	if err != nil {
+		t.Fatalf("parse kotlin: %v", err)
+	}
+	if res.Lang != "kotlin" {
+		t.Fatalf("want kotlin, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "java.util.List")
 }
 
 func TestGoldenFixtures(t *testing.T) {
@@ -162,6 +191,10 @@ func TestGoldenFixtures(t *testing.T) {
 		{filepath.Join(root, "jsx", "sample", "app.jsx"), filepath.Join(root, "jsx", "sample", "app.golden.json")},
 		{filepath.Join(root, "python", "sample", "greet.py"), filepath.Join(root, "python", "sample", "greet.golden.json")},
 		{filepath.Join(root, "swift", "sample", "greet.swift"), filepath.Join(root, "swift", "sample", "greet.golden.json")},
+		{filepath.Join(root, "java", "sample", "Greeter.java"), filepath.Join(root, "java", "sample", "Greeter.golden.json")},
+		{filepath.Join(root, "kotlin", "sample", "Greeter.kt"), filepath.Join(root, "kotlin", "sample", "Greeter.golden.json")},
+		{filepath.Join(root, "java", "sample", "Overloads.java"), filepath.Join(root, "java", "sample", "Overloads.golden.json")},
+		{filepath.Join(root, "kotlin", "sample", "Overloads.kt"), filepath.Join(root, "kotlin", "sample", "Overloads.golden.json")},
 	}
 
 	for _, tc := range cases {
@@ -293,6 +326,59 @@ export class Beta {
 			t.Fatalf("missing method ID containing %q in %v", want, methods)
 		}
 	}
+}
+
+func TestJavaKotlinOverloadIDsDistinct(t *testing.T) {
+	root := fixtureRoot(t)
+	reg := parse.NewRegistry()
+
+	javaPath := filepath.Join(root, "java", "sample", "Overloads.java")
+	res, err := parse.ParseFile(reg, javaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDistinctIDs(t, res, parse.KindMethod, "overloaded", 2)
+	assertDistinctIDs(t, res, parse.KindMethod, "Overloads", 2)
+	assertIDContains(t, res, parse.KindMethod, "overloaded(int)")
+	assertIDContains(t, res, parse.KindMethod, "overloaded(String)")
+	assertIDContains(t, res, parse.KindMethod, "Overloads()")
+	assertIDContains(t, res, parse.KindMethod, "Overloads(String)")
+
+	ktPath := filepath.Join(root, "kotlin", "sample", "Overloads.kt")
+	res, err = parse.ParseFile(reg, ktPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDistinctIDs(t, res, parse.KindMethod, "overloaded", 2)
+	assertDistinctIDs(t, res, parse.KindMethod, "constructor", 2)
+	assertDistinctIDs(t, res, parse.KindFunction, "overloaded", 2)
+	assertIDContains(t, res, parse.KindMethod, "overloaded(Int)")
+	assertIDContains(t, res, parse.KindMethod, "overloaded(String)")
+	assertIDContains(t, res, parse.KindFunction, "overloaded(Int)")
+	assertIDContains(t, res, parse.KindFunction, "overloaded(String)")
+}
+
+func assertDistinctIDs(t *testing.T, res parse.Result, kind, name string, want int) {
+	t.Helper()
+	seen := map[graph.NodeID]struct{}{}
+	for _, n := range res.Nodes {
+		if n.Kind == kind && n.Name == name {
+			seen[n.ID] = struct{}{}
+		}
+	}
+	if len(seen) != want {
+		t.Fatalf("%s %q: want %d distinct IDs, got %d: %v", kind, name, want, len(seen), seen)
+	}
+}
+
+func assertIDContains(t *testing.T, res parse.Result, kind, substr string) {
+	t.Helper()
+	for _, n := range res.Nodes {
+		if n.Kind == kind && strings.Contains(string(n.ID), substr) {
+			return
+		}
+	}
+	t.Fatalf("missing %s ID containing %q in %+v", kind, substr, res.Nodes)
 }
 
 func TestNestedPythonFunctionNotMethod(t *testing.T) {
