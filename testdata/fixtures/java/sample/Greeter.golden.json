@@ -1,0 +1,114 @@
+{
+  "path": "java/sample/Greeter.java",
+  "lang": "java",
+  "nodes": [
+    {
+      "id": "file:java/sample/Greeter.java",
+      "kind": "file",
+      "name": "java/sample/Greeter.java",
+      "path": "java/sample/Greeter.java"
+    },
+    {
+      "id": "import:java/sample/Greeter.java#java.util.List",
+      "kind": "import",
+      "name": "java.util.List",
+      "path": "java/sample/Greeter.java"
+    },
+    {
+      "id": "method:java/sample/Greeter.java#Greeter.greet",
+      "kind": "method",
+      "name": "greet",
+      "path": "java/sample/Greeter.java",
+      "props": {
+        "end_line": "9",
+        "start_line": "6"
+      }
+    },
+    {
+      "id": "method:java/sample/Greeter.java#Greeter.helper",
+      "kind": "method",
+      "name": "helper",
+      "path": "java/sample/Greeter.java",
+      "props": {
+        "end_line": "12",
+        "start_line": "11"
+      }
+    },
+    {
+      "id": "module:java/sample/Greeter.java",
+      "kind": "module",
+      "name": "Greeter",
+      "path": "java/sample/Greeter.java"
+    },
+    {
+      "id": "package:java/sample/Greeter.java#demo",
+      "kind": "package",
+      "name": "demo",
+      "path": "java/sample/Greeter.java"
+    },
+    {
+      "id": "symbol:helper",
+      "kind": "symbol",
+      "name": "helper",
+      "path": "java/sample/Greeter.java"
+    },
+    {
+      "id": "symbol:println",
+      "kind": "symbol",
+      "name": "println",
+      "path": "java/sample/Greeter.java"
+    },
+    {
+      "id": "type:java/sample/Greeter.java#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "java/sample/Greeter.java",
+      "props": {
+        "end_line": "13",
+        "start_line": "5"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:java/sample/Greeter.java",
+      "to": "module:java/sample/Greeter.java",
+      "type": "contains"
+    },
+    {
+      "from": "method:java/sample/Greeter.java#Greeter.greet",
+      "to": "symbol:helper",
+      "type": "calls"
+    },
+    {
+      "from": "method:java/sample/Greeter.java#Greeter.greet",
+      "to": "symbol:println",
+      "type": "calls"
+    },
+    {
+      "from": "module:java/sample/Greeter.java",
+      "to": "import:java/sample/Greeter.java#java.util.List",
+      "type": "imports"
+    },
+    {
+      "from": "module:java/sample/Greeter.java",
+      "to": "method:java/sample/Greeter.java#Greeter.greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Greeter.java",
+      "to": "method:java/sample/Greeter.java#Greeter.helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Greeter.java",
+      "to": "package:java/sample/Greeter.java#demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:java/sample/Greeter.java",
+      "to": "type:java/sample/Greeter.java#Greeter",
+      "type": "contains"
+    }
+  ]
+}

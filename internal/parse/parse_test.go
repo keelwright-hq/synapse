@@ -33,7 +33,10 @@ func TestRegistryRouting(t *testing.T) {
 		"g.cjs":   "javascript",
 		"h.py":    "python",
 		"i.SWIFT": "swift",
-		"j.txt":   "",
+		"j.java":  "java",
+		"k.KT":    "kotlin",
+		"l.kts":   "kotlin",
+		"m.txt":   "",
 		"noext":   "",
 	}
 	for path, want := range cases {
@@ -146,6 +149,32 @@ func TestParseSmokeJSPythonSwift(t *testing.T) {
 	assertHasKind(t, res, parse.KindType, "Greeter")
 	assertHasKind(t, res, parse.KindMethod, "greet")
 	assertHasKind(t, res, parse.KindImport, "Foundation")
+
+	javaPath := filepath.Join(root, "java", "sample", "Greeter.java")
+	res, err = parse.ParseFile(reg, javaPath)
+	if err != nil {
+		t.Fatalf("parse java: %v", err)
+	}
+	if res.Lang != "java" {
+		t.Fatalf("want java, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindMethod, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "java.util.List")
+
+	kotlinPath := filepath.Join(root, "kotlin", "sample", "Greeter.kt")
+	res, err = parse.ParseFile(reg, kotlinPath)
+	if err != nil {
+		t.Fatalf("parse kotlin: %v", err)
+	}
+	if res.Lang != "kotlin" {
+		t.Fatalf("want kotlin, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "java.util.List")
 }
 
 func TestGoldenFixtures(t *testing.T) {
@@ -162,6 +191,8 @@ func TestGoldenFixtures(t *testing.T) {
 		{filepath.Join(root, "jsx", "sample", "app.jsx"), filepath.Join(root, "jsx", "sample", "app.golden.json")},
 		{filepath.Join(root, "python", "sample", "greet.py"), filepath.Join(root, "python", "sample", "greet.golden.json")},
 		{filepath.Join(root, "swift", "sample", "greet.swift"), filepath.Join(root, "swift", "sample", "greet.golden.json")},
+		{filepath.Join(root, "java", "sample", "Greeter.java"), filepath.Join(root, "java", "sample", "Greeter.golden.json")},
+		{filepath.Join(root, "kotlin", "sample", "Greeter.kt"), filepath.Join(root, "kotlin", "sample", "Greeter.golden.json")},
 	}
 
 	for _, tc := range cases {

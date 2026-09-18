@@ -178,6 +178,10 @@ func languageFromPath(path string) string {
 		return "python"
 	case ".swift":
 		return "swift"
+	case ".java":
+		return "java"
+	case ".kt", ".kts":
+		return "kotlin"
 	default:
 		return ""
 	}

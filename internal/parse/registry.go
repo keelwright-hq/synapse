@@ -6,9 +6,11 @@ import (
 	"strings"
 	"sync"
 
+	tree_sitter_kotlin "github.com/keelwright-hq/synapse/third_party/tree-sitter-kotlin/bindings/go"
 	tree_sitter_swift "github.com/keelwright-hq/synapse/third_party/tree-sitter-swift/bindings/go"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	tree_sitter_java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
 	tree_sitter_typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
@@ -30,7 +32,7 @@ type Registry struct {
 	byExt map[string]*Language
 }
 
-// NewRegistry returns a registry with Go, JS/JSX, TypeScript/TSX, Python, and Swift.
+// NewRegistry returns a registry with Go, JS/JSX, TypeScript/TSX, Python, Swift, Java, and Kotlin.
 func NewRegistry() *Registry {
 	r := &Registry{byExt: make(map[string]*Language)}
 
@@ -69,6 +71,16 @@ func NewRegistry() *Registry {
 		Language: tree_sitter.NewLanguage(tree_sitter_swift.Language()),
 		Extract:  extractSwift,
 	}
+	javaLang := &Language{
+		Name:     "java",
+		Language: tree_sitter.NewLanguage(tree_sitter_java.Language()),
+		Extract:  extractJava,
+	}
+	kotlinLang := &Language{
+		Name:     "kotlin",
+		Language: tree_sitter.NewLanguage(tree_sitter_kotlin.Language()),
+		Extract:  extractKotlin,
+	}
 
 	r.Register(".go", goLang)
 	for _, ext := range []string{".js", ".mjs", ".cjs"} {
@@ -79,6 +91,9 @@ func NewRegistry() *Registry {
 	r.Register(".tsx", tsxLang)
 	r.Register(".py", pyLang)
 	r.Register(".swift", swiftLang)
+	r.Register(".java", javaLang)
+	r.Register(".kt", kotlinLang)
+	r.Register(".kts", kotlinLang)
 	return r
 }
 

@@ -41,7 +41,7 @@ Each artifact is built with `CGO_ENABLED=1` and version ldflags (`synapse versio
 Homebrew install uses **prebuilt release binaries** (see README); it does not compile
 tree-sitter grammars during `brew install`.
 
-## Supported languages (batch 1)
+## Supported languages
 
 Unknown extensions are **not** parse errors: `Registry.Lookup` returns nil, `ParseSource` sets `Skipped`, and the walker/indexer omit the file.
 
@@ -56,9 +56,13 @@ JS/JSX, Python, and Swift extractors are **best-effort** (file + module, declara
 | `.tsx` | `tsx` | same package `LanguageTSX()` | `extractTypeScript` | Existing TSX extractor |
 | `.py` | `python` | [`github.com/tree-sitter/tree-sitter-python`](https://github.com/tree-sitter/tree-sitter-python) | `extractPython` | Best-effort: module, function/method, class as type, `import`/`from`, calls |
 | `.swift` | `swift` | vendored [`tree-sitter-swift@0.7.1`](https://github.com/alex-pinkus/tree-sitter-swift) C sources under [`third_party/tree-sitter-swift`](../third_party/tree-sitter-swift) | `extractSwift` | Best-effort: module, function/method, class/struct/enum/protocol/actor as type, import, calls |
+| `.java` | `java` | [`github.com/tree-sitter/tree-sitter-java`](https://github.com/tree-sitter/tree-sitter-java) | `extractJava` | Best-effort: module, package, class/interface/enum/record as type, method/constructor, import, calls |
+| `.kt` `.kts` | `kotlin` | vendored [`fwcd/tree-sitter-kotlin@0.3.2`](https://github.com/fwcd/tree-sitter-kotlin) C sources under [`third_party/tree-sitter-kotlin`](../third_party/tree-sitter-kotlin) | `extractKotlin` | Best-effort: module, package, class/object as type, function/method, import, calls |
 
 Swift is vendored because the Go module at `github.com/alex-pinkus/tree-sitter-swift` does not publish generated `src/parser.c` (upstream gitignores it). We compile the npm-published `parser.c` + `scanner.c`; we do not author a scanner.
 
+Kotlin is vendored because [`fwcd/tree-sitter-kotlin`](https://github.com/fwcd/tree-sitter-kotlin) ships C sources but no Go bindings. We compile vendored `parser.c` + `scanner.c`.
+
 ## Not registered yet
 
-Priority 2 / 3 from [SYN-95](https://keelwright.atlassian.net/browse/SYN-95): Java, Kotlin, Ruby, PHP, C, C++, C#, HTML, EJS, and similar. Those files stay skipped until a later batch.
+Priority 2 / 3 from [SYN-95](https://keelwright.atlassian.net/browse/SYN-95): Ruby, PHP, C, C++, C#, HTML, EJS, and similar. Those files stay skipped until a later batch.
