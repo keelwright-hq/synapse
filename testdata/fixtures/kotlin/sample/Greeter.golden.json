@@ -9,7 +9,7 @@
       "path": "kotlin/sample/Greeter.kt"
     },
     {
-      "id": "func:kotlin/sample/Greeter.kt#helper",
+      "id": "func:kotlin/sample/Greeter.kt#helper()",
       "kind": "function",
       "name": "helper",
       "path": "kotlin/sample/Greeter.kt",
@@ -25,7 +25,7 @@
       "path": "kotlin/sample/Greeter.kt"
     },
     {
-      "id": "method:kotlin/sample/Greeter.kt#Greeter.greet",
+      "id": "method:kotlin/sample/Greeter.kt#Greeter.greet(String)",
       "kind": "method",
       "name": "greet",
       "path": "kotlin/sample/Greeter.kt",
@@ -76,18 +76,18 @@
       "type": "contains"
     },
     {
-      "from": "method:kotlin/sample/Greeter.kt#Greeter.greet",
+      "from": "method:kotlin/sample/Greeter.kt#Greeter.greet(String)",
       "to": "symbol:helper",
       "type": "calls"
     },
     {
-      "from": "method:kotlin/sample/Greeter.kt#Greeter.greet",
+      "from": "method:kotlin/sample/Greeter.kt#Greeter.greet(String)",
       "to": "symbol:println",
       "type": "calls"
     },
     {
       "from": "module:kotlin/sample/Greeter.kt",
-      "to": "func:kotlin/sample/Greeter.kt#helper",
+      "to": "func:kotlin/sample/Greeter.kt#helper()",
       "type": "contains"
     },
     {
@@ -97,7 +97,7 @@
     },
     {
       "from": "module:kotlin/sample/Greeter.kt",
-      "to": "method:kotlin/sample/Greeter.kt#Greeter.greet",
+      "to": "method:kotlin/sample/Greeter.kt#Greeter.greet(String)",
       "type": "contains"
     },
     {

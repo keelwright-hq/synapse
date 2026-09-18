@@ -56,8 +56,8 @@ JS/JSX, Python, and Swift extractors are **best-effort** (file + module, declara
 | `.tsx` | `tsx` | same package `LanguageTSX()` | `extractTypeScript` | Existing TSX extractor |
 | `.py` | `python` | [`github.com/tree-sitter/tree-sitter-python`](https://github.com/tree-sitter/tree-sitter-python) | `extractPython` | Best-effort: module, function/method, class as type, `import`/`from`, calls |
 | `.swift` | `swift` | vendored [`tree-sitter-swift@0.7.1`](https://github.com/alex-pinkus/tree-sitter-swift) C sources under [`third_party/tree-sitter-swift`](../third_party/tree-sitter-swift) | `extractSwift` | Best-effort: module, function/method, class/struct/enum/protocol/actor as type, import, calls |
-| `.java` | `java` | [`github.com/tree-sitter/tree-sitter-java`](https://github.com/tree-sitter/tree-sitter-java) | `extractJava` | Best-effort: module, package, class/interface/enum/record as type, method/constructor, import, calls |
-| `.kt` `.kts` | `kotlin` | vendored [`fwcd/tree-sitter-kotlin@0.3.2`](https://github.com/fwcd/tree-sitter-kotlin) C sources under [`third_party/tree-sitter-kotlin`](../third_party/tree-sitter-kotlin) | `extractKotlin` | Best-effort: module, package, class/object as type, function/method, import, calls |
+| `.java` | `java` | [`github.com/tree-sitter/tree-sitter-java`](https://github.com/tree-sitter/tree-sitter-java) | `extractJava` | Best-effort: module, package, class/interface/enum/record as type, method/constructor (IDs include param types so overloads stay distinct), import, calls |
+| `.kt` `.kts` | `kotlin` | vendored [`fwcd/tree-sitter-kotlin@0.3.2`](https://github.com/fwcd/tree-sitter-kotlin) C sources under [`third_party/tree-sitter-kotlin`](../third_party/tree-sitter-kotlin) | `extractKotlin` | Best-effort: module, package, class/object as type, function/method (IDs include param types so overloads stay distinct), import, calls |
 
 Swift is vendored because the Go module at `github.com/alex-pinkus/tree-sitter-swift` does not publish generated `src/parser.c` (upstream gitignores it). We compile the npm-published `parser.c` + `scanner.c`; we do not author a scanner.
 

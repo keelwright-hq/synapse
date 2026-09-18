@@ -1,0 +1,163 @@
+{
+  "path": "kotlin/sample/Overloads.kt",
+  "lang": "kotlin",
+  "nodes": [
+    {
+      "id": "file:kotlin/sample/Overloads.kt",
+      "kind": "file",
+      "name": "kotlin/sample/Overloads.kt",
+      "path": "kotlin/sample/Overloads.kt"
+    },
+    {
+      "id": "func:kotlin/sample/Overloads.kt#overloaded(Int)",
+      "kind": "function",
+      "name": "overloaded",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "14",
+        "start_line": "14"
+      }
+    },
+    {
+      "id": "func:kotlin/sample/Overloads.kt#overloaded(String)",
+      "kind": "function",
+      "name": "overloaded",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "15",
+        "start_line": "15"
+      }
+    },
+    {
+      "id": "method:kotlin/sample/Overloads.kt#Overloads.constructor()",
+      "kind": "method",
+      "name": "constructor",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "4",
+        "start_line": "4"
+      }
+    },
+    {
+      "id": "method:kotlin/sample/Overloads.kt#Overloads.constructor(String)",
+      "kind": "method",
+      "name": "constructor",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "5",
+        "start_line": "5"
+      }
+    },
+    {
+      "id": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(Int)",
+      "kind": "method",
+      "name": "overloaded",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "9",
+        "start_line": "7"
+      }
+    },
+    {
+      "id": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(String)",
+      "kind": "method",
+      "name": "overloaded",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "11",
+        "start_line": "11"
+      }
+    },
+    {
+      "id": "module:kotlin/sample/Overloads.kt",
+      "kind": "module",
+      "name": "Overloads",
+      "path": "kotlin/sample/Overloads.kt"
+    },
+    {
+      "id": "package:kotlin/sample/Overloads.kt#demo",
+      "kind": "package",
+      "name": "demo",
+      "path": "kotlin/sample/Overloads.kt"
+    },
+    {
+      "id": "symbol:overloaded",
+      "kind": "symbol",
+      "name": "overloaded",
+      "path": "kotlin/sample/Overloads.kt"
+    },
+    {
+      "id": "symbol:toString",
+      "kind": "symbol",
+      "name": "toString",
+      "path": "kotlin/sample/Overloads.kt"
+    },
+    {
+      "id": "type:kotlin/sample/Overloads.kt#Overloads",
+      "kind": "type",
+      "name": "Overloads",
+      "path": "kotlin/sample/Overloads.kt",
+      "props": {
+        "end_line": "12",
+        "start_line": "3"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:kotlin/sample/Overloads.kt",
+      "to": "module:kotlin/sample/Overloads.kt",
+      "type": "contains"
+    },
+    {
+      "from": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(Int)",
+      "to": "symbol:overloaded",
+      "type": "calls"
+    },
+    {
+      "from": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(Int)",
+      "to": "symbol:toString",
+      "type": "calls"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "func:kotlin/sample/Overloads.kt#overloaded(Int)",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "func:kotlin/sample/Overloads.kt#overloaded(String)",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "method:kotlin/sample/Overloads.kt#Overloads.constructor()",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "method:kotlin/sample/Overloads.kt#Overloads.constructor(String)",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(Int)",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(String)",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "package:kotlin/sample/Overloads.kt#demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:kotlin/sample/Overloads.kt",
+      "to": "type:kotlin/sample/Overloads.kt#Overloads",
+      "type": "contains"
+    }
+  ]
+}

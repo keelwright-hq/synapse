@@ -15,7 +15,7 @@
       "path": "java/sample/Greeter.java"
     },
     {
-      "id": "method:java/sample/Greeter.java#Greeter.greet",
+      "id": "method:java/sample/Greeter.java#Greeter.greet(String)",
       "kind": "method",
       "name": "greet",
       "path": "java/sample/Greeter.java",
@@ -25,7 +25,7 @@
       }
     },
     {
-      "id": "method:java/sample/Greeter.java#Greeter.helper",
+      "id": "method:java/sample/Greeter.java#Greeter.helper()",
       "kind": "method",
       "name": "helper",
       "path": "java/sample/Greeter.java",
@@ -76,12 +76,12 @@
       "type": "contains"
     },
     {
-      "from": "method:java/sample/Greeter.java#Greeter.greet",
+      "from": "method:java/sample/Greeter.java#Greeter.greet(String)",
       "to": "symbol:helper",
       "type": "calls"
     },
     {
-      "from": "method:java/sample/Greeter.java#Greeter.greet",
+      "from": "method:java/sample/Greeter.java#Greeter.greet(String)",
       "to": "symbol:println",
       "type": "calls"
     },
@@ -92,12 +92,12 @@
     },
     {
       "from": "module:java/sample/Greeter.java",
-      "to": "method:java/sample/Greeter.java#Greeter.greet",
+      "to": "method:java/sample/Greeter.java#Greeter.greet(String)",
       "type": "contains"
     },
     {
       "from": "module:java/sample/Greeter.java",
-      "to": "method:java/sample/Greeter.java#Greeter.helper",
+      "to": "method:java/sample/Greeter.java#Greeter.helper()",
       "type": "contains"
     },
     {

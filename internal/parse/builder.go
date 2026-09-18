@@ -86,8 +86,20 @@ func funcID(path, name string) graph.NodeID {
 	return graph.NodeID(fmt.Sprintf("func:%s#%s", path, name))
 }
 
+// funcIDWithParams identifies a function including a normalized parameter
+// signature so JVM overloads do not collapse (e.g. overloaded(Int) vs overloaded(String)).
+func funcIDWithParams(path, name, paramSig string) graph.NodeID {
+	return graph.NodeID(fmt.Sprintf("func:%s#%s(%s)", path, name, paramSig))
+}
+
 func methodID(path, recv, name string) graph.NodeID {
 	return graph.NodeID(fmt.Sprintf("method:%s#%s.%s", path, recv, name))
+}
+
+// methodIDWithParams identifies a method including a normalized parameter
+// signature so JVM overloads and constructors stay distinct.
+func methodIDWithParams(path, recv, name, paramSig string) graph.NodeID {
+	return graph.NodeID(fmt.Sprintf("method:%s#%s.%s(%s)", path, recv, name, paramSig))
 }
 
 func typeID(path, name string) graph.NodeID {

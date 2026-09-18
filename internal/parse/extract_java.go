@@ -60,13 +60,14 @@ func walkJava(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		}
 		if name != "" {
 			recv := containingJavaType(b, n)
+			sig := javaParamSig(b, n)
 			var id graph.NodeID
 			kind := KindFunction
 			if recv != "" {
-				id = methodID(b.path, recv, name)
+				id = methodIDWithParams(b.path, recv, name, sig)
 				kind = KindMethod
 			} else {
-				id = funcID(b.path, name)
+				id = funcIDWithParams(b.path, name, sig)
 			}
 			b.putSpan(n, graph.Node{ID: id, Kind: kind, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
