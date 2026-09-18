@@ -38,7 +38,8 @@ Tagged releases (`v*`) use [`.github/workflows/release.yml`](../.github/workflow
 
 Each artifact is built with `CGO_ENABLED=1` and version ldflags (`synapse version` must match the tag). Archives and SHA-256 checksums are attached to the GitHub Release.
 
-Homebrew tap/formula publishing is a **follow-up** (see README).
+Homebrew install uses **prebuilt release binaries** (see README); it does not compile
+tree-sitter grammars during `brew install`.
 
 ## Supported languages (batch 1)
 
