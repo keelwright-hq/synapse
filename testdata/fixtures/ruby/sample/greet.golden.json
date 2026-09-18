@@ -1,0 +1,107 @@
+{
+  "path": "ruby/sample/greet.rb",
+  "lang": "ruby",
+  "nodes": [
+    {
+      "id": "file:ruby/sample/greet.rb",
+      "kind": "file",
+      "name": "ruby/sample/greet.rb",
+      "path": "ruby/sample/greet.rb"
+    },
+    {
+      "id": "func:ruby/sample/greet.rb#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "ruby/sample/greet.rb",
+      "props": {
+        "end_line": "13",
+        "start_line": "12"
+      }
+    },
+    {
+      "id": "import:ruby/sample/greet.rb#json",
+      "kind": "import",
+      "name": "json",
+      "path": "ruby/sample/greet.rb"
+    },
+    {
+      "id": "method:ruby/sample/greet.rb#Greeter.greet",
+      "kind": "method",
+      "name": "greet",
+      "path": "ruby/sample/greet.rb",
+      "props": {
+        "end_line": "8",
+        "start_line": "5"
+      }
+    },
+    {
+      "id": "module:ruby/sample/greet.rb",
+      "kind": "module",
+      "name": "greet",
+      "path": "ruby/sample/greet.rb"
+    },
+    {
+      "id": "symbol:puts",
+      "kind": "symbol",
+      "name": "puts",
+      "path": "ruby/sample/greet.rb"
+    },
+    {
+      "id": "type:ruby/sample/greet.rb#Demo",
+      "kind": "type",
+      "name": "Demo",
+      "path": "ruby/sample/greet.rb",
+      "props": {
+        "end_line": "10",
+        "start_line": "3"
+      }
+    },
+    {
+      "id": "type:ruby/sample/greet.rb#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "ruby/sample/greet.rb",
+      "props": {
+        "end_line": "9",
+        "start_line": "4"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:ruby/sample/greet.rb",
+      "to": "module:ruby/sample/greet.rb",
+      "type": "contains"
+    },
+    {
+      "from": "method:ruby/sample/greet.rb#Greeter.greet",
+      "to": "symbol:puts",
+      "type": "calls"
+    },
+    {
+      "from": "module:ruby/sample/greet.rb",
+      "to": "func:ruby/sample/greet.rb#helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:ruby/sample/greet.rb",
+      "to": "import:ruby/sample/greet.rb#json",
+      "type": "imports"
+    },
+    {
+      "from": "module:ruby/sample/greet.rb",
+      "to": "method:ruby/sample/greet.rb#Greeter.greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:ruby/sample/greet.rb",
+      "to": "type:ruby/sample/greet.rb#Demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:ruby/sample/greet.rb",
+      "to": "type:ruby/sample/greet.rb#Greeter",
+      "type": "contains"
+    }
+  ]
+}

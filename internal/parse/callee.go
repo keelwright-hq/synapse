@@ -7,9 +7,9 @@ func calleeName(b *builder, fn *tree_sitter.Node) string {
 		return ""
 	}
 	switch fn.Kind() {
-	case "identifier", "property_identifier", "type_identifier", "simple_identifier":
+	case "identifier", "property_identifier", "type_identifier", "simple_identifier", "field_identifier":
 		return b.text(fn)
-	case "selector_expression", "member_expression", "attribute", "navigation_expression", "field_access":
+	case "selector_expression", "member_expression", "attribute", "navigation_expression", "field_access", "member_access_expression":
 		if f := field(fn, "field"); f != nil {
 			return b.text(f)
 		}
@@ -17,6 +17,9 @@ func calleeName(b *builder, fn *tree_sitter.Node) string {
 			return b.text(f)
 		}
 		if f := field(fn, "attr"); f != nil {
+			return b.text(f)
+		}
+		if f := field(fn, "name"); f != nil {
 			return b.text(f)
 		}
 		if n := fn.NamedChildCount(); n > 0 {

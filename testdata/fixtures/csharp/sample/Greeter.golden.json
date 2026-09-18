@@ -1,0 +1,114 @@
+{
+  "path": "csharp/sample/Greeter.cs",
+  "lang": "csharp",
+  "nodes": [
+    {
+      "id": "file:csharp/sample/Greeter.cs",
+      "kind": "file",
+      "name": "csharp/sample/Greeter.cs",
+      "path": "csharp/sample/Greeter.cs"
+    },
+    {
+      "id": "import:csharp/sample/Greeter.cs#System",
+      "kind": "import",
+      "name": "System",
+      "path": "csharp/sample/Greeter.cs"
+    },
+    {
+      "id": "method:csharp/sample/Greeter.cs#Greeter.Greet(string)",
+      "kind": "method",
+      "name": "Greet",
+      "path": "csharp/sample/Greeter.cs",
+      "props": {
+        "end_line": "8",
+        "start_line": "5"
+      }
+    },
+    {
+      "id": "method:csharp/sample/Greeter.cs#Greeter.Helper()",
+      "kind": "method",
+      "name": "Helper",
+      "path": "csharp/sample/Greeter.cs",
+      "props": {
+        "end_line": "10",
+        "start_line": "10"
+      }
+    },
+    {
+      "id": "module:csharp/sample/Greeter.cs",
+      "kind": "module",
+      "name": "Greeter",
+      "path": "csharp/sample/Greeter.cs"
+    },
+    {
+      "id": "package:csharp/sample/Greeter.cs#Demo",
+      "kind": "package",
+      "name": "Demo",
+      "path": "csharp/sample/Greeter.cs"
+    },
+    {
+      "id": "symbol:Helper",
+      "kind": "symbol",
+      "name": "Helper",
+      "path": "csharp/sample/Greeter.cs"
+    },
+    {
+      "id": "symbol:WriteLine",
+      "kind": "symbol",
+      "name": "WriteLine",
+      "path": "csharp/sample/Greeter.cs"
+    },
+    {
+      "id": "type:csharp/sample/Greeter.cs#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "csharp/sample/Greeter.cs",
+      "props": {
+        "end_line": "11",
+        "start_line": "4"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:csharp/sample/Greeter.cs",
+      "to": "module:csharp/sample/Greeter.cs",
+      "type": "contains"
+    },
+    {
+      "from": "method:csharp/sample/Greeter.cs#Greeter.Greet(string)",
+      "to": "symbol:Helper",
+      "type": "calls"
+    },
+    {
+      "from": "method:csharp/sample/Greeter.cs#Greeter.Greet(string)",
+      "to": "symbol:WriteLine",
+      "type": "calls"
+    },
+    {
+      "from": "module:csharp/sample/Greeter.cs",
+      "to": "import:csharp/sample/Greeter.cs#System",
+      "type": "imports"
+    },
+    {
+      "from": "module:csharp/sample/Greeter.cs",
+      "to": "method:csharp/sample/Greeter.cs#Greeter.Greet(string)",
+      "type": "contains"
+    },
+    {
+      "from": "module:csharp/sample/Greeter.cs",
+      "to": "method:csharp/sample/Greeter.cs#Greeter.Helper()",
+      "type": "contains"
+    },
+    {
+      "from": "module:csharp/sample/Greeter.cs",
+      "to": "package:csharp/sample/Greeter.cs#Demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:csharp/sample/Greeter.cs",
+      "to": "type:csharp/sample/Greeter.cs#Greeter",
+      "type": "contains"
+    }
+  ]
+}

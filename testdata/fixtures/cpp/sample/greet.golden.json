@@ -1,0 +1,103 @@
+{
+  "path": "cpp/sample/greet.cpp",
+  "lang": "cpp",
+  "nodes": [
+    {
+      "id": "file:cpp/sample/greet.cpp",
+      "kind": "file",
+      "name": "cpp/sample/greet.cpp",
+      "path": "cpp/sample/greet.cpp"
+    },
+    {
+      "id": "func:cpp/sample/greet.cpp#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "cpp/sample/greet.cpp",
+      "props": {
+        "end_line": "9",
+        "start_line": "9"
+      }
+    },
+    {
+      "id": "import:cpp/sample/greet.cpp#string",
+      "kind": "import",
+      "name": "string",
+      "path": "cpp/sample/greet.cpp"
+    },
+    {
+      "id": "method:cpp/sample/greet.cpp#Greeter.greet",
+      "kind": "method",
+      "name": "greet",
+      "path": "cpp/sample/greet.cpp",
+      "props": {
+        "end_line": "6",
+        "start_line": "6"
+      }
+    },
+    {
+      "id": "module:cpp/sample/greet.cpp",
+      "kind": "module",
+      "name": "greet",
+      "path": "cpp/sample/greet.cpp"
+    },
+    {
+      "id": "package:cpp/sample/greet.cpp#demo",
+      "kind": "package",
+      "name": "demo",
+      "path": "cpp/sample/greet.cpp"
+    },
+    {
+      "id": "symbol:helper",
+      "kind": "symbol",
+      "name": "helper",
+      "path": "cpp/sample/greet.cpp"
+    },
+    {
+      "id": "type:cpp/sample/greet.cpp#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "cpp/sample/greet.cpp",
+      "props": {
+        "end_line": "7",
+        "start_line": "4"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:cpp/sample/greet.cpp",
+      "to": "module:cpp/sample/greet.cpp",
+      "type": "contains"
+    },
+    {
+      "from": "method:cpp/sample/greet.cpp#Greeter.greet",
+      "to": "symbol:helper",
+      "type": "calls"
+    },
+    {
+      "from": "module:cpp/sample/greet.cpp",
+      "to": "func:cpp/sample/greet.cpp#helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:cpp/sample/greet.cpp",
+      "to": "import:cpp/sample/greet.cpp#string",
+      "type": "imports"
+    },
+    {
+      "from": "module:cpp/sample/greet.cpp",
+      "to": "method:cpp/sample/greet.cpp#Greeter.greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:cpp/sample/greet.cpp",
+      "to": "package:cpp/sample/greet.cpp#demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:cpp/sample/greet.cpp",
+      "to": "type:cpp/sample/greet.cpp#Greeter",
+      "type": "contains"
+    }
+  ]
+}

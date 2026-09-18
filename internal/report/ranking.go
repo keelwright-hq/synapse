@@ -182,6 +182,16 @@ func languageFromPath(path string) string {
 		return "java"
 	case ".kt", ".kts":
 		return "kotlin"
+	case ".rb":
+		return "ruby"
+	case ".php":
+		return "php"
+	case ".c", ".h":
+		return "c"
+	case ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx":
+		return "cpp"
+	case ".cs":
+		return "csharp"
 	default:
 		return ""
 	}

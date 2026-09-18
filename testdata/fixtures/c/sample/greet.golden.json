@@ -1,0 +1,103 @@
+{
+  "path": "c/sample/greet.c",
+  "lang": "c",
+  "nodes": [
+    {
+      "id": "file:c/sample/greet.c",
+      "kind": "file",
+      "name": "c/sample/greet.c",
+      "path": "c/sample/greet.c"
+    },
+    {
+      "id": "func:c/sample/greet.c#greet",
+      "kind": "function",
+      "name": "greet",
+      "path": "c/sample/greet.c",
+      "props": {
+        "end_line": "10",
+        "start_line": "7"
+      }
+    },
+    {
+      "id": "func:c/sample/greet.c#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "c/sample/greet.c",
+      "props": {
+        "end_line": "12",
+        "start_line": "12"
+      }
+    },
+    {
+      "id": "import:c/sample/greet.c#stdio.h",
+      "kind": "import",
+      "name": "stdio.h",
+      "path": "c/sample/greet.c"
+    },
+    {
+      "id": "module:c/sample/greet.c",
+      "kind": "module",
+      "name": "greet",
+      "path": "c/sample/greet.c"
+    },
+    {
+      "id": "symbol:helper",
+      "kind": "symbol",
+      "name": "helper",
+      "path": "c/sample/greet.c"
+    },
+    {
+      "id": "symbol:printf",
+      "kind": "symbol",
+      "name": "printf",
+      "path": "c/sample/greet.c"
+    },
+    {
+      "id": "type:c/sample/greet.c#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "c/sample/greet.c",
+      "props": {
+        "end_line": "5",
+        "start_line": "3"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:c/sample/greet.c",
+      "to": "module:c/sample/greet.c",
+      "type": "contains"
+    },
+    {
+      "from": "func:c/sample/greet.c#greet",
+      "to": "symbol:helper",
+      "type": "calls"
+    },
+    {
+      "from": "func:c/sample/greet.c#greet",
+      "to": "symbol:printf",
+      "type": "calls"
+    },
+    {
+      "from": "module:c/sample/greet.c",
+      "to": "func:c/sample/greet.c#greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:c/sample/greet.c",
+      "to": "func:c/sample/greet.c#helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:c/sample/greet.c",
+      "to": "import:c/sample/greet.c#stdio.h",
+      "type": "imports"
+    },
+    {
+      "from": "module:c/sample/greet.c",
+      "to": "type:c/sample/greet.c#Greeter",
+      "type": "contains"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "path": "php/sample/greet.php",
+  "lang": "php",
+  "nodes": [
+    {
+      "id": "file:php/sample/greet.php",
+      "kind": "file",
+      "name": "php/sample/greet.php",
+      "path": "php/sample/greet.php"
+    },
+    {
+      "id": "func:php/sample/greet.php#helper",
+      "kind": "function",
+      "name": "helper",
+      "path": "php/sample/greet.php",
+      "props": {
+        "end_line": "12",
+        "start_line": "12"
+      }
+    },
+    {
+      "id": "import:php/sample/greet.php#Foo\\Bar",
+      "kind": "import",
+      "name": "Foo\\Bar",
+      "path": "php/sample/greet.php"
+    },
+    {
+      "id": "method:php/sample/greet.php#Greeter.greet",
+      "kind": "method",
+      "name": "greet",
+      "path": "php/sample/greet.php",
+      "props": {
+        "end_line": "9",
+        "start_line": "6"
+      }
+    },
+    {
+      "id": "module:php/sample/greet.php",
+      "kind": "module",
+      "name": "greet",
+      "path": "php/sample/greet.php"
+    },
+    {
+      "id": "package:php/sample/greet.php#Demo",
+      "kind": "package",
+      "name": "Demo",
+      "path": "php/sample/greet.php"
+    },
+    {
+      "id": "symbol:helper",
+      "kind": "symbol",
+      "name": "helper",
+      "path": "php/sample/greet.php"
+    },
+    {
+      "id": "type:php/sample/greet.php#Greeter",
+      "kind": "type",
+      "name": "Greeter",
+      "path": "php/sample/greet.php",
+      "props": {
+        "end_line": "10",
+        "start_line": "5"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "file:php/sample/greet.php",
+      "to": "module:php/sample/greet.php",
+      "type": "contains"
+    },
+    {
+      "from": "method:php/sample/greet.php#Greeter.greet",
+      "to": "symbol:helper",
+      "type": "calls"
+    },
+    {
+      "from": "module:php/sample/greet.php",
+      "to": "func:php/sample/greet.php#helper",
+      "type": "contains"
+    },
+    {
+      "from": "module:php/sample/greet.php",
+      "to": "import:php/sample/greet.php#Foo\\Bar",
+      "type": "imports"
+    },
+    {
+      "from": "module:php/sample/greet.php",
+      "to": "method:php/sample/greet.php#Greeter.greet",
+      "type": "contains"
+    },
+    {
+      "from": "module:php/sample/greet.php",
+      "to": "package:php/sample/greet.php#Demo",
+      "type": "contains"
+    },
+    {
+      "from": "module:php/sample/greet.php",
+      "to": "type:php/sample/greet.php#Greeter",
+      "type": "contains"
+    }
+  ]
+}
