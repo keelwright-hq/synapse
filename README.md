@@ -51,17 +51,27 @@ for your OS/arch, place `synapse` on your `PATH`, then run `synapse version`.
 
 ### Homebrew
 
-A Homebrew tap/formula is **not** published yet ([SYN-97](https://keelwright.atlassian.net/browse/SYN-97)).
+```bash
+brew install keelwright-hq/synapse/synapse
+synapse version
+```
 
-After the first `v*` GitHub Release exists (push a tag such as `v0.1.0` to trigger
-[`.github/workflows/release.yml`](.github/workflows/release.yml)):
+Or:
 
-1. Create public repo `keelwright-hq/homebrew-synapse` with `Formula/synapse.rb`
-2. Point the formula at the macOS release archives + SHA256 checksums (prefer bottles
-   from release assets — CGO/tree-sitter means `brew install` should not compile from source)
-3. Document: `brew install keelwright-hq/synapse/synapse` and `brew uninstall synapse`
+```bash
+brew tap keelwright-hq/synapse
+brew install synapse
+```
 
-Until then, use `go install` or a release binary.
+Uninstall:
+
+```bash
+brew uninstall synapse
+```
+
+Tap repo: [keelwright-hq/homebrew-synapse](https://github.com/keelwright-hq/homebrew-synapse)
+(prebuilt macOS binaries from GitHub Releases; not compiled from source during install).
+
 
 ### Development (from source)
 

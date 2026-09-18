@@ -107,3 +107,7 @@ jobs:
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Homebrew formula updates are manual for now:
+      # https://github.com/keelwright-hq/homebrew-synapse#updating-the-formula-manual-for-now
+      # After this job succeeds, bump Formula/synapse.rb version/url/sha256 for darwin assets.
