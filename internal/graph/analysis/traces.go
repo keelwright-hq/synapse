@@ -16,28 +16,35 @@ type IndirectTrace struct {
 	Path []graph.NodeID `json:"path"`
 }
 
-// FindIndirectTraces discovers indirect call chains (length >= 2 hops) between distinct modules/files.
+// FindIndirectTraces discovers indirect call chains (length >= 2 hops) between
+// distinct modules/files, traversing only resolved call edges from the dependency view.
 func FindIndirectTraces(nodes []graph.Node, edges []graph.Edge, limit int) []IndirectTrace {
-	if len(nodes) == 0 {
+	view := BuildDependencyView(nodes, edges)
+	if len(view.Nodes) == 0 {
 		return nil
 	}
 
 	byID := map[graph.NodeID]graph.Node{}
-	for _, n := range nodes {
+	for _, n := range view.Nodes {
 		byID[n.ID] = n
+	}
+	for _, n := range nodes {
+		if _, ok := byID[n.ID]; !ok {
+			byID[n.ID] = n
+		}
 	}
 
 	adj := map[graph.NodeID][]graph.NodeID{}
-	for _, e := range edges {
-		if e.Type == parse.EdgeCalls || e.Type == parse.EdgeImports {
+	for _, e := range view.Edges {
+		if e.Type == parse.EdgeCalls {
 			adj[e.From] = append(adj[e.From], e.To)
 		}
 	}
 
 	var traces []IndirectTrace
 
-	// Run depth-bounded BFS (max depth 4) from key file/module nodes
-	for _, src := range nodes {
+	// Run depth-bounded BFS (max depth 4) from key file/function nodes in the view.
+	for _, src := range view.Nodes {
 		if src.Kind != parse.KindFile && src.Kind != parse.KindFunction {
 			continue
 		}
@@ -100,11 +107,10 @@ func ShortestPath(nodes []graph.Node, edges []graph.Edge, startID, targetID grap
 		return []graph.NodeID{startID}
 	}
 
+	view := BuildDependencyView(nodes, edges)
 	adj := map[graph.NodeID][]graph.NodeID{}
-	for _, e := range edges {
-		if e.Type != parse.EdgeContains {
-			adj[e.From] = append(adj[e.From], e.To)
-		}
+	for _, e := range view.Edges {
+		adj[e.From] = append(adj[e.From], e.To)
 	}
 
 	queue := [][]graph.NodeID{{startID}}

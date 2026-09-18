@@ -141,16 +141,27 @@ func ComputeBetweenness(nodes []graph.Node, edges []graph.Edge) map[graph.NodeID
 	return cb
 }
 
-// RankCentrality returns top N nodes sorted by PageRank score.
+// RankCentrality returns top N nodes sorted by PageRank score, scored only over
+// the resolved dependency view. KindSymbol and KindImport never appear as God Nodes.
 func RankCentrality(nodes []graph.Node, edges []graph.Edge, limit int) []NodeCentrality {
-	pr := ComputePageRank(nodes, edges, 0.85, 20)
-	cb := ComputeBetweenness(nodes, edges)
+	view := BuildDependencyView(nodes, edges)
 
-	var list []NodeCentrality
-	for _, n := range nodes {
-		if n.Kind == parse.KindSymbol {
+	var scored []graph.Node
+	for _, n := range view.Nodes {
+		if n.Kind == parse.KindSymbol || n.Kind == parse.KindImport {
 			continue
 		}
+		scored = append(scored, n)
+	}
+	if len(scored) == 0 {
+		return nil
+	}
+
+	pr := ComputePageRank(scored, view.Edges, 0.85, 20)
+	cb := ComputeBetweenness(scored, view.Edges)
+
+	var list []NodeCentrality
+	for _, n := range scored {
 		list = append(list, NodeCentrality{
 			ID:          n.ID,
 			Kind:        n.Kind,

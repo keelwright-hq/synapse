@@ -60,6 +60,9 @@ func ListUsers() {}
 			if e.Props["match"] != bind.MatchOperationID {
 				t.Fatalf("match prop: got %q want %q", e.Props["match"], bind.MatchOperationID)
 			}
+			if e.Props["provenance"] != "INFERRED" {
+				t.Fatalf("provenance prop: got %q want INFERRED", e.Props["provenance"])
+			}
 			return
 		}
 	}

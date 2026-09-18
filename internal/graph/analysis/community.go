@@ -17,41 +17,49 @@ type Community struct {
 	NodeIDs  []graph.NodeID `json:"node_ids"`
 }
 
-// DetectCommunities partitions graph nodes into communities using Label Propagation.
-// It returns a list of communities sorted by size (descending).
+// DetectCommunities partitions resolved dependency-view nodes into communities
+// using Label Propagation. KindSymbol and KindImport are excluded; only
+// file/module/function/type/method nodes that appear in resolved edges participate.
 func DetectCommunities(nodes []graph.Node, edges []graph.Edge) []Community {
-	if len(nodes) == 0 {
+	view := BuildDependencyView(nodes, edges)
+	if len(view.Nodes) == 0 {
 		return nil
 	}
 
 	byID := map[graph.NodeID]graph.Node{}
-	for _, n := range nodes {
+	for _, n := range view.Nodes {
+		if !isCommunityKind(n.Kind) {
+			continue
+		}
 		byID[n.ID] = n
 	}
+	if len(byID) == 0 {
+		return nil
+	}
 
-	// Build undirected adjacency list
+	// Build undirected adjacency from resolved view edges only.
 	adj := map[graph.NodeID][]graph.NodeID{}
-	for _, e := range edges {
-		if e.Type == parse.EdgeContains {
+	for _, e := range view.Edges {
+		if !nodeIn(byID, e.From) || !nodeIn(byID, e.To) {
 			continue
 		}
 		adj[e.From] = append(adj[e.From], e.To)
 		adj[e.To] = append(adj[e.To], e.From)
 	}
 
-	// Initialize each node with its own unique label
+	// Initialize each participating node with its own unique label.
 	label := map[graph.NodeID]string{}
-	nodeList := make([]graph.NodeID, 0, len(nodes))
-	for _, n := range nodes {
-		label[n.ID] = string(n.ID)
-		nodeList = append(nodeList, n.ID)
+	nodeList := make([]graph.NodeID, 0, len(byID))
+	for id := range byID {
+		label[id] = string(id)
+		nodeList = append(nodeList, id)
 	}
+	sort.Slice(nodeList, func(i, j int) bool { return nodeList[i] < nodeList[j] })
 
 	// Run Label Propagation iterations (max 15 iterations)
 	rng := rand.New(rand.NewSource(42))
 	for iter := 0; iter < 15; iter++ {
 		changed := false
-		// Shuffle node order for asynchronous update
 		rng.Shuffle(len(nodeList), func(i, j int) {
 			nodeList[i], nodeList[j] = nodeList[j], nodeList[i]
 		})
@@ -61,24 +69,28 @@ func DetectCommunities(nodes []graph.Node, edges []graph.Edge) []Community {
 			if len(neighbors) == 0 {
 				continue
 			}
-			// Count neighbor labels
 			counts := map[string]int{}
 			maxCount := 0
 			for _, neighbor := range neighbors {
+				if _, ok := byID[neighbor]; !ok {
+					continue
+				}
 				l := label[neighbor]
 				counts[l]++
 				if counts[l] > maxCount {
 					maxCount = counts[l]
 				}
 			}
-			// Collect top candidate labels
+			if maxCount == 0 {
+				continue
+			}
 			var candidates []string
 			for l, c := range counts {
 				if c == maxCount {
 					candidates = append(candidates, l)
 				}
 			}
-			sort.Strings(candidates) // Deterministic tie-breaking
+			sort.Strings(candidates)
 			bestLabel := candidates[0]
 			if label[id] != bestLabel {
 				label[id] = bestLabel
@@ -90,20 +102,17 @@ func DetectCommunities(nodes []graph.Node, edges []graph.Edge) []Community {
 		}
 	}
 
-	// Group node IDs by label
 	groups := map[string][]graph.NodeID{}
-	for _, n := range nodes {
-		l := label[n.ID]
-		groups[l] = append(groups[l], n.ID)
+	for _, id := range nodeList {
+		l := label[id]
+		groups[l] = append(groups[l], id)
 	}
 
-	// Build result community structures
 	var result []Community
 	commIndex := 0
 
-	// Pre-build internal edge maps for cohesion scoring
 	edgeSet := map[string]bool{}
-	for _, e := range edges {
+	for _, e := range view.Edges {
 		edgeSet[string(e.From)+"->"+string(e.To)] = true
 		edgeSet[string(e.To)+"->"+string(e.From)] = true
 	}
@@ -112,8 +121,8 @@ func DetectCommunities(nodes []graph.Node, edges []graph.Edge) []Community {
 		if len(memberIDs) == 0 {
 			continue
 		}
+		sort.Slice(memberIDs, func(i, j int) bool { return memberIDs[i] < memberIDs[j] })
 
-		// Find dominant node for community naming
 		name := deriveCommunityName(memberIDs, byID, adj)
 		cohesion := computeCohesion(memberIDs, edgeSet)
 
@@ -126,7 +135,6 @@ func DetectCommunities(nodes []graph.Node, edges []graph.Edge) []Community {
 		commIndex++
 	}
 
-	// Sort communities by size descending
 	sort.Slice(result, func(i, j int) bool {
 		if len(result[i].NodeIDs) != len(result[j].NodeIDs) {
 			return len(result[i].NodeIDs) > len(result[j].NodeIDs)
@@ -134,7 +142,26 @@ func DetectCommunities(nodes []graph.Node, edges []graph.Edge) []Community {
 		return result[i].Name < result[j].Name
 	})
 
+	// Reassign stable IDs after sort.
+	for i := range result {
+		result[i].ID = strconv.Itoa(i)
+	}
+
 	return result
+}
+
+func isCommunityKind(kind string) bool {
+	switch kind {
+	case parse.KindFile, parse.KindModule, parse.KindFunction, parse.KindType, parse.KindMethod:
+		return true
+	default:
+		return false
+	}
+}
+
+func nodeIn(byID map[graph.NodeID]graph.Node, id graph.NodeID) bool {
+	_, ok := byID[id]
+	return ok
 }
 
 func deriveCommunityName(memberIDs []graph.NodeID, byID map[graph.NodeID]graph.Node, adj map[graph.NodeID][]graph.NodeID) string {

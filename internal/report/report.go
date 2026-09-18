@@ -284,13 +284,20 @@ func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string
 		"Most-used dependencies (import specs grouped across files; relative paths resolved).",
 		TopImports(nodes, edges, 10))
 
-	// Pure-Go Analytical Engine
+	// Pure-Go Analytical Engine (grounded in resolved dependency view)
 	comms := analysis.DetectCommunities(nodes, edges)
 	ranks := analysis.RankCentrality(nodes, edges, 10)
-	cycles := analysis.DetectCycles(nodes, edges, 10)
+	cycles, coverage := analysis.DetectCyclesReport(nodes, edges, 10)
 	traces := analysis.FindIndirectTraces(nodes, edges, 10)
 	gaps := analysis.AnalyzeKnowledgeGaps(nodes, edges, comms)
-	questions := analysis.GenerateQuestions(nodes, comms, ranks, cycles)
+	questions := analysis.GenerateQuestions(nodes, comms, ranks, cycles, coverage)
+
+	fmt.Fprintf(&b, "\n## Analysis coverage\n\n")
+	fmt.Fprintf(&b, "- **Imports resolved:** %d / %d\n", coverage.ImportEdgesResolved, coverage.ImportEdgesTotal)
+	fmt.Fprintf(&b, "- **Calls resolved:** %d / %d\n", coverage.CallEdgesResolved, coverage.CallEdgesTotal)
+	for _, note := range coverage.Notes {
+		fmt.Fprintf(&b, "- %s\n", note)
+	}
 
 	if len(ranks) > 0 {
 		fmt.Fprintf(&b, "\n## God Nodes (PageRank Centrality)\n\n")
@@ -328,6 +335,10 @@ func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string
 		for _, cyc := range cycles {
 			fmt.Fprintf(&b, "- Loop length %d: `%s`\n", cyc.Length, cyc.Path[0])
 		}
+	} else if coverage.Incomplete() {
+		fmt.Fprintf(&b, "\n## Dependency Cycles\n\n")
+		fmt.Fprintf(&b, "- None detected within supported resolution (%d/%d imports resolved). Unsupported/unresolved imports are excluded.\n",
+			coverage.ImportEdgesResolved, coverage.ImportEdgesTotal)
 	} else {
 		fmt.Fprintf(&b, "\n## Dependency Cycles\n\n- None detected.\n")
 	}
