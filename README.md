@@ -10,7 +10,7 @@ graph and links handlers/clients across repos with `implements` / `consumes` edg
 - Go 1.22+ (developed with Go 1.27)
 - A C toolchain (**CGO required** for tree-sitter grammars — see [docs/tree-sitter.md](docs/tree-sitter.md))
 
-Supported source languages: **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Swift**, **Java**, and **Kotlin**. Extension map, grammar packages, and extractor completeness: [docs/tree-sitter.md](docs/tree-sitter.md). Ruby, PHP, C/C++, and C# are not registered yet.
+Supported source languages: **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Swift**, **Java**, **Kotlin**, **Ruby**, **PHP**, **C**, **C++**, and **C#**. Extension map, grammar packages, and extractor completeness: [docs/tree-sitter.md](docs/tree-sitter.md).
 
 ## Install
 

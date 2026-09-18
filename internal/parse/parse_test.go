@@ -36,7 +36,14 @@ func TestRegistryRouting(t *testing.T) {
 		"j.java":  "java",
 		"k.KT":    "kotlin",
 		"l.kts":   "kotlin",
-		"m.txt":   "",
+		"m.rb":    "ruby",
+		"n.php":   "php",
+		"o.c":     "c",
+		"p.H":     "c",
+		"q.cpp":   "cpp",
+		"r.hpp":   "cpp",
+		"s.cs":    "csharp",
+		"t.txt":   "",
 		"noext":   "",
 	}
 	for path, want := range cases {
@@ -175,6 +182,71 @@ func TestParseSmokeJSPythonSwift(t *testing.T) {
 	assertHasKind(t, res, parse.KindFunction, "helper")
 	assertHasKind(t, res, parse.KindType, "Greeter")
 	assertHasKind(t, res, parse.KindImport, "java.util.List")
+
+	rubyPath := filepath.Join(root, "ruby", "sample", "greet.rb")
+	res, err = parse.ParseFile(reg, rubyPath)
+	if err != nil {
+		t.Fatalf("parse ruby: %v", err)
+	}
+	if res.Lang != "ruby" {
+		t.Fatalf("want ruby, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "json")
+
+	phpPath := filepath.Join(root, "php", "sample", "greet.php")
+	res, err = parse.ParseFile(reg, phpPath)
+	if err != nil {
+		t.Fatalf("parse php: %v", err)
+	}
+	if res.Lang != "php" {
+		t.Fatalf("want php, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "Foo\\Bar")
+
+	cPath := filepath.Join(root, "c", "sample", "greet.c")
+	res, err = parse.ParseFile(reg, cPath)
+	if err != nil {
+		t.Fatalf("parse c: %v", err)
+	}
+	if res.Lang != "c" {
+		t.Fatalf("want c, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindFunction, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "stdio.h")
+
+	cppPath := filepath.Join(root, "cpp", "sample", "greet.cpp")
+	res, err = parse.ParseFile(reg, cppPath)
+	if err != nil {
+		t.Fatalf("parse cpp: %v", err)
+	}
+	if res.Lang != "cpp" {
+		t.Fatalf("want cpp, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "greet")
+	assertHasKind(t, res, parse.KindFunction, "helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "string")
+
+	csPath := filepath.Join(root, "csharp", "sample", "Greeter.cs")
+	res, err = parse.ParseFile(reg, csPath)
+	if err != nil {
+		t.Fatalf("parse csharp: %v", err)
+	}
+	if res.Lang != "csharp" {
+		t.Fatalf("want csharp, got %q", res.Lang)
+	}
+	assertHasKind(t, res, parse.KindMethod, "Greet")
+	assertHasKind(t, res, parse.KindMethod, "Helper")
+	assertHasKind(t, res, parse.KindType, "Greeter")
+	assertHasKind(t, res, parse.KindImport, "System")
 }
 
 func TestGoldenFixtures(t *testing.T) {
@@ -195,6 +267,11 @@ func TestGoldenFixtures(t *testing.T) {
 		{filepath.Join(root, "kotlin", "sample", "Greeter.kt"), filepath.Join(root, "kotlin", "sample", "Greeter.golden.json")},
 		{filepath.Join(root, "java", "sample", "Overloads.java"), filepath.Join(root, "java", "sample", "Overloads.golden.json")},
 		{filepath.Join(root, "kotlin", "sample", "Overloads.kt"), filepath.Join(root, "kotlin", "sample", "Overloads.golden.json")},
+		{filepath.Join(root, "ruby", "sample", "greet.rb"), filepath.Join(root, "ruby", "sample", "greet.golden.json")},
+		{filepath.Join(root, "php", "sample", "greet.php"), filepath.Join(root, "php", "sample", "greet.golden.json")},
+		{filepath.Join(root, "c", "sample", "greet.c"), filepath.Join(root, "c", "sample", "greet.golden.json")},
+		{filepath.Join(root, "cpp", "sample", "greet.cpp"), filepath.Join(root, "cpp", "sample", "greet.golden.json")},
+		{filepath.Join(root, "csharp", "sample", "Greeter.cs"), filepath.Join(root, "csharp", "sample", "Greeter.golden.json")},
 	}
 
 	for _, tc := range cases {

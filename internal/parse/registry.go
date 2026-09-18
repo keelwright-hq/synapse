@@ -9,10 +9,15 @@ import (
 	tree_sitter_kotlin "github.com/keelwright-hq/synapse/third_party/tree-sitter-kotlin/bindings/go"
 	tree_sitter_swift "github.com/keelwright-hq/synapse/third_party/tree-sitter-swift/bindings/go"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	tree_sitter_c "github.com/tree-sitter/tree-sitter-c/bindings/go"
+	tree_sitter_c_sharp "github.com/tree-sitter/tree-sitter-c-sharp/bindings/go"
+	tree_sitter_cpp "github.com/tree-sitter/tree-sitter-cpp/bindings/go"
 	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	tree_sitter_java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	tree_sitter_javascript "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
+	tree_sitter_php "github.com/tree-sitter/tree-sitter-php/bindings/go"
 	tree_sitter_python "github.com/tree-sitter/tree-sitter-python/bindings/go"
+	tree_sitter_ruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
 	tree_sitter_typescript "github.com/tree-sitter/tree-sitter-typescript/bindings/go"
 )
 
@@ -32,7 +37,8 @@ type Registry struct {
 	byExt map[string]*Language
 }
 
-// NewRegistry returns a registry with Go, JS/JSX, TypeScript/TSX, Python, Swift, Java, and Kotlin.
+// NewRegistry returns a registry with Go, JS/JSX, TypeScript/TSX, Python, Swift,
+// Java, Kotlin, Ruby, PHP, C, C++, and C#.
 func NewRegistry() *Registry {
 	r := &Registry{byExt: make(map[string]*Language)}
 
@@ -81,6 +87,31 @@ func NewRegistry() *Registry {
 		Language: tree_sitter.NewLanguage(tree_sitter_kotlin.Language()),
 		Extract:  extractKotlin,
 	}
+	rubyLang := &Language{
+		Name:     "ruby",
+		Language: tree_sitter.NewLanguage(tree_sitter_ruby.Language()),
+		Extract:  extractRuby,
+	}
+	phpLang := &Language{
+		Name:     "php",
+		Language: tree_sitter.NewLanguage(tree_sitter_php.LanguagePHP()),
+		Extract:  extractPHP,
+	}
+	cLang := &Language{
+		Name:     "c",
+		Language: tree_sitter.NewLanguage(tree_sitter_c.Language()),
+		Extract:  extractC,
+	}
+	cppLang := &Language{
+		Name:     "cpp",
+		Language: tree_sitter.NewLanguage(tree_sitter_cpp.Language()),
+		Extract:  extractCpp,
+	}
+	csharpLang := &Language{
+		Name:     "csharp",
+		Language: tree_sitter.NewLanguage(tree_sitter_c_sharp.Language()),
+		Extract:  extractCSharp,
+	}
 
 	r.Register(".go", goLang)
 	for _, ext := range []string{".js", ".mjs", ".cjs"} {
@@ -94,6 +125,14 @@ func NewRegistry() *Registry {
 	r.Register(".java", javaLang)
 	r.Register(".kt", kotlinLang)
 	r.Register(".kts", kotlinLang)
+	r.Register(".rb", rubyLang)
+	r.Register(".php", phpLang)
+	r.Register(".c", cLang)
+	r.Register(".h", cLang)
+	for _, ext := range []string{".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"} {
+		r.Register(ext, cppLang)
+	}
+	r.Register(".cs", csharpLang)
 	return r
 }
 

@@ -58,6 +58,11 @@ JS/JSX, Python, and Swift extractors are **best-effort** (file + module, declara
 | `.swift` | `swift` | vendored [`tree-sitter-swift@0.7.1`](https://github.com/alex-pinkus/tree-sitter-swift) C sources under [`third_party/tree-sitter-swift`](../third_party/tree-sitter-swift) | `extractSwift` | Best-effort: module, function/method, class/struct/enum/protocol/actor as type, import, calls |
 | `.java` | `java` | [`github.com/tree-sitter/tree-sitter-java`](https://github.com/tree-sitter/tree-sitter-java) | `extractJava` | Best-effort: module, package, class/interface/enum/record as type, method/constructor (IDs include param types so overloads stay distinct), import, calls |
 | `.kt` `.kts` | `kotlin` | vendored [`fwcd/tree-sitter-kotlin@0.3.2`](https://github.com/fwcd/tree-sitter-kotlin) C sources under [`third_party/tree-sitter-kotlin`](../third_party/tree-sitter-kotlin) | `extractKotlin` | Best-effort: module, package, class/object as type, function/method (IDs include param types so overloads stay distinct), import, calls |
+| `.rb` | `ruby` | [`github.com/tree-sitter/tree-sitter-ruby`](https://github.com/tree-sitter/tree-sitter-ruby) | `extractRuby` | Best-effort: module, class/module as type, method/function, `require`/`require_relative`, calls |
+| `.php` | `php` | [`github.com/tree-sitter/tree-sitter-php`](https://github.com/tree-sitter/tree-sitter-php) `LanguagePHP()` | `extractPHP` | Best-effort: module, namespace, class/interface/trait/enum as type, method/function, `use`, calls |
+| `.c` `.h` | `c` | [`github.com/tree-sitter/tree-sitter-c`](https://github.com/tree-sitter/tree-sitter-c) | `extractC` | Best-effort: module, struct/union/enum as type, function, `#include`, calls |
+| `.cc` `.cpp` `.cxx` `.hpp` `.hh` `.hxx` | `cpp` | [`github.com/tree-sitter/tree-sitter-cpp`](https://github.com/tree-sitter/tree-sitter-cpp) | `extractCpp` | Best-effort: module, namespace, class/struct as type, method/function, `#include`, calls |
+| `.cs` | `csharp` | [`github.com/tree-sitter/tree-sitter-c-sharp`](https://github.com/tree-sitter/tree-sitter-c-sharp) | `extractCSharp` | Best-effort: module, namespace, class/interface/struct/enum/record as type, method/constructor (param types in IDs), `using`, calls |
 
 Swift is vendored because the Go module at `github.com/alex-pinkus/tree-sitter-swift` does not publish generated `src/parser.c` (upstream gitignores it). We compile the npm-published `parser.c` + `scanner.c`; we do not author a scanner.
 
@@ -65,4 +70,4 @@ Kotlin is vendored because [`fwcd/tree-sitter-kotlin`](https://github.com/fwcd/t
 
 ## Not registered yet
 
-Priority 2 / 3 from [SYN-95](https://keelwright.atlassian.net/browse/SYN-95): Ruby, PHP, C, C++, C#, HTML, EJS, and similar. Those files stay skipped until a later batch.
+Priority 3 from [SYN-95](https://keelwright.atlassian.net/browse/SYN-95): Rust, Dart, Scala, HTML, EJS, and similar. Those files stay skipped until a later batch.
