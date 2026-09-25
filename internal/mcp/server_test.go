@@ -47,6 +47,7 @@ func TestToolsAgainstFixtureGraph(t *testing.T) {
 	for _, want := range []string{
 		"get_symbol", "find_references", "get_neighborhood", "search_graph",
 		"resolve_api", "list_providers", "list_consumers",
+		"co_changes", "hot_paths", "docs_for_symbol",
 	} {
 		if !strings.Contains(string(listBody), want) {
 			t.Fatalf("missing tool %q in %s", want, listBody)

@@ -117,6 +117,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 		mcp.WithNumber("depth", mcp.Description("Traversal depth (default 2)")),
 		mcp.WithNumber("max_nodes", mcp.Description("Max nodes (default 32)")),
 		mcp.WithNumber("budget", mcp.Description("Character budget (0 = unlimited)")),
+		mcp.WithBoolean("explain", mcp.Description("Include per-family score breakdown")),
 	)
 	s.AddTool(getNeighborhood, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		sym, err := req.RequireString("symbol")
@@ -137,12 +138,70 @@ func registerTools(s *server.MCPServer, opts Options) {
 			Budget:    budget,
 			RootDir:   opts.RootDir,
 			RepoRoots: opts.RepoRoots,
+			Explain:   boolArg(req, "explain", false),
 		})
 		if err != nil {
 			return toolErr(err), nil
 		}
 		res.Warnings = opts.withWarnings(append(res.Warnings, takeFedWarnings(store)...))
 		return jsonResult(res)
+	})
+
+	coChanges := mcp.NewTool("co_changes",
+		mcp.WithDescription("Top git co-change neighbors for a file or symbol (Phase 3)"),
+		mcp.WithString("path", mcp.Required(), mcp.Description("repo:// URI, file path, or symbol")),
+		mcp.WithNumber("limit", mcp.Description("Max results (default 20)")),
+	)
+	s.AddTool(coChanges, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		path, err := req.RequireString("path")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		limit := intArg(req, "limit", 20)
+		store := opts.session()
+		hits, err := rank.CoChanges(store, path, limit)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return jsonResult(map[string]any{"path": path, "co_changes": hits, "warnings": opts.withWarnings(takeFedWarnings(store))})
+	})
+
+	hotPaths := mcp.NewTool("hot_paths",
+		mcp.WithDescription("Runtime observed_calls hot paths for a symbol (Phase 3)"),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
+		mcp.WithNumber("limit", mcp.Description("Max results (default 20)")),
+	)
+	s.AddTool(hotPaths, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		sym, err := req.RequireString("symbol")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		limit := intArg(req, "limit", 20)
+		store := opts.session()
+		hits, err := rank.HotPaths(store, sym, limit)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return jsonResult(map[string]any{"symbol": sym, "hot_paths": hits, "warnings": opts.withWarnings(takeFedWarnings(store))})
+	})
+
+	docsForSymbol := mcp.NewTool("docs_for_symbol",
+		mcp.WithDescription("Documentation tied to a symbol via docs edges or PropDoc (Phase 3)"),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
+		mcp.WithNumber("limit", mcp.Description("Max results (default 20)")),
+	)
+	s.AddTool(docsForSymbol, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		sym, err := req.RequireString("symbol")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		limit := intArg(req, "limit", 20)
+		store := opts.session()
+		hits, err := rank.DocsForSymbol(store, sym, opts.RootDir, limit)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return jsonResult(map[string]any{"symbol": sym, "docs": hits, "warnings": opts.withWarnings(takeFedWarnings(store))})
 	})
 
 	searchGraph := mcp.NewTool("search_graph",
@@ -335,6 +394,25 @@ func intArg(req mcp.CallToolRequest, key string, def int) int {
 			return def
 		}
 		return i
+	default:
+		return def
+	}
+}
+
+func boolArg(req mcp.CallToolRequest, key string, def bool) bool {
+	args := req.GetArguments()
+	if args == nil {
+		return def
+	}
+	v, ok := args[key]
+	if !ok || v == nil {
+		return def
+	}
+	switch b := v.(type) {
+	case bool:
+		return b
+	case string:
+		return b == "true" || b == "1"
 	default:
 		return def
 	}

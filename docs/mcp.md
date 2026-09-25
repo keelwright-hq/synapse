@@ -79,11 +79,23 @@ For cross-repo, use the same `--workspace` / `--data-dir` args as the Cursor wor
 |------|---------|
 | `get_symbol` | Fetch a node by `repo://` URI, Phase-1 id, or unique name |
 | `find_references` | Incoming call edges to a symbol |
-| `get_neighborhood` | Ranked neighborhood with optional depth/budget |
+| `get_neighborhood` | Ranked neighborhood with optional depth/budget/`explain` |
 | `search_graph` | Substring search over node ids/names |
 | `resolve_api` | Resolve a contract operation to providers + consumers |
 | `list_providers` | Symbols that **implement** a contract operation |
 | `list_consumers` | Symbols that **consume** a contract operation |
+| `co_changes` | Top git `co_committed` neighbors for a file/symbol (Phase 3) |
+| `hot_paths` | Runtime `observed_calls` hot paths (Phase 3) |
+| `docs_for_symbol` | Doc edges + `props.doc` snippets for a symbol (Phase 3) |
+
+### Reviewer workflow (Phase 3)
+
+1. `synapse index .` (recomputes co-change + docs links after bind).
+2. Optionally `synapse otel ingest traces.json` for runtime edges.
+3. In IDE chat: `co_changes`, `hot_paths`, `docs_for_symbol`, or neighborhood with `explain=true`.
+4. Offline CLI mirrors: `synapse query co-changes|hot-paths|docs`.
+
+See [phase3.md](phase3.md) and [otel.md](otel.md).
 
 Tool inputs accept legacy Phase-1 ids (`func:path#Name`) **or** canonical `repo://` URIs. Returned nodes include `props.repo_uri` when assigned.
 

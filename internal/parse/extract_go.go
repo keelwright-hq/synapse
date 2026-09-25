@@ -1,6 +1,8 @@
 package parse
 
 import (
+	"strings"
+
 	"github.com/keelwright-hq/synapse/internal/graph"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 )
@@ -13,6 +15,25 @@ func extractGo(path string, src []byte, root *tree_sitter.Node) Result {
 	var pkgID graph.NodeID
 	walkGo(b, root, fid, &pkgID, "")
 	return b.result("go")
+}
+
+// precedingGoDoc returns the contiguous // comment block immediately before n.
+func precedingGoDoc(b *builder, n *tree_sitter.Node) string {
+	if n == nil {
+		return ""
+	}
+	var lines []string
+	prev := n.PrevSibling()
+	for prev != nil && prev.Kind() == "comment" {
+		t := strings.TrimSpace(b.text(prev))
+		if strings.HasPrefix(t, "//") {
+			lines = append([]string{strings.TrimSpace(strings.TrimPrefix(t, "//"))}, lines...)
+		} else {
+			break
+		}
+		prev = prev.PrevSibling()
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.NodeID, current graph.NodeID) {
@@ -57,7 +78,11 @@ func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.Nod
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := funcID(b.path, name)
-			b.putSpan(n, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
+			node := graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path}
+			if doc := precedingGoDoc(b, n); doc != "" {
+				node.Props = map[string]string{PropDoc: doc}
+			}
+			b.putSpan(n, node)
 			parent := file
 			if *pkgID != "" {
 				parent = *pkgID
@@ -74,9 +99,13 @@ func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.Nod
 			name := b.text(nameNode)
 			recv := receiverTypeName(b, field(n, "receiver"))
 			id := methodID(b.path, recv, name)
+			props := map[string]string{"receiver": recv}
+			if doc := precedingGoDoc(b, n); doc != "" {
+				props[PropDoc] = doc
+			}
 			b.putSpan(n, graph.Node{
 				ID: id, Kind: KindMethod, Name: name, Path: b.path,
-				Props: map[string]string{"receiver": recv},
+				Props: props,
 			})
 			parent := file
 			if *pkgID != "" {
@@ -93,7 +122,17 @@ func walkGo(b *builder, n *tree_sitter.Node, file graph.NodeID, pkgID *graph.Nod
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := typeID(b.path, name)
-			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
+			node := graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path}
+			// type_spec sits inside type_declaration; look at the declaration for docs.
+			decl := n.Parent()
+			docNode := n
+			if decl != nil && decl.Kind() == "type_declaration" {
+				docNode = decl
+			}
+			if doc := precedingGoDoc(b, docNode); doc != "" {
+				node.Props = map[string]string{PropDoc: doc}
+			}
+			b.putSpan(n, node)
 			parent := file
 			if *pkgID != "" {
 				parent = *pkgID

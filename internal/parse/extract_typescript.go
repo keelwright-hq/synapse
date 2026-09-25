@@ -37,7 +37,11 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := funcID(b.path, name)
-			b.putSpan(n, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
+			node := graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path}
+			if doc := precedingTSDoc(b, n); doc != "" {
+				node.Props = map[string]string{PropDoc: doc}
+			}
+			b.putSpan(n, node)
 			b.edge(module, id, EdgeContains)
 			walkTS(b, field(n, "body"), module, id)
 			return
@@ -48,7 +52,11 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		if nameNode != nil {
 			name := b.text(nameNode)
 			id := methodID(b.path, containingTSClassName(b, n), name)
-			b.putSpan(n, graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path})
+			node := graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path}
+			if doc := precedingTSDoc(b, n); doc != "" {
+				node.Props = map[string]string{PropDoc: doc}
+			}
+			b.putSpan(n, node)
 			b.edge(module, id, EdgeContains)
 			walkTS(b, field(n, "body"), module, id)
 			return
@@ -108,6 +116,36 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		walkTS(b, n.NamedChild(i), module, current)
 	}
+}
+
+func precedingTSDoc(b *builder, n *tree_sitter.Node) string {
+	if n == nil {
+		return ""
+	}
+	prev := n.PrevSibling()
+	for prev != nil {
+		k := prev.Kind()
+		if k != "comment" && k != "html_comment" {
+			break
+		}
+		t := strings.TrimSpace(b.text(prev))
+		if strings.HasPrefix(t, "/**") {
+			t = strings.TrimPrefix(t, "/**")
+			t = strings.TrimSuffix(t, "*/")
+			var lines []string
+			for _, line := range strings.Split(t, "\n") {
+				line = strings.TrimSpace(line)
+				line = strings.TrimPrefix(line, "*")
+				line = strings.TrimSpace(line)
+				if line != "" {
+					lines = append(lines, line)
+				}
+			}
+			return strings.Join(lines, "\n")
+		}
+		prev = prev.PrevSibling()
+	}
+	return ""
 }
 
 func containingTSClassName(b *builder, n *tree_sitter.Node) string {
