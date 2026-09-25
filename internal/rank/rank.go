@@ -36,6 +36,18 @@ type Options struct {
 	// When set, snippet extraction prefers the root for the node's repo_uri.
 	RepoRoots map[string]string
 	Weights   map[graph.EdgeType]float64
+	// FamilyWeights optionally scale DefaultEdgeWeights by family (SYN-86).
+	FamilyWeights map[EdgeFamily]float64
+	// Explain attaches per-family score contributions on each hit (SYN-88).
+	Explain bool
+}
+
+// ScorePart is one family's contribution to a hit score.
+type ScorePart struct {
+	Family EdgeFamily `json:"family"`
+	Type   string     `json:"edge_type"`
+	Weight float64    `json:"weight"`
+	Dir    string     `json:"dir"`
 }
 
 // Hit is one ranked neighborhood entry.
@@ -47,6 +59,7 @@ type Hit struct {
 	Score      float64      `json:"score"`
 	Depth      int          `json:"depth"`
 	EdgeReason string       `json:"edge_reason,omitempty"`
+	Explain    []ScorePart  `json:"explain,omitempty"`
 	StartLine  int          `json:"start_line,omitempty"`
 	EndLine    int          `json:"end_line,omitempty"`
 	Snippet    string       `json:"snippet,omitempty"`
@@ -69,6 +82,9 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		opts.MaxNodes = 32
 	}
 	weights := opts.Weights
+	if weights == nil && opts.FamilyWeights != nil {
+		weights = WeightsFromFamilies(opts.FamilyWeights)
+	}
 	if weights == nil {
 		weights = DefaultEdgeWeights
 	}
@@ -79,10 +95,11 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 	}
 
 	type item struct {
-		id     graph.NodeID
-		depth  int
-		score  float64
-		reason string
+		id      graph.NodeID
+		depth   int
+		score   float64
+		reason  string
+		explain []ScorePart
 	}
 	queue := []item{{id: seed, depth: 0, score: 1.0, reason: "seed"}}
 	best := map[graph.NodeID]item{seed: queue[0]}
@@ -118,7 +135,16 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			}
 			score := cur.score * w
 			reason := fmt.Sprintf("%s:%s", dir, e.Type)
-			next := item{id: neighbor, depth: cur.depth + 1, score: score, reason: reason}
+			var explain []ScorePart
+			if opts.Explain {
+				explain = append(append([]ScorePart{}, cur.explain...), ScorePart{
+					Family: FamilyOf(e.Type),
+					Type:   string(e.Type),
+					Weight: w,
+					Dir:    dir,
+				})
+			}
+			next := item{id: neighbor, depth: cur.depth + 1, score: score, reason: reason, explain: explain}
 			if prev, ok := best[neighbor]; ok {
 				if next.score <= prev.score {
 					continue
@@ -146,6 +172,7 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			Score:      it.score,
 			Depth:      it.depth,
 			EdgeReason: it.reason,
+			Explain:    it.explain,
 			StartLine:  propInt(node.Props, "start_line"),
 			EndLine:    propInt(node.Props, "end_line"),
 		}

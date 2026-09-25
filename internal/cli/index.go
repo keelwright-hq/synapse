@@ -8,6 +8,8 @@ import (
 
 	"github.com/keelwright-hq/synapse/internal/config"
 	"github.com/keelwright-hq/synapse/internal/contract/bind"
+	"github.com/keelwright-hq/synapse/internal/docs"
+	synapsegit "github.com/keelwright-hq/synapse/internal/git"
 	"github.com/keelwright-hq/synapse/internal/index"
 	"github.com/keelwright-hq/synapse/internal/report"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
@@ -85,6 +87,16 @@ Workspace mode keeps the --data-dir / CWD default unchanged.
 			Members: []bind.Member{{Name: repo, Root: path, Store: store}},
 		}); err != nil {
 			return fmt.Errorf("index bind: %w", err)
+		}
+		// Phase 3 post-index pipeline (member shard only — never overlay):
+		// index.Run → bind.Bind → docs.Link → git.Analyze
+		if _, err := docs.Link(docs.LinkOptions{Root: path, Store: store, Repo: repo}); err != nil {
+			logger.Warn("docs link", "err", err)
+		}
+		if n, err := synapsegit.Analyze(store, path, synapsegit.Options{}); err != nil {
+			logger.Warn("git co-change analyze", "err", err)
+		} else if n > 0 {
+			logger.Info("git co-change edges", "count", n)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(),
 			"index complete: processed=%d skipped=%d deleted=%d errors=%d (data-dir=%s repo=%s)\n",
@@ -215,6 +227,17 @@ func runWorkspaceIndex(cmd *cobra.Command) error {
 
 	if err := bind.Bind(bind.Options{Members: members, Overlay: overlay}); err != nil {
 		return fmt.Errorf("index workspace bind: %w", err)
+	}
+
+	for _, m := range members {
+		if _, err := docs.Link(docs.LinkOptions{Root: m.Root, Store: m.Store, Repo: m.Name}); err != nil {
+			logger.Warn("docs link", "repo", m.Name, "err", err)
+		}
+		if n, err := synapsegit.Analyze(m.Store, m.Root, synapsegit.Options{}); err != nil {
+			logger.Warn("git co-change analyze", "repo", m.Name, "err", err)
+		} else if n > 0 {
+			logger.Info("git co-change edges", "repo", m.Name, "count", n)
+		}
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(),

@@ -15,6 +15,7 @@ import (
 	"github.com/keelwright-hq/synapse/internal/contract/graphql"
 	"github.com/keelwright-hq/synapse/internal/contract/openapi"
 	"github.com/keelwright-hq/synapse/internal/contract/protobuf"
+	"github.com/keelwright-hq/synapse/internal/docs"
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
 	"github.com/keelwright-hq/synapse/internal/uri"
@@ -103,14 +104,19 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	if err != nil {
 		return Stats{}, err
 	}
+	docFiles, err := docs.ListDocFiles(root, opts.IgnoreDirNames)
+	if err != nil {
+		return Stats{}, err
+	}
 	type contractKind byte
 	const (
 		contractNone contractKind = iota
 		contractOpenAPI
 		contractGraphQL
 		contractProtobuf
+		contractDocs
 	)
-	specKind := make(map[string]contractKind, len(oasSpecs)+len(gqlSpecs)+len(protoSpecs))
+	specKind := make(map[string]contractKind, len(oasSpecs)+len(gqlSpecs)+len(protoSpecs)+len(docFiles))
 	for _, abs := range oasSpecs {
 		specKind[abs] = contractOpenAPI
 	}
@@ -124,9 +130,14 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 			specKind[abs] = contractProtobuf
 		}
 	}
+	for _, abs := range docFiles {
+		if _, ok := specKind[abs]; !ok {
+			specKind[abs] = contractDocs
+		}
+	}
 	// Avoid double-processing if a path somehow appears in both lists.
-	merged := make([]string, 0, len(files)+len(oasSpecs)+len(gqlSpecs)+len(protoSpecs))
-	seenAbs := make(map[string]struct{}, len(files)+len(oasSpecs)+len(gqlSpecs)+len(protoSpecs))
+	merged := make([]string, 0, len(files)+len(oasSpecs)+len(gqlSpecs)+len(protoSpecs)+len(docFiles))
+	seenAbs := make(map[string]struct{}, len(files)+len(oasSpecs)+len(gqlSpecs)+len(protoSpecs)+len(docFiles))
 	for _, abs := range files {
 		if _, ok := seenAbs[abs]; ok {
 			continue
@@ -149,6 +160,13 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 		merged = append(merged, abs)
 	}
 	for _, abs := range protoSpecs {
+		if _, ok := seenAbs[abs]; ok {
+			continue
+		}
+		seenAbs[abs] = struct{}{}
+		merged = append(merged, abs)
+	}
+	for _, abs := range docFiles {
 		if _, ok := seenAbs[abs]; ok {
 			continue
 		}
@@ -217,6 +235,8 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 				res, err = graphql.ParseFile(j.absPath, j.relPath)
 			case contractProtobuf:
 				res, err = protobuf.ParseFile(j.absPath, j.relPath, []string{root})
+			case contractDocs:
+				res, err = docs.ParseFile(j.absPath, j.relPath)
 			default:
 				res, err = parse.ParseFile(reg, j.absPath)
 			}
