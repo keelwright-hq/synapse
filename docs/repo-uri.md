@@ -34,6 +34,8 @@ repo://{repo}/{path}#{kind}:{symbol}
 | `schema` | `schema` |
 | `field` | `field` |
 | `service` | `service` |
+| `doc` | `doc` |
+| `heading` | `heading` |
 
 ### Examples
 
@@ -50,6 +52,8 @@ repo://{repo}/{path}#{kind}:{symbol}
 | schema | `repo://api/openapi.yaml#schema:User` |
 | field | `repo://api/schema.graphql#field:User.name` |
 | service | `repo://api/users.proto#service:UserService` |
+| doc | `repo://synapse/docs/adr/0001-uris.md#doc:0001-uris` |
+| heading | `repo://synapse/README.md#heading:Overview` |
 
 Unresolved call targets without an owning file keep the Phase-1 id `symbol:Name`
 and **do not** receive a `repo://` URI until they can be scoped.

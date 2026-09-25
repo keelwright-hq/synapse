@@ -371,6 +371,8 @@ canvas.panning { cursor: grabbing; }
   function badgeClassFor(prov) {
     if (prov === "INFERRED") return "badge-inferred";
     if (prov === "EXTRACTED") return "badge-extracted";
+    if (prov === "HISTORICAL") return "badge-inferred";
+    if (prov === "OBSERVED") return "badge-extracted";
     return "badge-unknown";
   }
 

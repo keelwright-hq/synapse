@@ -52,7 +52,7 @@ func ParseLegacyID(id string) (LegacyParts, error) {
 			return LegacyParts{}, err
 		}
 		return LegacyParts{KindToken: KindSymbol, Path: p, Symbol: sym}, nil
-	case "func", "method", "type", "package", "import", "operation", "schema", "field", "service":
+	case "func", "method", "type", "package", "import", "operation", "schema", "field", "service", "doc", "heading":
 		pathPart, sym, cut := strings.Cut(rest, "#")
 		if !cut || pathPart == "" || sym == "" {
 			return LegacyParts{}, fmt.Errorf("%w: malformed legacy id %q", ErrInvalid, id)

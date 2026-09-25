@@ -14,20 +14,24 @@ import (
 )
 
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).
+// Phase 3 families (git / runtime / docs) are explicit so they do not fall back to 0.3.
 var DefaultEdgeWeights = map[graph.EdgeType]float64{
-	parse.EdgeContains:   1.0,
-	parse.EdgeCalls:      0.8,
-	parse.EdgeImplements: 0.9,
-	parse.EdgeConsumes:   0.9,
-	parse.EdgeImports:    0.5,
+	parse.EdgeContains:      1.0,
+	parse.EdgeCalls:         0.8,
+	parse.EdgeImplements:    0.9,
+	parse.EdgeConsumes:      0.9,
+	parse.EdgeImports:       0.5,
+	parse.EdgeCoCommitted:   0.7,  // HISTORICAL co-change
+	parse.EdgeObservedCalls: 0.85, // OBSERVED runtime
+	parse.EdgeDocuments:     0.6,  // doc ↔ symbol
 }
 
 // Options configure neighborhood ranking.
 type Options struct {
-	Depth     int
-	MaxNodes  int
-	Budget    int // max response characters; 0 = unlimited
-	RootDir   string
+	Depth    int
+	MaxNodes int
+	Budget   int // max response characters; 0 = unlimited
+	RootDir  string
 	// RepoRoots maps logical repo:// names to filesystem roots (workspace mode).
 	// When set, snippet extraction prefers the root for the node's repo_uri.
 	RepoRoots map[string]string

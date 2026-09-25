@@ -31,6 +31,8 @@ const (
 	KindSchema    = "schema"
 	KindField     = "field"
 	KindService   = "service"
+	KindDoc       = "doc"
+	KindHeading   = "heading"
 )
 
 var (
@@ -41,6 +43,7 @@ var (
 		KindFile: {}, KindPackage: {}, KindModule: {}, KindFunc: {},
 		KindMethod: {}, KindType: {}, KindImport: {}, KindSymbol: {},
 		KindOperation: {}, KindSchema: {}, KindField: {}, KindService: {},
+		KindDoc: {}, KindHeading: {},
 	}
 )
 
@@ -79,6 +82,10 @@ func KindToken(nodeKind string) (string, error) {
 		return KindField, nil
 	case "service":
 		return KindService, nil
+	case "doc":
+		return KindDoc, nil
+	case "heading":
+		return KindHeading, nil
 	default:
 		return "", fmt.Errorf("%w: unknown node kind %q", ErrInvalid, nodeKind)
 	}
@@ -111,6 +118,10 @@ func NodeKind(kindToken string) (string, error) {
 		return "field", nil
 	case KindService:
 		return "service", nil
+	case KindDoc:
+		return "doc", nil
+	case KindHeading:
+		return "heading", nil
 	default:
 		return "", fmt.Errorf("%w: unknown kind token %q", ErrInvalid, kindToken)
 	}
