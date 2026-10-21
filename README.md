@@ -229,6 +229,7 @@ Details: [docs/federation.md](docs/federation.md).
 | [docs/federation.md](docs/federation.md) | Federated shards and NDJSON snapshots |
 | [docs/mcp.md](docs/mcp.md) | MCP IDE wiring |
 | [docs/phase3.md](docs/phase3.md) | Phase 3 semantic extraction |
+| [docs/reviewer-workflows.md](docs/reviewer-workflows.md) | Reviewer workflows (co-changes, hot paths, docs) |
 | [docs/otel.md](docs/otel.md) | OpenTelemetry ingest |
 | [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
