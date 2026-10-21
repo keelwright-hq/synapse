@@ -3,6 +3,7 @@ package badger
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/graph/storetest"
@@ -141,4 +142,22 @@ func TestSlashContainingNodeIDsDoNotCollide(t *testing.T) {
 	if len(typed) != 1 || typed[0].To != other.ID {
 		t.Fatalf("typed OutEdges: %+v", typed)
 	}
+}
+
+func TestOpenWaitsForTransientLockRelease(t *testing.T) {
+	dir := t.TempDir()
+	s1, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open first: %v", err)
+	}
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		_ = s1.Close()
+	}()
+
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open second while first releasing lock: %v", err)
+	}
+	defer s2.Close()
 }

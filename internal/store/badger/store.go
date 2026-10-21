@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/keelwright-hq/synapse/internal/graph"
@@ -32,11 +34,38 @@ func Open(dir string) (*Store, error) {
 
 	opts := badgerdb.DefaultOptions(path)
 	opts.Logger = nil
-	db, err := badgerdb.Open(opts)
+	db, err := openWithLockRetry(opts, 3*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("badger: open: %w", err)
 	}
 	return &Store{dir: path, db: db}, nil
+}
+
+func openWithLockRetry(opts badgerdb.Options, maxWait time.Duration) (*badgerdb.DB, error) {
+	deadline := time.Now().Add(maxWait)
+	wait := 20 * time.Millisecond
+	for {
+		db, err := badgerdb.Open(opts)
+		if err == nil {
+			return db, nil
+		}
+		if !isLockContentionError(err) || time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(wait)
+		if wait < 100*time.Millisecond {
+			wait *= 2
+		}
+	}
+}
+
+func isLockContentionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Cannot acquire directory lock") ||
+		strings.Contains(msg, "resource temporarily unavailable")
 }
 
 func resolveGraphPath(dir string) (string, error) {

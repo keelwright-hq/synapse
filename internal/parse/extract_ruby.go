@@ -71,6 +71,13 @@ func walkRuby(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				b.edge(module, iid, EdgeImports)
 			}
 		} else if current != "" && methodName != "" {
+			if recv := field(n, "receiver"); recv != nil {
+				qual := qualifierName(b, recv)
+				if qual == "" {
+					qual = "_"
+				}
+				methodName = qual + "." + methodName
+			}
 			sid := symbolID(methodName)
 			b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: methodName})
 			b.edge(current, sid, EdgeCalls)

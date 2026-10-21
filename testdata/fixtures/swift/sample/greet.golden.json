@@ -47,9 +47,9 @@
       "path": "swift/sample/greet.swift"
     },
     {
-      "id": "symbol:greet",
+      "id": "symbol:g.greet",
       "kind": "symbol",
-      "name": "greet",
+      "name": "g.greet",
       "path": "swift/sample/greet.swift"
     },
     {
@@ -92,7 +92,7 @@
     },
     {
       "from": "func:swift/sample/greet.swift#helper",
-      "to": "symbol:greet",
+      "to": "symbol:g.greet",
       "type": "calls"
     },
     {

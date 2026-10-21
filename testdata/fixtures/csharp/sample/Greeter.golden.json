@@ -47,15 +47,15 @@
       "path": "csharp/sample/Greeter.cs"
     },
     {
-      "id": "symbol:Helper",
+      "id": "symbol:Console.WriteLine",
       "kind": "symbol",
-      "name": "Helper",
+      "name": "Console.WriteLine",
       "path": "csharp/sample/Greeter.cs"
     },
     {
-      "id": "symbol:WriteLine",
+      "id": "symbol:Helper",
       "kind": "symbol",
-      "name": "WriteLine",
+      "name": "Helper",
       "path": "csharp/sample/Greeter.cs"
     },
     {
@@ -77,12 +77,12 @@
     },
     {
       "from": "method:csharp/sample/Greeter.cs#Greeter.Greet(string)",
-      "to": "symbol:Helper",
+      "to": "symbol:Console.WriteLine",
       "type": "calls"
     },
     {
       "from": "method:csharp/sample/Greeter.cs#Greeter.Greet(string)",
-      "to": "symbol:WriteLine",
+      "to": "symbol:Helper",
       "type": "calls"
     },
     {

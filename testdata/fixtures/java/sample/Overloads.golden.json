@@ -61,15 +61,15 @@
       "path": "java/sample/Overloads.java"
     },
     {
-      "id": "symbol:overloaded",
+      "id": "symbol:String.valueOf",
       "kind": "symbol",
-      "name": "overloaded",
+      "name": "String.valueOf",
       "path": "java/sample/Overloads.java"
     },
     {
-      "id": "symbol:valueOf",
+      "id": "symbol:overloaded",
       "kind": "symbol",
-      "name": "valueOf",
+      "name": "overloaded",
       "path": "java/sample/Overloads.java"
     },
     {
@@ -91,12 +91,12 @@
     },
     {
       "from": "method:java/sample/Overloads.java#Overloads.overloaded(int)",
-      "to": "symbol:overloaded",
+      "to": "symbol:String.valueOf",
       "type": "calls"
     },
     {
       "from": "method:java/sample/Overloads.java#Overloads.overloaded(int)",
-      "to": "symbol:valueOf",
+      "to": "symbol:overloaded",
       "type": "calls"
     },
     {

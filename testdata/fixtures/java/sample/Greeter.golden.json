@@ -47,15 +47,15 @@
       "path": "java/sample/Greeter.java"
     },
     {
-      "id": "symbol:helper",
+      "id": "symbol:System.out.println",
       "kind": "symbol",
-      "name": "helper",
+      "name": "System.out.println",
       "path": "java/sample/Greeter.java"
     },
     {
-      "id": "symbol:println",
+      "id": "symbol:helper",
       "kind": "symbol",
-      "name": "println",
+      "name": "helper",
       "path": "java/sample/Greeter.java"
     },
     {
@@ -77,12 +77,12 @@
     },
     {
       "from": "method:java/sample/Greeter.java#Greeter.greet(String)",
-      "to": "symbol:helper",
+      "to": "symbol:System.out.println",
       "type": "calls"
     },
     {
       "from": "method:java/sample/Greeter.java#Greeter.greet(String)",
-      "to": "symbol:println",
+      "to": "symbol:helper",
       "type": "calls"
     },
     {

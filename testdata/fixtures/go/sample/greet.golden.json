@@ -54,21 +54,21 @@
       "path": "go/sample/greet.go"
     },
     {
-      "id": "symbol:Greet",
+      "id": "symbol:fmt.Printf",
       "kind": "symbol",
-      "name": "Greet",
+      "name": "fmt.Printf",
       "path": "go/sample/greet.go"
     },
     {
-      "id": "symbol:Printf",
+      "id": "symbol:fmt.Println",
       "kind": "symbol",
-      "name": "Printf",
+      "name": "fmt.Println",
       "path": "go/sample/greet.go"
     },
     {
-      "id": "symbol:Println",
+      "id": "symbol:g.Greet",
       "kind": "symbol",
-      "name": "Println",
+      "name": "g.Greet",
       "path": "go/sample/greet.go"
     },
     {
@@ -96,12 +96,12 @@
     },
     {
       "from": "func:go/sample/greet.go#helper",
-      "to": "symbol:Println",
+      "to": "symbol:fmt.Println",
       "type": "calls"
     },
     {
       "from": "func:go/sample/greet.go#main",
-      "to": "symbol:Greet",
+      "to": "symbol:g.Greet",
       "type": "calls"
     },
     {
@@ -111,7 +111,7 @@
     },
     {
       "from": "method:go/sample/greet.go#Greeter.Greet",
-      "to": "symbol:Printf",
+      "to": "symbol:fmt.Printf",
       "type": "calls"
     },
     {

@@ -57,9 +57,9 @@
       "path": "tsx/sample/app.tsx"
     },
     {
-      "id": "symbol:trim",
+      "id": "symbol:s.trim",
       "kind": "symbol",
-      "name": "trim",
+      "name": "s.trim",
       "path": "tsx/sample/app.tsx"
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "from": "func:tsx/sample/app.tsx#format",
-      "to": "symbol:trim",
+      "to": "symbol:s.trim",
       "type": "calls"
     },
     {

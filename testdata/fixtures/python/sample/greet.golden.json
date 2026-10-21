@@ -53,9 +53,9 @@
       "path": "python/sample/greet.py"
     },
     {
-      "id": "symbol:greet",
+      "id": "symbol:g.greet",
       "kind": "symbol",
-      "name": "greet",
+      "name": "g.greet",
       "path": "python/sample/greet.py"
     },
     {
@@ -88,7 +88,7 @@
     },
     {
       "from": "func:python/sample/greet.py#helper",
-      "to": "symbol:greet",
+      "to": "symbol:g.greet",
       "type": "calls"
     },
     {

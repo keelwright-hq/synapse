@@ -58,6 +58,7 @@ func TestParseAndLink(t *testing.T) {
 		}
 	}
 	_ = store.PutNode(graph.Node{ID: "func:greet.go#helper", Kind: parse.KindFunction, Name: "helper", Path: "greet.go"})
+	_ = store.PutNode(graph.Node{ID: "symbol:helper", Kind: parse.KindSymbol, Name: "helper"})
 	_ = store.PutNode(graph.Node{ID: "file:greet.go", Kind: parse.KindFile, Name: "greet.go", Path: "greet.go"})
 
 	n, err := docs.Link(docs.LinkOptions{Root: root, Store: store, Repo: "demo"})
@@ -71,7 +72,13 @@ func TestParseAndLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(edges) == 0 {
-		t.Fatal("no documents edges from doc")
+	var linkedHelper bool
+	for _, e := range edges {
+		if e.To == "func:greet.go#helper" {
+			linkedHelper = true
+		}
+	}
+	if !linkedHelper {
+		t.Fatalf("expected documents edge to func:greet.go#helper, got %+v", edges)
 	}
 }

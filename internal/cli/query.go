@@ -40,7 +40,11 @@ var queryNeighborhoodCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		store, err := badger.OpenWithRepo(dataDir, repo)
+		resolvedDataDir, err := resolveSingleRepoDataDir(cmd, queryRoot)
+		if err != nil {
+			return err
+		}
+		store, err := badger.OpenWithRepo(resolvedDataDir, repo)
 		if err != nil {
 			return err
 		}
@@ -69,7 +73,7 @@ var queryCoChangesCmd = &cobra.Command{
 	Short: "Top git co-change neighbors for a file path",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, cleanup, err := openMemberQueryStore()
+		store, cleanup, err := openMemberQueryStore(cmd)
 		if err != nil {
 			return err
 		}
@@ -93,7 +97,7 @@ var queryHotPathsCmd = &cobra.Command{
 	Short: "Runtime observed_calls hot paths for a symbol",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, cleanup, err := openMemberQueryStore()
+		store, cleanup, err := openMemberQueryStore(cmd)
 		if err != nil {
 			return err
 		}
@@ -117,7 +121,7 @@ var queryDocsCmd = &cobra.Command{
 	Short: "Documentation tied to a symbol",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, cleanup, err := openMemberQueryStore()
+		store, cleanup, err := openMemberQueryStore(cmd)
 		if err != nil {
 			return err
 		}
@@ -136,7 +140,7 @@ var queryDocsCmd = &cobra.Command{
 	},
 }
 
-func openMemberQueryStore() (graph.Store, func(), error) {
+func openMemberQueryStore(cmd *cobra.Command) (graph.Store, func(), error) {
 	if workspacePath != "" {
 		opened, err := openWorkspaceStore(workspacePath, dataDir, repoName)
 		if err != nil {
@@ -151,7 +155,11 @@ func openMemberQueryStore() (graph.Store, func(), error) {
 	if repoName != "" {
 		repo = repoName
 	}
-	store, err := badger.OpenWithRepo(dataDir, repo)
+	resolvedDataDir, err := resolveSingleRepoDataDir(cmd, queryRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	store, err := badger.OpenWithRepo(resolvedDataDir, repo)
 	if err != nil {
 		return nil, nil, err
 	}

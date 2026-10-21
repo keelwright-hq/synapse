@@ -63,15 +63,15 @@
       "path": "js/sample/greet.js"
     },
     {
-      "id": "symbol:readFile",
+      "id": "symbol:name.toUpperCase",
       "kind": "symbol",
-      "name": "readFile",
+      "name": "name.toUpperCase",
       "path": "js/sample/greet.js"
     },
     {
-      "id": "symbol:toUpperCase",
+      "id": "symbol:readFile",
       "kind": "symbol",
-      "name": "toUpperCase",
+      "name": "readFile",
       "path": "js/sample/greet.js"
     },
     {
@@ -103,7 +103,7 @@
     },
     {
       "from": "func:js/sample/greet.js#format",
-      "to": "symbol:toUpperCase",
+      "to": "symbol:name.toUpperCase",
       "type": "calls"
     },
     {

@@ -87,9 +87,9 @@
       "path": "kotlin/sample/Overloads.kt"
     },
     {
-      "id": "symbol:toString",
+      "id": "symbol:x.toString",
       "kind": "symbol",
-      "name": "toString",
+      "name": "x.toString",
       "path": "kotlin/sample/Overloads.kt"
     },
     {
@@ -116,7 +116,7 @@
     },
     {
       "from": "method:kotlin/sample/Overloads.kt#Overloads.overloaded(Int)",
-      "to": "symbol:toString",
+      "to": "symbol:x.toString",
       "type": "calls"
     },
     {
