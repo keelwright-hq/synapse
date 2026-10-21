@@ -128,3 +128,50 @@ func TestIndexerProcessesJavaScript(t *testing.T) {
 		t.Fatalf("hello missing: %v", err)
 	}
 }
+
+func TestIndexerResolvesCallsAndIncrementalUpdates(t *testing.T) {
+	root := t.TempDir()
+	a := filepath.Join(root, "a.go")
+	b := filepath.Join(root, "b.go")
+	writeGo(t, a, "package sample\n\nfunc Caller() {\n\tHelper()\n\tExternalFn()\n}\n")
+	writeGo(t, b, "package sample\n\nfunc Helper() {}\n")
+
+	store := memory.New()
+	idx := index.New(store)
+	if _, err := idx.Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	inEdges, err := store.InEdges("func:b.go#Helper", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inEdges) != 1 || inEdges[0].From != "func:a.go#Caller" {
+		t.Fatalf("expected Caller -> func:b.go#Helper calls edge, got %+v", inEdges)
+	}
+	if _, err := store.GetNode("symbol:Helper"); err != graph.ErrNotFound {
+		t.Fatalf("expected resolved symbol:Helper placeholder to be pruned, got err=%v", err)
+	}
+	if _, err := store.GetNode("symbol:ExternalFn"); err != nil {
+		t.Fatalf("expected unresolved symbol:ExternalFn to remain, got err=%v", err)
+	}
+
+	// Delete b.go and re-run incrementally (a.go is skipped); symbol:Helper should be restored.
+	if err := os.Remove(b); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := idx.Run(root, index.Options{Workers: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Skipped != 1 || stats.Deleted != 1 {
+		t.Fatalf("unexpected incremental stats=%+v", stats)
+	}
+	symEdges, err := store.InEdges("symbol:Helper", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(symEdges) != 1 || symEdges[0].From != "func:a.go#Caller" {
+		t.Fatalf("expected Caller -> symbol:Helper to be restored after deleting b.go, got %+v", symEdges)
+	}
+}

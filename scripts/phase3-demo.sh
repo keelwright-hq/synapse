@@ -51,9 +51,9 @@ echo "== co-changes =="
 "$BIN" --repo demo --data-dir "$DEMO/data" query co-changes greet.go --root "$DEMO/src" --json | head -c 500 || true
 echo
 echo "== hot-paths =="
-"$BIN" --repo demo --data-dir "$DEMO/data" query hot-paths 'func:greet.go#main' --root "$DEMO/src" --json | head -c 500 || true
+"$BIN" --repo demo --data-dir "$DEMO/data" query hot-paths main --root "$DEMO/src" --json | head -c 500 || true
 echo
 echo "== docs =="
-"$BIN" --repo demo --data-dir "$DEMO/data" query docs 'func:greet.go#helper' --root "$DEMO/src" --json | head -c 500 || true
+"$BIN" --repo demo --data-dir "$DEMO/data" query docs helper --root "$DEMO/src" --json | head -c 500 || true
 echo
 echo "Phase 3 demo completed successfully."

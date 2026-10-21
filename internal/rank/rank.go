@@ -310,20 +310,37 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if n, err := store.GetNode(graph.NodeID(query)); err == nil {
 		return n.ID, nil
 	}
-	var matches []graph.NodeID
+	var (
+		codeMatches []graph.NodeID
+		defMatches  []graph.NodeID
+		symMatches  []graph.NodeID
+	)
 	// Name lookup scans nodes until we know uniqueness (0/1) or ambiguity (≥2).
-	// A secondary name index can replace this for very large graphs.
+	// Real definition nodes take precedence over unresolved symbol/import placeholders,
+	// and callable/type definitions take precedence over package/file containers.
 	err := store.ForEachNode(func(n graph.Node) bool {
 		if n.Name == query || string(n.ID) == query {
-			matches = append(matches, n.ID)
-			if len(matches) >= 2 {
-				return false
+			switch n.Kind {
+			case parse.KindSymbol, parse.KindImport:
+				symMatches = append(symMatches, n.ID)
+			case parse.KindFunction, parse.KindMethod, parse.KindType, parse.KindOperation, parse.KindSchema:
+				codeMatches = append(codeMatches, n.ID)
+				defMatches = append(defMatches, n.ID)
+			default:
+				defMatches = append(defMatches, n.ID)
 			}
 		}
 		return true
 	})
 	if err != nil {
 		return "", err
+	}
+	matches := defMatches
+	if len(matches) > 1 && len(codeMatches) == 1 {
+		matches = codeMatches
+	}
+	if len(matches) == 0 {
+		matches = symMatches
 	}
 	if len(matches) == 1 {
 		return matches[0], nil
@@ -375,7 +392,33 @@ func FindReferences(store graph.Store, target graph.NodeID, edgeType graph.EdgeT
 	if edgeType == "" {
 		edgeType = parse.EdgeCalls
 	}
-	return store.InEdges(target, edgeType)
+	edges, err := store.InEdges(target, edgeType)
+	if err != nil || len(edges) > 0 || edgeType != parse.EdgeCalls {
+		return edges, err
+	}
+	// Fallback for unlinked graphs (e.g. raw ParseFile fixtures): if target is the
+	// unique function/method definition for its name, check incoming calls to symbol:<Name>.
+	tn, err := store.GetNode(target)
+	if err != nil || (tn.Kind != parse.KindFunction && tn.Kind != parse.KindMethod) || tn.Name == "" {
+		return edges, nil
+	}
+	defCount := 0
+	_ = store.ForEachNode(func(n graph.Node) bool {
+		if (n.Kind == parse.KindFunction || n.Kind == parse.KindMethod) && n.Name == tn.Name {
+			defCount++
+			return defCount < 2
+		}
+		return true
+	})
+	if defCount != 1 {
+		return edges, nil
+	}
+	symID := graph.NodeID("symbol:" + tn.Name)
+	symEdges, err := store.InEdges(symID, edgeType)
+	if err != nil {
+		return edges, nil
+	}
+	return symEdges, nil
 }
 
 func max(a, b int) int {

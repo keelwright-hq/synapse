@@ -133,3 +133,33 @@ func mustEdge(t *testing.T, s *memory.Store, e graph.Edge) {
 		t.Fatal(err)
 	}
 }
+
+func TestResolveSeedPrefersDefinitionOverSymbolPlaceholder(t *testing.T) {
+	store := memory.New()
+	mustPut(t, store, graph.Node{ID: "func:greet.go#helper", Kind: parse.KindFunction, Name: "helper", Path: "greet.go"})
+	mustPut(t, store, graph.Node{ID: "symbol:helper", Kind: parse.KindSymbol, Name: "helper"})
+
+	id, err := rank.ResolveSeed(store, "helper")
+	if err != nil {
+		t.Fatalf("ResolveSeed failed when symbol placeholder existed: %v", err)
+	}
+	if id != "func:greet.go#helper" {
+		t.Fatalf("got %q, want func:greet.go#helper", id)
+	}
+}
+
+func TestFindReferencesUnlinkedSymbolFallback(t *testing.T) {
+	store := memory.New()
+	mustPut(t, store, graph.Node{ID: "func:greet.go#Greet", Kind: parse.KindFunction, Name: "Greet", Path: "greet.go"})
+	mustPut(t, store, graph.Node{ID: "func:greet.go#helper", Kind: parse.KindFunction, Name: "helper", Path: "greet.go"})
+	mustPut(t, store, graph.Node{ID: "symbol:helper", Kind: parse.KindSymbol, Name: "helper"})
+	mustEdge(t, store, graph.Edge{From: "func:greet.go#Greet", To: "symbol:helper", Type: parse.EdgeCalls})
+
+	refs, err := rank.FindReferences(store, "func:greet.go#helper", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 || refs[0].From != "func:greet.go#Greet" {
+		t.Fatalf("expected fallback incoming call from Greet, got %+v", refs)
+	}
+}

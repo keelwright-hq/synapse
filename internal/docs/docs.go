@@ -194,6 +194,10 @@ func resolveMention(store graph.Store, mention string) (graph.NodeID, bool) {
 	}
 	var matches []graph.NodeID
 	_ = store.ForEachNode(func(n graph.Node) bool {
+		switch n.Kind {
+		case parse.KindSymbol, parse.KindImport, parse.KindDoc, parse.KindHeading:
+			return true
+		}
 		if n.Name == mention {
 			matches = append(matches, n.ID)
 			return len(matches) < 2

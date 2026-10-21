@@ -254,6 +254,7 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 			}
 			if j.kind == contractNone {
 				res = rewritePaths(res, j.absPath, j.relPath)
+				res = recordCallees(res)
 			}
 			res = assignRepoURIs(res, repo)
 			if err := idx.replaceFile(j.relPath, hash, res); err != nil {
@@ -299,6 +300,14 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 		}
 		stats.Deleted++
 		log.Info("index deleted", "path", path)
+	}
+
+	if stats.Processed > 0 || stats.Deleted > 0 {
+		if err := idx.resolveCalls(log); err != nil {
+			errs = append(errs, fmt.Errorf("resolve calls: %w", err))
+			stats.Errors++
+			log.Error("index resolve calls failed", "err", err)
+		}
 	}
 
 	log.Info("index complete",
