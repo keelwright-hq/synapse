@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/keelwright-hq/synapse/internal/graph"
 	mcpserver "github.com/keelwright-hq/synapse/internal/mcp"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 )
@@ -25,20 +26,34 @@ Requires a prior synapse index (single-repo or --workspace).`,
 		}
 
 		if workspacePath != "" {
-			opened, err := openWorkspaceStore(workspacePath, dataDir, repoName)
+			wsPath := workspacePath
+			dir := dataDir
+			scope := repoName
+
+			opened, err := openWorkspaceStore(wsPath, dir, scope)
 			if err != nil {
 				return err
 			}
-			defer opened.Closer.Close()
+			var repoRoots map[string]string
+			if opened.Workspace != nil {
+				repoRoots = opened.Workspace.RepoRoots()
+			}
+			_ = opened.Closer.Close()
 
 			opts := mcpserver.Options{
-				Store:        opened.Store,
-				Federated:    opened.Fed,
-				RootDir:      root,
-				OpenWarnings: opened.Warnings,
-			}
-			if opened.Workspace != nil {
-				opts.RepoRoots = opened.Workspace.RepoRoots()
+				RootDir:   root,
+				RepoRoots: repoRoots,
+				OpenSession: func() (graph.Store, []string, func(), error) {
+					cur, err := openWorkspaceStore(wsPath, dir, scope)
+					if err != nil {
+						return nil, nil, nil, err
+					}
+					store := cur.Store
+					if cur.Fed != nil {
+						store = cur.Fed.Session()
+					}
+					return store, cur.Warnings, func() { _ = cur.Closer.Close() }, nil
+				},
 			}
 			s := mcpserver.New(opts)
 			return mcpserver.ServeStdio(s)
@@ -48,13 +63,26 @@ Requires a prior synapse index (single-repo or --workspace).`,
 		if err != nil {
 			return err
 		}
-		store, err := badger.OpenWithRepo(dataDir, repo)
+		resolvedDataDir, err := resolveSingleRepoDataDir(cmd, root)
 		if err != nil {
 			return err
 		}
-		defer store.Close()
+		store, err := badger.OpenWithRepo(resolvedDataDir, repo)
+		if err != nil {
+			return err
+		}
+		_ = store.Close()
 
-		s := mcpserver.New(mcpserver.Options{Store: store, RootDir: root})
+		s := mcpserver.New(mcpserver.Options{
+			RootDir: root,
+			OpenSession: func() (graph.Store, []string, func(), error) {
+				cur, err := badger.OpenWithRepo(resolvedDataDir, repo)
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				return cur, nil, func() { _ = cur.Close() }, nil
+			},
+		})
 		return mcpserver.ServeStdio(s)
 	},
 }

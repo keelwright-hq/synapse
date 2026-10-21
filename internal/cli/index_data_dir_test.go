@@ -134,3 +134,102 @@ func TestIndexRespectsExplicitDataDir(t *testing.T) {
 		t.Fatalf("must not force .synapse into repo when --data-dir set; err=%v", err)
 	}
 }
+
+func TestQueryAndOtelDefaultDataDirFromRootOutsideCWD(t *testing.T) {
+	outer := t.TempDir()
+	repo := filepath.Join(outer, "target-repo")
+	writeTinyGoRepo(t, repo)
+	cwd := filepath.Join(outer, "elsewhere")
+	if err := os.MkdirAll(cwd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cwd)
+
+	cmd := cli.RootCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	clearDataDirFlag(t)
+	cmd.SetArgs([]string{"index", repo})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("index: %v\n%s", err, buf.String())
+	}
+
+	// Query neighborhood using --root without --data-dir from outside CWD.
+	buf.Reset()
+	clearDataDirFlag(t)
+	cmd.SetArgs([]string{"query", "neighborhood", "Hello", "--root", repo, "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("query neighborhood with --root: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "func:hello.go#Hello") {
+		t.Fatalf("expected func:hello.go#Hello in output, got:\n%s", buf.String())
+	}
+
+	// Ingest OTel trace using --root without --data-dir from outside CWD.
+	traceFile := filepath.Join(outer, "trace.json")
+	traceJSON := `{"spans":[{"name":"Hello","attributes":{"code.filepath":"hello.go","code.function":"Hello"}}]}`
+	if err := os.WriteFile(traceFile, []byte(traceJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	clearDataDirFlag(t)
+	cmd.SetArgs([]string{"otel", "ingest", traceFile, "--root", repo})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("otel ingest with --root: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), filepath.Join(repo, ".synapse")) {
+		t.Fatalf("expected otel ingest to use repo .synapse, got:\n%s", buf.String())
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".synapse")); !os.IsNotExist(err) {
+		t.Fatalf("must not create .synapse in outer cwd; err=%v", err)
+	}
+}
+
+func TestOtelIngestSupportsWorkspaceMode(t *testing.T) {
+	wsDir := workspaceFixtureDir(t)
+	dataDir := t.TempDir()
+
+	cmd := cli.RootCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	resetPersistentFlags(t, cmd)
+	cmd.SetArgs([]string{"index", "--workspace", wsDir, "--data-dir", dataDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("index --workspace: %v\n%s", err, buf.String())
+	}
+
+	traceFile := filepath.Join(t.TempDir(), "trace.json")
+	traceJSON := `{"spans":[
+		{"name":"root","attributes":{"code.filepath":"svc/handler.go","code.function":"Handle"}},
+		{"name":"child","parent":"root","attributes":{"code.filepath":"svc/handler.go","code.function":"Handle"}}
+	]}`
+	if err := os.WriteFile(traceFile, []byte(traceJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Scoped to one workspace member (--workspace + --repo).
+	buf.Reset()
+	resetPersistentFlags(t, cmd)
+	cmd.SetArgs([]string{"otel", "ingest", traceFile, "--workspace", wsDir, "--data-dir", dataDir, "--repo", "api"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("otel ingest --workspace --repo api: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "repo=api") {
+		t.Fatalf("expected repo=api in output, got:\n%s", buf.String())
+	}
+
+	// Unscoped across all workspace shards (--workspace without --repo).
+	buf.Reset()
+	resetPersistentFlags(t, cmd)
+	cmd.SetArgs([]string{"otel", "ingest", traceFile, "--workspace", wsDir, "--data-dir", dataDir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("otel ingest --workspace: %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "workspace=") {
+		t.Fatalf("expected workspace= in output, got:\n%s", buf.String())
+	}
+}
