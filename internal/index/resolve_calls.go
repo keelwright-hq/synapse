@@ -112,7 +112,8 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 			if calleeName == "" {
 				continue
 			}
-			if targetID, prov, ok := pickCalleeTarget(caller, calleeName, defsByName[calleeName], fileImports); ok {
+			_, memberName := splitCalleeQualifier(calleeName)
+			if targetID, prov, ok := pickCalleeTarget(caller, calleeName, defsByName[memberName], fileImports); ok {
 				if targetID != caller.ID {
 					desired[targetID] = prov
 				}
@@ -192,51 +193,66 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 	return nil
 }
 
+func splitCalleeQualifier(calleeName string) (qualifier, member string) {
+	if i := strings.LastIndex(calleeName, "::"); i >= 0 {
+		return calleeName[:i], calleeName[i+2:]
+	}
+	if i := strings.LastIndexByte(calleeName, '.'); i >= 0 {
+		return calleeName[:i], calleeName[i+1:]
+	}
+	return "", calleeName
+}
+
 func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.Node, fileImports []string) (graph.NodeID, string, bool) {
 	if len(candidates) == 0 {
 		return "", "", false
 	}
 
-	// Tier 1: Same file.
-	var sameFile []graph.Node
-	for _, c := range candidates {
-		if c.Path == caller.Path {
-			sameFile = append(sameFile, c)
-		}
-	}
-	if len(sameFile) == 1 {
-		return sameFile[0].ID, parse.ProvenanceExtracted, true
-	}
-	if len(sameFile) > 1 {
-		if id, ok := disambiguateCandidates(caller, sameFile); ok {
-			return id, parse.ProvenanceExtracted, true
-		}
-		return "", "", false
-	}
+	qualifier, _ := splitCalleeQualifier(calleeName)
+	isBare := qualifier == ""
 
-	// Tier 2: Same directory / package.
-	callerDir := filepath.ToSlash(filepath.Dir(caller.Path))
-	var sameDir []graph.Node
-	for _, c := range candidates {
-		if filepath.ToSlash(filepath.Dir(c.Path)) == callerDir {
-			sameDir = append(sameDir, c)
+	if isBare {
+		// Tier 1: Same file.
+		var sameFile []graph.Node
+		for _, c := range candidates {
+			if c.Path == caller.Path {
+				sameFile = append(sameFile, c)
+			}
 		}
-	}
-	if len(sameDir) == 1 {
-		return sameDir[0].ID, parse.ProvenanceInferred, true
-	}
-	if len(sameDir) > 1 {
-		if id, ok := disambiguateCandidates(caller, sameDir); ok {
-			return id, parse.ProvenanceInferred, true
+		if len(sameFile) == 1 {
+			return sameFile[0].ID, parse.ProvenanceExtracted, true
 		}
-		return "", "", false
+		if len(sameFile) > 1 {
+			if id, ok := disambiguateCandidates(caller, sameFile); ok {
+				return id, parse.ProvenanceExtracted, true
+			}
+			return "", "", false
+		}
+
+		// Tier 2: Same directory / package.
+		callerDir := filepath.ToSlash(filepath.Dir(caller.Path))
+		var sameDir []graph.Node
+		for _, c := range candidates {
+			if filepath.ToSlash(filepath.Dir(c.Path)) == callerDir {
+				sameDir = append(sameDir, c)
+			}
+		}
+		if len(sameDir) == 1 {
+			return sameDir[0].ID, parse.ProvenanceInferred, true
+		}
+		if len(sameDir) > 1 {
+			if id, ok := disambiguateCandidates(caller, sameDir); ok {
+				return id, parse.ProvenanceInferred, true
+			}
+			return "", "", false
+		}
 	}
 
 	// Tier 3: Imported package / module.
 	if len(fileImports) > 0 {
 		var imported []graph.Node
 		for _, c := range candidates {
-			if matchesImport(caller.Path, c.Path, fileImports) {
+			if matchesImport(caller.Path, c.Path, qualifier, fileImports) {
 				imported = append(imported, c)
 			}
 		}
@@ -252,7 +268,7 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 	}
 
 	// Tier 4: Unique top-level function across the repository (excluding common language builtins).
-	if !isCommonBuiltin(calleeName) && len(candidates) == 1 && candidates[0].Kind == parse.KindFunction {
+	if isBare && !isCommonBuiltin(calleeName) && len(candidates) == 1 && candidates[0].Kind == parse.KindFunction {
 		return candidates[0].ID, parse.ProvenanceInferred, true
 	}
 
@@ -285,11 +301,11 @@ func disambiguateCandidates(caller graph.Node, candidates []graph.Node) (graph.N
 	return "", false
 }
 
-func matchesImport(callerPath, defPath string, fileImports []string) bool {
+func matchesImport(callerPath, defPath, qualifier string, fileImports []string) bool {
 	callerDir := filepath.ToSlash(filepath.Dir(callerPath))
 	defDir := filepath.ToSlash(filepath.Dir(defPath))
 	defNoExt := strings.TrimSuffix(filepath.ToSlash(defPath), filepath.Ext(defPath))
-	defBaseNoExt := strings.TrimSuffix(filepath.Base(defPath), filepath.Ext(defPath))
+	slashQual := strings.ReplaceAll(strings.ReplaceAll(qualifier, "::", "/"), ".", "/")
 
 	for _, rawImp := range fileImports {
 		imp := strings.Trim(strings.TrimSpace(rawImp), "\"'`")
@@ -299,16 +315,17 @@ func matchesImport(callerPath, defPath string, fileImports []string) bool {
 		if strings.HasPrefix(imp, ".") {
 			resolved := filepath.ToSlash(filepath.Clean(filepath.Join(callerDir, imp)))
 			if resolved == defDir || resolved == defNoExt || resolved == filepath.ToSlash(defPath) {
-				return true
+				if slashQual == "" || resolved == slashQual || strings.HasSuffix(resolved, "/"+slashQual) {
+					return true
+				}
 			}
 			continue
 		}
 		slashImp := strings.ReplaceAll(imp, ".", "/")
 		if defDir != "." && (imp == defDir || strings.HasSuffix(imp, "/"+defDir) || slashImp == defDir || strings.HasSuffix(slashImp, "/"+defDir)) {
-			return true
-		}
-		if defBaseNoExt != "" && (imp == defBaseNoExt || strings.HasSuffix(imp, "/"+defBaseNoExt) || strings.HasSuffix(slashImp, "/"+defBaseNoExt)) {
-			return true
+			if slashQual == "" || defDir == slashQual || strings.HasSuffix(defDir, "/"+slashQual) {
+				return true
+			}
 		}
 	}
 	return false

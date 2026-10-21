@@ -175,3 +175,119 @@ func TestIndexerResolvesCallsAndIncrementalUpdates(t *testing.T) {
 		t.Fatalf("expected Caller -> symbol:Helper to be restored after deleting b.go, got %+v", symEdges)
 	}
 }
+
+func TestIndexerQualifiedCallDoesNotBindLocalDefinition(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "util"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGo(t, filepath.Join(root, "a.go"), `package main
+
+import (
+	"fmt"
+	"example.com/demo/util"
+)
+
+func Println(s string) {}
+
+func main() {
+	fmt.Println("hi")
+	fmt.Printf("hi")
+	fmt.Sprintln("hi")
+	util.Helper()
+}
+`)
+	writeGo(t, filepath.Join(root, "b.go"), "package main\n\nfunc Printf(s string) {}\n")
+	writeGo(t, filepath.Join(root, "sub", "c.go"), "package sub\n\nfunc Sprintln(s string) {}\n")
+	writeGo(t, filepath.Join(root, "util", "helper.go"), "package util\n\nfunc Helper() {}\n")
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, localDef := range []graph.NodeID{
+		"func:a.go#Println",
+		"func:b.go#Printf",
+		"func:sub/c.go#Sprintln",
+	} {
+		inEdges, err := store.InEdges(localDef, "calls")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inEdges) != 0 {
+			t.Fatalf("expected no calls to %s from fmt.*, got %+v", localDef, inEdges)
+		}
+	}
+
+	for _, unresolvedSym := range []graph.NodeID{
+		"symbol:fmt.Println",
+		"symbol:fmt.Printf",
+		"symbol:fmt.Sprintln",
+	} {
+		inEdges, err := store.InEdges(unresolvedSym, "calls")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inEdges) != 1 || inEdges[0].From != "func:a.go#main" {
+			t.Fatalf("expected main -> %s to remain unresolved, got %+v", unresolvedSym, inEdges)
+		}
+	}
+
+	utilEdges, err := store.InEdges("func:util/helper.go#Helper", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(utilEdges) != 1 || utilEdges[0].From != "func:a.go#main" {
+		t.Fatalf("expected main -> func:util/helper.go#Helper via imported package, got %+v", utilEdges)
+	}
+}
+
+func TestIndexerImportDoesNotMatchRepoFilename(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "util"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "other"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGo(t, filepath.Join(root, "main.go"), `package main
+
+import "fmt"
+
+func main() {
+	Sprintf("hi")
+	fmt.Sprintf("hi")
+}
+`)
+	writeGo(t, filepath.Join(root, "util", "fmt.go"), "package util\n\nfunc Sprintf(s string) {}\n")
+	writeGo(t, filepath.Join(root, "other", "str.go"), "package other\n\nfunc Sprintf(s string) {}\n")
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	inEdges, err := store.InEdges("func:util/fmt.go#Sprintf", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inEdges) != 0 {
+		t.Fatalf("expected import \"fmt\" not to select util/fmt.go, got incoming calls %+v", inEdges)
+	}
+
+	for _, sym := range []graph.NodeID{"symbol:Sprintf", "symbol:fmt.Sprintf"} {
+		symEdges, err := store.InEdges(sym, "calls")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(symEdges) != 1 || symEdges[0].From != "func:main.go#main" {
+			t.Fatalf("expected %s to remain unresolved, got %+v", sym, symEdges)
+		}
+	}
+}

@@ -57,15 +57,15 @@
       "path": "ts/sample/greet.ts"
     },
     {
-      "id": "symbol:readFile",
+      "id": "symbol:name.toUpperCase",
       "kind": "symbol",
-      "name": "readFile",
+      "name": "name.toUpperCase",
       "path": "ts/sample/greet.ts"
     },
     {
-      "id": "symbol:toUpperCase",
+      "id": "symbol:readFile",
       "kind": "symbol",
-      "name": "toUpperCase",
+      "name": "readFile",
       "path": "ts/sample/greet.ts"
     },
     {
@@ -97,7 +97,7 @@
     },
     {
       "from": "func:ts/sample/greet.ts#format",
-      "to": "symbol:toUpperCase",
+      "to": "symbol:name.toUpperCase",
       "type": "calls"
     },
     {

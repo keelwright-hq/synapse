@@ -113,7 +113,18 @@ func walkJava(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 
 func javaCalleeName(b *builder, invocation *tree_sitter.Node) string {
 	if nameNode := field(invocation, "name"); nameNode != nil {
-		return b.text(nameNode)
+		member := b.text(nameNode)
+		if member == "" {
+			return ""
+		}
+		if obj := field(invocation, "object"); obj != nil {
+			qual := qualifierName(b, obj)
+			if qual == "" {
+				qual = "_"
+			}
+			return qual + "." + member
+		}
+		return member
 	}
 	return ""
 }
