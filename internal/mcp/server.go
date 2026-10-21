@@ -23,22 +23,36 @@ type Options struct {
 	// Federated is an optional long-lived federated base store. When set, each
 	// tool call uses Federated.Session() (pin maps are not concurrency-safe).
 	Federated *federated.Store
+	// OpenSession optionally opens a fresh store on demand for each tool or
+	// resource call and releases it when the call completes (preventing
+	// long-lived BadgerDB file lock contention with CLI commands).
+	OpenSession func() (store graph.Store, openWarnings []string, closeFn func(), err error)
 	// RepoRoots maps logical repo names to filesystem roots (workspace mode).
 	RepoRoots map[string]string
 	// OpenWarnings are soft-fail messages from opening workspace shards.
 	OpenWarnings []string
 }
 
-// session returns the store for one tool call.
-func (o Options) session() graph.Store {
-	if o.Federated != nil {
-		return o.Federated.Session()
+// acquireSession returns a store, open-time warnings, and a cleanup function for one tool/resource call.
+func (o Options) acquireSession() (graph.Store, []string, func(), error) {
+	if o.OpenSession != nil {
+		store, warnings, closeFn, err := o.OpenSession()
+		if err != nil {
+			return nil, nil, func() {}, err
+		}
+		if closeFn == nil {
+			closeFn = func() {}
+		}
+		return store, warnings, closeFn, nil
 	}
-	return o.Store
+	if o.Federated != nil {
+		return o.Federated.Session(), o.OpenWarnings, func() {}, nil
+	}
+	return o.Store, o.OpenWarnings, func() {}, nil
 }
 
-func (o Options) withWarnings(warnings []string) []string {
-	out := append([]string(nil), o.OpenWarnings...)
+func mergeWarnings(openWarnings, warnings []string) []string {
+	out := append([]string(nil), openWarnings...)
 	out = append(out, warnings...)
 	return out
 }
@@ -78,7 +92,11 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		store := opts.session()
+		store, _, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		id, err := rank.ResolveSeed(store, sym)
 		if err != nil {
 			return toolErr(err), nil
@@ -99,7 +117,11 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		store := opts.session()
+		store, _, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		id, err := rank.ResolveSeed(store, sym)
 		if err != nil {
 			return toolErr(err), nil
@@ -124,7 +146,11 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		id, err := rank.ResolveSeed(store, sym)
 		if err != nil {
 			return toolErr(err), nil
@@ -143,7 +169,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return toolErr(err), nil
 		}
-		res.Warnings = opts.withWarnings(append(res.Warnings, takeFedWarnings(store)...))
+		res.Warnings = mergeWarnings(openWarnings, append(res.Warnings, takeFedWarnings(store)...))
 		return jsonResult(res)
 	})
 
@@ -158,12 +184,16 @@ func registerTools(s *server.MCPServer, opts Options) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		limit := intArg(req, "limit", 20)
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		hits, err := rank.CoChanges(store, path, limit)
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return jsonResult(map[string]any{"path": path, "co_changes": hits, "warnings": opts.withWarnings(takeFedWarnings(store))})
+		return jsonResult(map[string]any{"path": path, "co_changes": hits, "warnings": mergeWarnings(openWarnings, takeFedWarnings(store))})
 	})
 
 	hotPaths := mcp.NewTool("hot_paths",
@@ -177,12 +207,16 @@ func registerTools(s *server.MCPServer, opts Options) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		limit := intArg(req, "limit", 20)
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		hits, err := rank.HotPaths(store, sym, limit)
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return jsonResult(map[string]any{"symbol": sym, "hot_paths": hits, "warnings": opts.withWarnings(takeFedWarnings(store))})
+		return jsonResult(map[string]any{"symbol": sym, "hot_paths": hits, "warnings": mergeWarnings(openWarnings, takeFedWarnings(store))})
 	})
 
 	docsForSymbol := mcp.NewTool("docs_for_symbol",
@@ -196,12 +230,16 @@ func registerTools(s *server.MCPServer, opts Options) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		limit := intArg(req, "limit", 20)
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		hits, err := rank.DocsForSymbol(store, sym, opts.RootDir, limit)
 		if err != nil {
 			return toolErr(err), nil
 		}
-		return jsonResult(map[string]any{"symbol": sym, "docs": hits, "warnings": opts.withWarnings(takeFedWarnings(store))})
+		return jsonResult(map[string]any{"symbol": sym, "docs": hits, "warnings": mergeWarnings(openWarnings, takeFedWarnings(store))})
 	})
 
 	searchGraph := mcp.NewTool("search_graph",
@@ -215,7 +253,11 @@ func registerTools(s *server.MCPServer, opts Options) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		limit := intArg(req, "limit", 20)
-		store := opts.session()
+		store, _, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		nodes, err := rank.Search(store, q, limit)
 		if err != nil {
 			return toolErr(err), nil
@@ -232,12 +274,16 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		res, err := rank.ResolveAPI(store, q)
 		if err != nil {
 			return toolErr(err), nil
 		}
-		res.Warnings = opts.withWarnings(takeFedWarnings(store))
+		res.Warnings = mergeWarnings(openWarnings, takeFedWarnings(store))
 		return jsonResult(res)
 	})
 
@@ -250,7 +296,11 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		res, err := rank.ResolveAPI(store, opQuery)
 		if err != nil {
 			return toolErr(err), nil
@@ -259,7 +309,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 			"operation": res.Operation,
 			"repo_uri":  res.RepoURI,
 			"providers": res.Providers,
-			"warnings":  opts.withWarnings(takeFedWarnings(store)),
+			"warnings":  mergeWarnings(openWarnings, takeFedWarnings(store)),
 		}
 		return jsonResult(payload)
 	})
@@ -273,7 +323,11 @@ func registerTools(s *server.MCPServer, opts Options) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		store := opts.session()
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
 		res, err := rank.ResolveAPI(store, opQuery)
 		if err != nil {
 			return toolErr(err), nil
@@ -282,7 +336,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 			"operation": res.Operation,
 			"repo_uri":  res.RepoURI,
 			"consumers": res.Consumers,
-			"warnings":  opts.withWarnings(takeFedWarnings(store)),
+			"warnings":  mergeWarnings(openWarnings, takeFedWarnings(store)),
 		}
 		return jsonResult(payload)
 	})
@@ -306,7 +360,11 @@ func registerResources(s *server.MCPServer, opts Options) {
 		if unescaped, err := url.PathUnescape(rel); err == nil {
 			rel = unescaped
 		}
-		store := opts.session()
+		store, _, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return nil, err
+		}
+		defer closeFn()
 		node, err := store.GetNode(graph.NodeID("file:" + rel))
 		if err != nil {
 			return nil, err
@@ -336,7 +394,11 @@ func registerResources(s *server.MCPServer, opts Options) {
 		if unescaped, err := url.PathUnescape(id); err == nil {
 			id = unescaped
 		}
-		store := opts.session()
+		store, _, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return nil, err
+		}
+		defer closeFn()
 		node, err := store.GetNode(graph.NodeID(id))
 		if err != nil {
 			return nil, err
