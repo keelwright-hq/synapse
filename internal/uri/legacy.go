@@ -131,7 +131,7 @@ func Assign(repo, filePath, nodeKind, name, legacyID string) (canonical string, 
 				sym = rest
 			}
 		}
-	} else if tok == KindImport || tok == KindPackage || tok == KindType || tok == KindFunc || tok == KindModule || tok == KindOperation || tok == KindSchema || tok == KindField || tok == KindService {
+	} else if tok == KindImport || tok == KindPackage || tok == KindType || tok == KindFunc || tok == KindModule || tok == KindOperation || tok == KindSchema || tok == KindField || tok == KindService || tok == KindDoc || tok == KindHeading {
 		if parts, perr := ParseLegacyID(legacyID); perr == nil && parts.Symbol != "" {
 			sym = parts.Symbol
 		}

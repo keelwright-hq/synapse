@@ -173,6 +173,9 @@ func Analyze(store graph.Store, repoRoot string, opts Options) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if err := clearCoCommittedEdges(store); err != nil {
+		return 0, err
+	}
 	pairs := Aggregate(commits, opts)
 	n := 0
 	for _, p := range pairs {
@@ -201,6 +204,31 @@ func Analyze(store graph.Store, repoRoot string, opts Options) (int, error) {
 		n++
 	}
 	return n, nil
+}
+
+func clearCoCommittedEdges(s graph.Store) error {
+	var ids []graph.NodeID
+	err := s.ForEachNode(func(n graph.Node) bool {
+		if n.Kind == parse.KindFile {
+			ids = append(ids, n.ID)
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		edges, err := s.OutEdges(id, parse.EdgeCoCommitted)
+		if err != nil {
+			return err
+		}
+		for _, e := range edges {
+			if err := s.DeleteEdge(e.From, e.To, e.Type); err != nil && err != graph.ErrNotFound {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // TopCoChanges returns co_committed neighbors for a file path or file node id, sorted by weight.

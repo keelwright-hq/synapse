@@ -60,10 +60,15 @@ const (
 	MatchPathLiteral = "path_literal"
 )
 
-// Bind clears the overlay (if any), then writes implements/consumes edges.
+// Bind clears the overlay (if any) and stale member contract edges, then writes implements/consumes edges.
 func Bind(opts Options) error {
 	if opts.Overlay != nil {
 		if err := clearStore(opts.Overlay); err != nil {
+			return err
+		}
+	}
+	for _, m := range opts.Members {
+		if err := clearContractEdges(m.Store); err != nil {
 			return err
 		}
 	}
@@ -109,13 +114,14 @@ func Bind(opts Options) error {
 	}
 
 	type edgeKey struct {
-		from, to graph.NodeID
-		typ      graph.EdgeType
+		fromRepo, toRepo string
+		from, to         graph.NodeID
+		typ              graph.EdgeType
 	}
 	seen := map[edgeKey]struct{}{}
 
 	put := func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType, match string) error {
-		key := edgeKey{from: from.ID, to: to.ID, typ: typ}
+		key := edgeKey{fromRepo: fromRepo, toRepo: toRepo, from: from.ID, to: to.ID, typ: typ}
 		if _, ok := seen[key]; ok {
 			return nil
 		}
@@ -272,6 +278,31 @@ func clearStore(s graph.Store) error {
 	for _, id := range ids {
 		if err := s.DeleteNode(id); err != nil && err != graph.ErrNotFound {
 			return err
+		}
+	}
+	return nil
+}
+
+func clearContractEdges(s graph.Store) error {
+	var ids []graph.NodeID
+	err := s.ForEachNode(func(n graph.Node) bool {
+		ids = append(ids, n.ID)
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		for _, et := range []graph.EdgeType{parse.EdgeImplements, parse.EdgeConsumes} {
+			edges, err := s.OutEdges(id, et)
+			if err != nil {
+				return err
+			}
+			for _, e := range edges {
+				if err := s.DeleteEdge(e.From, e.To, e.Type); err != nil && err != graph.ErrNotFound {
+					return err
+				}
+			}
 		}
 	}
 	return nil

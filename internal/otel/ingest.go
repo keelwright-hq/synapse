@@ -15,12 +15,14 @@ import (
 	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
-// Span is a minimal span record for file import (OTLP JSON subset).
+// Span is a span record for file import (supports both simplified Synapse JSON and OTLP/JSON).
 type Span struct {
-	Name       string            `json:"name"`
-	Service    string            `json:"service,omitempty"`
-	Attributes map[string]string `json:"attributes,omitempty"`
-	Parent     string            `json:"parent,omitempty"` // parent span name within the same file
+	SpanID       string            `json:"spanId,omitempty"`
+	ParentSpanID string            `json:"parentSpanId,omitempty"`
+	Name         string            `json:"name"`
+	Service      string            `json:"service,omitempty"`
+	Attributes   map[string]string `json:"attributes,omitempty"`
+	Parent       string            `json:"parent,omitempty"` // parent span name or spanId within the same file
 }
 
 // TraceFile is the on-disk import format.
@@ -28,17 +30,137 @@ type TraceFile struct {
 	Spans []Span `json:"spans"`
 }
 
-// ImportFile reads a Synapse OTLP-ish JSON trace file.
+type otlpKeyValue struct {
+	Key   string       `json:"key"`
+	Value otlpAnyValue `json:"value"`
+}
+
+type otlpAnyValue struct {
+	StringValue *string  `json:"stringValue,omitempty"`
+	IntValue    any      `json:"intValue,omitempty"`
+	DoubleValue *float64 `json:"doubleValue,omitempty"`
+	BoolValue   *bool    `json:"boolValue,omitempty"`
+}
+
+func (v otlpAnyValue) String() string {
+	switch {
+	case v.StringValue != nil:
+		return *v.StringValue
+	case v.IntValue != nil:
+		return fmt.Sprintf("%v", v.IntValue)
+	case v.DoubleValue != nil:
+		return strconv.FormatFloat(*v.DoubleValue, 'f', -1, 64)
+	case v.BoolValue != nil:
+		return strconv.FormatBool(*v.BoolValue)
+	default:
+		return ""
+	}
+}
+
+type rawSpan struct {
+	SpanID       string          `json:"spanId"`
+	SpanIDAlt    string          `json:"span_id"`
+	ParentSpanID string          `json:"parentSpanId"`
+	ParentIDAlt  string          `json:"parent_span_id"`
+	Name         string          `json:"name"`
+	Service      string          `json:"service"`
+	Parent       string          `json:"parent"`
+	Attributes   json.RawMessage `json:"attributes"`
+}
+
+func (r rawSpan) toSpan(defaultService string) Span {
+	spanID := r.SpanID
+	if spanID == "" {
+		spanID = r.SpanIDAlt
+	}
+	parentSpanID := r.ParentSpanID
+	if parentSpanID == "" {
+		parentSpanID = r.ParentIDAlt
+	}
+	svc := r.Service
+	if svc == "" {
+		svc = defaultService
+	}
+	return Span{
+		SpanID:       spanID,
+		ParentSpanID: parentSpanID,
+		Name:         r.Name,
+		Service:      svc,
+		Attributes:   parseAttributes(r.Attributes),
+		Parent:       r.Parent,
+	}
+}
+
+func parseAttributes(raw json.RawMessage) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal(raw, &m); err == nil && m != nil {
+		return m
+	}
+	var kvs []otlpKeyValue
+	if err := json.Unmarshal(raw, &kvs); err == nil && len(kvs) > 0 {
+		out := make(map[string]string, len(kvs))
+		for _, kv := range kvs {
+			if kv.Key != "" {
+				out[kv.Key] = kv.Value.String()
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+type otlpEnvelope struct {
+	Spans         []rawSpan `json:"spans"`
+	ResourceSpans []struct {
+		Resource struct {
+			Attributes json.RawMessage `json:"attributes"`
+		} `json:"resource"`
+		ScopeSpans []struct {
+			Spans []rawSpan `json:"spans"`
+		} `json:"scopeSpans"`
+		InstrumentationLibrarySpans []struct {
+			Spans []rawSpan `json:"spans"`
+		} `json:"instrumentationLibrarySpans"`
+	} `json:"resourceSpans"`
+}
+
+// Parse decodes either simplified {"spans":[...]} JSON or OTLP/JSON {"resourceSpans":[...]}.
+func Parse(data []byte) ([]Span, error) {
+	var env otlpEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return nil, fmt.Errorf("otel import: %w", err)
+	}
+	var out []Span
+	for _, rs := range env.ResourceSpans {
+		resAttrs := parseAttributes(rs.Resource.Attributes)
+		svc := resAttrs["service.name"]
+		for _, ss := range rs.ScopeSpans {
+			for _, sp := range ss.Spans {
+				out = append(out, sp.toSpan(svc))
+			}
+		}
+		for _, ils := range rs.InstrumentationLibrarySpans {
+			for _, sp := range ils.Spans {
+				out = append(out, sp.toSpan(svc))
+			}
+		}
+	}
+	for _, sp := range env.Spans {
+		out = append(out, sp.toSpan(""))
+	}
+	return out, nil
+}
+
+// ImportFile reads a Synapse or OTLP/JSON trace file.
 func ImportFile(path string) ([]Span, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var tf TraceFile
-	if err := json.Unmarshal(data, &tf); err != nil {
-		return nil, fmt.Errorf("otel import: %w", err)
-	}
-	return tf.Spans, nil
+	return Parse(data)
 }
 
 // Resolve maps a span to a graph node using attribute heuristics.
@@ -47,9 +169,17 @@ func Resolve(store graph.Store, sp Span) (graph.NodeID, bool) {
 	if attrs == nil {
 		attrs = map[string]string{}
 	}
+	codeFile := filepath.ToSlash(strings.TrimSpace(attrs["code.filepath"]))
+	codeFunc := strings.TrimSpace(attrs["code.function"])
+	if codeFunc != "" && codeFile != "" {
+		if id, ok := resolveFuncInFile(store, codeFunc, codeFile); ok {
+			return id, true
+		}
+	}
+
 	candidates := []string{
-		attrs["code.function"],
-		attrs["code.filepath"],
+		codeFunc,
+		codeFile,
 		attrs["rpc.method"],
 		sp.Name,
 	}
@@ -74,7 +204,10 @@ func Resolve(store graph.Store, sp Span) (graph.NodeID, bool) {
 		// Prefer function/method over package/file when names collide.
 		var matches []graph.Node
 		_ = store.ForEachNode(func(n graph.Node) bool {
-			if n.Name == c || strings.HasSuffix(string(n.ID), "#"+c) {
+			if codeFile != "" && n.Path != "" && !matchFilePath(n.Path, codeFile) {
+				return true
+			}
+			if matchSymbolName(n, c) {
 				matches = append(matches, n)
 			}
 			return true
@@ -92,24 +225,127 @@ func Resolve(store graph.Store, sp Span) (graph.NodeID, bool) {
 			if len(preferred) == 1 {
 				return preferred[0].ID, true
 			}
+			if len(preferred) > 1 && codeFile != "" {
+				var fileFiltered []graph.Node
+				for _, n := range preferred {
+					if matchFilePath(n.Path, codeFile) {
+						fileFiltered = append(fileFiltered, n)
+					}
+				}
+				if best, ok := pickBestPathMatch(fileFiltered); ok {
+					return best.ID, true
+				}
+			}
 		}
 	}
 	return "", false
 }
 
+func resolveFuncInFile(store graph.Store, fn, filePath string) (graph.NodeID, bool) {
+	var matches []graph.Node
+	_ = store.ForEachNode(func(n graph.Node) bool {
+		if n.Kind != parse.KindFunction && n.Kind != parse.KindMethod {
+			return true
+		}
+		if !matchFilePath(n.Path, filePath) {
+			return true
+		}
+		if matchSymbolName(n, fn) {
+			matches = append(matches, n)
+		}
+		return true
+	})
+	if best, ok := pickBestPathMatch(matches); ok {
+		return best.ID, true
+	}
+	return "", false
+}
+
+func pickBestPathMatch(matches []graph.Node) (graph.Node, bool) {
+	if len(matches) == 0 {
+		return graph.Node{}, false
+	}
+	if len(matches) == 1 {
+		return matches[0], true
+	}
+	maxLen := -1
+	var best graph.Node
+	ties := 0
+	for _, n := range matches {
+		l := len(filepath.ToSlash(n.Path))
+		if l > maxLen {
+			maxLen = l
+			best = n
+			ties = 1
+		} else if l == maxLen {
+			ties++
+		}
+	}
+	if ties == 1 {
+		return best, true
+	}
+	return graph.Node{}, false
+}
+
+func matchSymbolName(n graph.Node, cand string) bool {
+	if n.Name == cand || strings.HasSuffix(string(n.ID), "#"+cand) {
+		return true
+	}
+	if n.Kind == parse.KindMethod {
+		if strings.HasSuffix(n.Name, "."+cand) || strings.HasSuffix(string(n.ID), "."+cand) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchFilePath(nodePath, candPath string) bool {
+	if nodePath == "" || candPath == "" {
+		return false
+	}
+	isAbs := filepath.IsAbs(candPath) || strings.HasPrefix(candPath, "/")
+	nodePath = filepath.ToSlash(nodePath)
+	candPath = filepath.ToSlash(candPath)
+	if nodePath == candPath {
+		return true
+	}
+	if strings.HasSuffix(nodePath, "/"+candPath) {
+		return true
+	}
+	if isAbs {
+		return strings.HasSuffix(candPath, "/"+nodePath)
+	}
+	return false
+}
+
 // Ingest upserts observed_calls edges for parent→child span pairs that resolve.
 func Ingest(store graph.Store, spans []Span) (int, error) {
+	bySpanID := map[string]Span{}
 	byName := map[string]Span{}
 	for _, sp := range spans {
-		byName[sp.Name] = sp
+		if sp.SpanID != "" {
+			bySpanID[sp.SpanID] = sp
+		}
+		if sp.Name != "" {
+			byName[sp.Name] = sp
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	n := 0
 	for _, sp := range spans {
-		if sp.Parent == "" {
-			continue
+		var (
+			parent Span
+			ok     bool
+		)
+		if sp.ParentSpanID != "" {
+			parent, ok = bySpanID[sp.ParentSpanID]
 		}
-		parent, ok := byName[sp.Parent]
+		if !ok && sp.Parent != "" {
+			parent, ok = bySpanID[sp.Parent]
+			if !ok {
+				parent, ok = byName[sp.Parent]
+			}
+		}
 		if !ok {
 			continue
 		}

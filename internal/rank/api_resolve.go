@@ -66,9 +66,19 @@ func listContractHits(store graph.Store, opID graph.NodeID, edgeType graph.EdgeT
 	if err != nil {
 		return nil, err
 	}
+	rss, _ := store.(repoScopedStore)
 	hits := make([]ContractHit, 0, len(edges))
 	for _, e := range edges {
-		n, err := store.GetNode(e.From)
+		var n graph.Node
+		fromRepo := ""
+		if e.Props != nil {
+			fromRepo = e.Props["from_repo"]
+		}
+		if rss != nil && fromRepo != "" {
+			n, err = rss.GetNodeInRepo(fromRepo, e.From)
+		} else {
+			n, err = store.GetNode(e.From)
+		}
 		if err != nil {
 			if err == graph.ErrNotFound {
 				continue
@@ -129,6 +139,9 @@ func resolveOperation(store graph.Store, query string) (graph.Node, error) {
 		return graph.Node{}, err
 	}
 	if len(matches) == 1 {
+		if u := repoURIOf(matches[0]); u != "" {
+			_, _ = store.GetNodeByURI(u)
+		}
 		return matches[0], nil
 	}
 	if len(matches) == 0 {

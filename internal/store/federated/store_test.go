@@ -258,3 +258,123 @@ func TestLookupTimeout(t *testing.T) {
 	}
 }
 
+func TestFederatedCollidingNodeIDsAcrossReposInNeighborhoodAndResolveAPI(t *testing.T) {
+	apiRoot := t.TempDir()
+	workerRoot := t.TempDir()
+
+	writeGo(t, filepath.Join(apiRoot, "openapi.yaml"), `openapi: 3.0.3
+info:
+  title: Users API
+  version: "1.0"
+paths:
+  /users:
+    get:
+      operationId: Users
+      responses:
+        "200":
+          description: ok
+`)
+	writeGo(t, filepath.Join(apiRoot, "svc", "handler.go"), "package svc\n\nfunc Users() string { return \"from-api\" }\n")
+	writeGo(t, filepath.Join(workerRoot, "svc", "handler.go"), "package svc\n\nfunc Users() string { return \"/users\" }\n")
+
+	apiStore := memory.New()
+	workerStore := memory.New()
+	overlayStore := memory.New()
+
+	if _, err := index.New(apiStore).Run(apiRoot, index.Options{Repo: "api", Workers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.New(workerStore).Run(workerRoot, index.Options{Repo: "worker", Workers: 1}); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate cross-repo contract edge in overlay (worker Users -> api GET /users)
+	// and same-repo implements edge in apiStore (api Users -> api GET /users)
+	opNode, err := apiStore.GetNodeByURI("repo://api/openapi.yaml#operation:GET /users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerFn, err := workerStore.GetNodeByURI("repo://worker/svc/handler.go#func:Users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = apiStore.PutEdge(graph.Edge{
+		From: "func:svc/handler.go#Users",
+		To:   opNode.ID,
+		Type: "implements",
+		Props: map[string]string{
+			"match":      "operation_id",
+			"provenance": "INFERRED",
+		},
+	})
+	_ = overlayStore.PutNode(graph.Node{ID: graph.NodeID(workerFn.Props[uri.PropKey]), Kind: "symbol", Name: workerFn.Props[uri.PropKey]})
+	_ = overlayStore.PutNode(graph.Node{ID: graph.NodeID(opNode.Props[uri.PropKey]), Kind: "symbol", Name: opNode.Props[uri.PropKey]})
+	_ = overlayStore.PutEdge(graph.Edge{
+		From: graph.NodeID(workerFn.Props[uri.PropKey]),
+		To:   graph.NodeID(opNode.Props[uri.PropKey]),
+		Type: "consumes",
+		Props: map[string]string{
+			"match":      "operation_id",
+			"provenance": "INFERRED",
+		},
+	})
+
+	fed, err := federated.NewWithOptions([]federated.Member{
+		{Name: "api", Store: apiStore},
+		{Name: "worker", Store: workerStore},
+	}, federated.Options{Overlay: overlayStore})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fed.Close()
+
+	apiRes, err := rank.ResolveAPI(fed, "GET /users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(apiRes.Providers) != 1 || apiRes.Providers[0].RepoURI != "repo://api/svc/handler.go#func:Users" {
+		t.Fatalf("providers=%+v", apiRes.Providers)
+	}
+	if len(apiRes.Consumers) != 1 || apiRes.Consumers[0].RepoURI != "repo://worker/svc/handler.go#func:Users" {
+		t.Fatalf("consumers=%+v", apiRes.Consumers)
+	}
+
+	s := fed.Session()
+	seed, err := rank.ResolveSeed(s, "repo://api/openapi.yaml#operation:GET /users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nb, err := rank.Neighborhood(s, seed, rank.Options{
+		Depth:    2,
+		MaxNodes: 32,
+		RepoRoots: map[string]string{
+			"api":    apiRoot,
+			"worker": workerRoot,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hitByURI := map[string]rank.Hit{}
+	for _, h := range nb.Hits {
+		if h.RepoURI != "" {
+			hitByURI[h.RepoURI] = h
+		}
+	}
+	for _, wantURI := range []string{
+		"repo://api/svc/handler.go#func:Users",
+		"repo://worker/svc/handler.go#func:Users",
+		"repo://api/svc/handler.go#package:svc",
+		"repo://worker/svc/handler.go#package:svc",
+	} {
+		if _, ok := hitByURI[wantURI]; !ok {
+			t.Fatalf("missing %s in neighborhood hits: %+v", wantURI, nb.Hits)
+		}
+	}
+	if !strings.Contains(hitByURI["repo://api/svc/handler.go#func:Users"].Snippet, "from-api") {
+		t.Fatalf("api snippet mismatch: %q", hitByURI["repo://api/svc/handler.go#func:Users"].Snippet)
+	}
+	if !strings.Contains(hitByURI["repo://worker/svc/handler.go#func:Users"].Snippet, "/users") {
+		t.Fatalf("worker snippet mismatch: %q", hitByURI["repo://worker/svc/handler.go#func:Users"].Snippet)
+	}
+}
+
