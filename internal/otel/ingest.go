@@ -204,6 +204,9 @@ func Resolve(store graph.Store, sp Span) (graph.NodeID, bool) {
 		// Prefer function/method over package/file when names collide.
 		var matches []graph.Node
 		_ = store.ForEachNode(func(n graph.Node) bool {
+			if codeFile != "" && n.Path != "" && !matchFilePath(n.Path, codeFile) {
+				return true
+			}
 			if matchSymbolName(n, c) {
 				matches = append(matches, n)
 			}
@@ -229,8 +232,8 @@ func Resolve(store graph.Store, sp Span) (graph.NodeID, bool) {
 						fileFiltered = append(fileFiltered, n)
 					}
 				}
-				if len(fileFiltered) == 1 {
-					return fileFiltered[0].ID, true
+				if best, ok := pickBestPathMatch(fileFiltered); ok {
+					return best.ID, true
 				}
 			}
 		}
@@ -252,10 +255,36 @@ func resolveFuncInFile(store graph.Store, fn, filePath string) (graph.NodeID, bo
 		}
 		return true
 	})
-	if len(matches) == 1 {
-		return matches[0].ID, true
+	if best, ok := pickBestPathMatch(matches); ok {
+		return best.ID, true
 	}
 	return "", false
+}
+
+func pickBestPathMatch(matches []graph.Node) (graph.Node, bool) {
+	if len(matches) == 0 {
+		return graph.Node{}, false
+	}
+	if len(matches) == 1 {
+		return matches[0], true
+	}
+	maxLen := -1
+	var best graph.Node
+	ties := 0
+	for _, n := range matches {
+		l := len(filepath.ToSlash(n.Path))
+		if l > maxLen {
+			maxLen = l
+			best = n
+			ties = 1
+		} else if l == maxLen {
+			ties++
+		}
+	}
+	if ties == 1 {
+		return best, true
+	}
+	return graph.Node{}, false
 }
 
 func matchSymbolName(n graph.Node, cand string) bool {
@@ -271,15 +300,22 @@ func matchSymbolName(n graph.Node, cand string) bool {
 }
 
 func matchFilePath(nodePath, candPath string) bool {
-	nodePath = filepath.ToSlash(nodePath)
-	candPath = filepath.ToSlash(candPath)
 	if nodePath == "" || candPath == "" {
 		return false
 	}
+	isAbs := filepath.IsAbs(candPath) || strings.HasPrefix(candPath, "/")
+	nodePath = filepath.ToSlash(nodePath)
+	candPath = filepath.ToSlash(candPath)
 	if nodePath == candPath {
 		return true
 	}
-	return strings.HasSuffix(nodePath, "/"+candPath) || strings.HasSuffix(candPath, "/"+nodePath)
+	if strings.HasSuffix(nodePath, "/"+candPath) {
+		return true
+	}
+	if isAbs {
+		return strings.HasSuffix(candPath, "/"+nodePath)
+	}
+	return false
 }
 
 // Ingest upserts observed_calls edges for parent→child span pairs that resolve.
