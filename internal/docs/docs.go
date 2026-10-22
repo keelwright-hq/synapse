@@ -76,6 +76,7 @@ func ParseFile(absPath, relPath string) (parse.Result, error) {
 	}
 	sc := bufio.NewScanner(strings.NewReader(string(data)))
 	line := 0
+	seenTitles := map[string]int{}
 	for sc.Scan() {
 		line++
 		m := headingRe.FindStringSubmatch(sc.Text())
@@ -83,7 +84,12 @@ func ParseFile(absPath, relPath string) (parse.Result, error) {
 			continue
 		}
 		title := strings.TrimSpace(m[2])
-		hid := graph.NodeID(fmt.Sprintf("heading:%s#%s", relPath, title))
+		seenTitles[title]++
+		sym := title
+		if seenTitles[title] > 1 {
+			sym = fmt.Sprintf("%s~%d", title, seenTitles[title])
+		}
+		hid := graph.NodeID(fmt.Sprintf("heading:%s#%s", relPath, sym))
 		out.Nodes = append(out.Nodes, graph.Node{
 			ID: hid, Kind: parse.KindHeading, Name: title, Path: relPath,
 			Props: map[string]string{
@@ -93,6 +99,12 @@ func ParseFile(absPath, relPath string) (parse.Result, error) {
 			},
 		})
 		out.Edges = append(out.Edges, graph.Edge{From: docID, To: hid, Type: parse.EdgeContains})
+	}
+	if line > 0 {
+		out.Nodes[1].Props = map[string]string{
+			"start_line": "1",
+			"end_line":   fmt.Sprintf("%d", line),
+		}
 	}
 	out.Normalize()
 	return out, sc.Err()
@@ -109,6 +121,9 @@ type LinkOptions struct {
 func Link(opts LinkOptions) (int, error) {
 	if opts.Store == nil || opts.Root == "" {
 		return 0, fmt.Errorf("docs link: store and root required")
+	}
+	if err := clearDocEdges(opts.Store); err != nil {
+		return 0, err
 	}
 	files, err := ListDocFiles(opts.Root, nil)
 	if err != nil {
@@ -134,39 +149,54 @@ func Link(opts LinkOptions) (int, error) {
 		if err != nil {
 			continue
 		}
-		text := string(data)
-		targets := map[graph.NodeID]struct{}{}
-		for _, m := range backtickRe.FindAllStringSubmatch(text, -1) {
-			if id, ok := resolveMention(opts.Store, m[1]); ok {
-				targets[id] = struct{}{}
+		targets := map[graph.NodeID]int{}
+		recordTarget := func(id graph.NodeID, lineNo int) {
+			if _, exists := targets[id]; !exists {
+				targets[id] = lineNo
 			}
 		}
-		for _, m := range pathRe.FindAllStringSubmatch(text, -1) {
-			p := filepath.ToSlash(m[1])
-			fid := graph.NodeID("file:" + p)
-			if _, err := opts.Store.GetNode(fid); err == nil {
-				targets[fid] = struct{}{}
+		sc := bufio.NewScanner(strings.NewReader(string(data)))
+		lineNo := 0
+		for sc.Scan() {
+			lineNo++
+			lineText := sc.Text()
+			for _, m := range backtickRe.FindAllStringSubmatch(lineText, -1) {
+				if id, ok := resolveMention(opts.Store, m[1]); ok {
+					recordTarget(id, lineNo)
+				}
+			}
+			for _, m := range pathRe.FindAllStringSubmatch(lineText, -1) {
+				p := filepath.ToSlash(m[1])
+				fid := graph.NodeID("file:" + p)
+				if _, err := opts.Store.GetNode(fid); err == nil {
+					recordTarget(fid, lineNo)
+				}
+			}
+			for _, m := range adrIDRe.FindAllStringSubmatch(lineText, -1) {
+				// ADR cross-refs within docs; link same-repo ADR files if present
+				cand := filepath.ToSlash(filepath.Join("docs", "adr", fmt.Sprintf("%s.md", m[1])))
+				fid := graph.NodeID("file:" + cand)
+				if _, err := opts.Store.GetNode(fid); err == nil {
+					recordTarget(fid, lineNo)
+				}
 			}
 		}
-		for _, m := range adrIDRe.FindAllStringSubmatch(text, -1) {
-			_ = m // ADR cross-refs within docs; link same-repo ADR files if present
-			cand := filepath.ToSlash(filepath.Join("docs", "adr", fmt.Sprintf("%s.md", m[1])))
-			fid := graph.NodeID("file:" + cand)
-			if _, err := opts.Store.GetNode(fid); err == nil {
-				targets[fid] = struct{}{}
-			}
-		}
-		for to := range targets {
+		for to, mentionLine := range targets {
 			if to == docID {
 				continue
 			}
+			props := map[string]string{
+				parse.PropProvenance: parse.ProvenanceInferred,
+			}
+			if mentionLine > 0 {
+				props["start_line"] = fmt.Sprintf("%d", mentionLine)
+				props["end_line"] = fmt.Sprintf("%d", mentionLine)
+			}
 			edge := graph.Edge{
-				From: docID,
-				To:   to,
-				Type: parse.EdgeDocuments,
-				Props: map[string]string{
-					parse.PropProvenance: parse.ProvenanceInferred,
-				},
+				From:  docID,
+				To:    to,
+				Type:  parse.EdgeDocuments,
+				Props: props,
 			}
 			if err := opts.Store.PutEdge(edge); err != nil {
 				return n, err
@@ -176,6 +206,29 @@ func Link(opts LinkOptions) (int, error) {
 		_ = uri.PropKey
 	}
 	return n, nil
+}
+
+func clearDocEdges(s graph.Store) error {
+	var ids []graph.NodeID
+	err := s.ForEachNode(func(n graph.Node) bool {
+		ids = append(ids, n.ID)
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		edges, err := s.OutEdges(id, parse.EdgeDocuments)
+		if err != nil {
+			return err
+		}
+		for _, e := range edges {
+			if err := s.DeleteEdge(e.From, e.To, e.Type); err != nil && err != graph.ErrNotFound {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func resolveMention(store graph.Store, mention string) (graph.NodeID, bool) {

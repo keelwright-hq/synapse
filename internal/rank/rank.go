@@ -53,6 +53,7 @@ type ScorePart struct {
 // Hit is one ranked neighborhood entry.
 type Hit struct {
 	ID         graph.NodeID `json:"id"`
+	RepoURI    string       `json:"repo_uri,omitempty"`
 	Kind       string       `json:"kind"`
 	Name       string       `json:"name,omitempty"`
 	Path       string       `json:"path,omitempty"`
@@ -63,6 +64,13 @@ type Hit struct {
 	StartLine  int          `json:"start_line,omitempty"`
 	EndLine    int          `json:"end_line,omitempty"`
 	Snippet    string       `json:"snippet,omitempty"`
+}
+
+type repoScopedStore interface {
+	PinnedRepo(id graph.NodeID) string
+	GetNodeInRepo(repo string, id graph.NodeID) (graph.Node, error)
+	OutEdgesInRepo(repo string, from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error)
+	InEdgesInRepo(repo string, to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error)
 }
 
 // Result is a ranked neighborhood pack.
@@ -94,15 +102,32 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		return Result{}, err
 	}
 
+	rss, _ := store.(repoScopedStore)
+	seedRepo := ""
+	if rss != nil {
+		seedRepo = rss.PinnedRepo(seed)
+		if seedRepo == "" && seedNode.Props != nil {
+			if u, perr := uri.Parse(seedNode.Props[uri.PropKey]); perr == nil {
+				seedRepo = u.Repo
+			}
+		}
+	}
+
+	type nodeKey struct {
+		repo string
+		id   graph.NodeID
+	}
 	type item struct {
+		repo    string
 		id      graph.NodeID
 		depth   int
 		score   float64
 		reason  string
 		explain []ScorePart
 	}
-	queue := []item{{id: seed, depth: 0, score: 1.0, reason: "seed"}}
-	best := map[graph.NodeID]item{seed: queue[0]}
+	seedItem := item{repo: seedRepo, id: seed, depth: 0, score: 1.0, reason: "seed"}
+	queue := []item{seedItem}
+	best := map[nodeKey]item{{repo: seedRepo, id: seed}: seedItem}
 
 	for len(queue) > 0 {
 		cur := queue[0]
@@ -110,24 +135,33 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		if cur.depth >= opts.Depth {
 			continue
 		}
-		edges := make([]graph.Edge, 0)
-		out, err := store.OutEdges(cur.id, "")
-		if err != nil {
-			return Result{}, err
+		var (
+			out []graph.Edge
+			in  []graph.Edge
+		)
+		if rss != nil && cur.repo != "" {
+			out, err = rss.OutEdgesInRepo(cur.repo, cur.id, "")
+			if err != nil {
+				return Result{}, err
+			}
+			in, err = rss.InEdgesInRepo(cur.repo, cur.id, "")
+			if err != nil {
+				return Result{}, err
+			}
+		} else {
+			out, err = store.OutEdges(cur.id, "")
+			if err != nil {
+				return Result{}, err
+			}
+			in, err = store.InEdges(cur.id, "")
+			if err != nil {
+				return Result{}, err
+			}
 		}
-		edges = append(edges, out...)
-		in, err := store.InEdges(cur.id, "")
-		if err != nil {
-			return Result{}, err
-		}
-		edges = append(edges, in...)
 
-		for _, e := range edges {
-			neighbor := e.To
-			dir := "out"
-			if e.To == cur.id {
-				neighbor = e.From
-				dir = "in"
+		visit := func(e graph.Edge, dir string, neighbor graph.NodeID, neighborRepo string) {
+			if neighborRepo == "" {
+				neighborRepo = cur.repo
 			}
 			w := weights[e.Type]
 			if w == 0 {
@@ -144,20 +178,41 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 					Dir:    dir,
 				})
 			}
-			next := item{id: neighbor, depth: cur.depth + 1, score: score, reason: reason, explain: explain}
-			if prev, ok := best[neighbor]; ok {
+			nKey := nodeKey{repo: neighborRepo, id: neighbor}
+			next := item{repo: neighborRepo, id: neighbor, depth: cur.depth + 1, score: score, reason: reason, explain: explain}
+			if prev, ok := best[nKey]; ok {
 				if next.score <= prev.score {
-					continue
+					return
 				}
 			}
-			best[neighbor] = next
+			best[nKey] = next
 			queue = append(queue, next)
+		}
+
+		for _, e := range out {
+			toRepo := ""
+			if e.Props != nil {
+				toRepo = e.Props["to_repo"]
+			}
+			visit(e, "out", e.To, toRepo)
+		}
+		for _, e := range in {
+			fromRepo := ""
+			if e.Props != nil {
+				fromRepo = e.Props["from_repo"]
+			}
+			visit(e, "in", e.From, fromRepo)
 		}
 	}
 
 	hits := make([]Hit, 0, len(best))
 	for _, it := range best {
-		node, err := store.GetNode(it.id)
+		var node graph.Node
+		if rss != nil && it.repo != "" {
+			node, err = rss.GetNodeInRepo(it.repo, it.id)
+		} else {
+			node, err = store.GetNode(it.id)
+		}
 		if err != nil {
 			if err == graph.ErrNotFound {
 				continue
@@ -166,6 +221,7 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		}
 		h := Hit{
 			ID:         node.ID,
+			RepoURI:    propURI(node),
 			Kind:       node.Kind,
 			Name:       node.Name,
 			Path:       node.Path,
@@ -187,7 +243,10 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		if hits[i].Depth != hits[j].Depth {
 			return hits[i].Depth < hits[j].Depth
 		}
-		return hits[i].ID < hits[j].ID
+		if hits[i].ID != hits[j].ID {
+			return hits[i].ID < hits[j].ID
+		}
+		return hits[i].RepoURI < hits[j].RepoURI
 	})
 
 	out := Result{Seed: seedNode.ID, Hits: hits}
@@ -311,9 +370,9 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 		return n.ID, nil
 	}
 	var (
-		codeMatches []graph.NodeID
-		defMatches  []graph.NodeID
-		symMatches  []graph.NodeID
+		codeMatches []graph.Node
+		defMatches  []graph.Node
+		symMatches  []graph.Node
 	)
 	// Name lookup scans nodes until we know uniqueness (0/1) or ambiguity (≥2).
 	// Real definition nodes take precedence over unresolved symbol/import placeholders,
@@ -322,12 +381,12 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 		if n.Name == query || string(n.ID) == query {
 			switch n.Kind {
 			case parse.KindSymbol, parse.KindImport:
-				symMatches = append(symMatches, n.ID)
+				symMatches = append(symMatches, n)
 			case parse.KindFunction, parse.KindMethod, parse.KindType, parse.KindOperation, parse.KindSchema:
-				codeMatches = append(codeMatches, n.ID)
-				defMatches = append(defMatches, n.ID)
+				codeMatches = append(codeMatches, n)
+				defMatches = append(defMatches, n)
 			default:
-				defMatches = append(defMatches, n.ID)
+				defMatches = append(defMatches, n)
 			}
 		}
 		return true
@@ -343,7 +402,10 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 		matches = symMatches
 	}
 	if len(matches) == 1 {
-		return matches[0], nil
+		if u := propURI(matches[0]); u != "" {
+			_, _ = store.GetNodeByURI(u)
+		}
+		return matches[0].ID, nil
 	}
 	if len(matches) == 0 {
 		return "", fmt.Errorf("%w: symbol %q", graph.ErrNotFound, query)

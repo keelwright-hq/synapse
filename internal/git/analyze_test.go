@@ -102,4 +102,20 @@ func TestWalkAggregateAnalyze(t *testing.T) {
 	if edges[0].Props[parse.PropProvenance] != parse.ProvenanceHistorical {
 		t.Fatalf("provenance=%v", edges[0].Props)
 	}
+
+	// Re-running Analyze with higher MinSupport prunes previously written co_committed edges.
+	n2, err := synapsegit.Analyze(store, root, synapsegit.Options{MaxCommits: 50, MinSupport: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n2 != 0 {
+		t.Fatalf("expected 0 edges with MinSupport=10, got %d", n2)
+	}
+	edgesAfter, err := synapsegit.TopCoChanges(store, "a.go", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edgesAfter) != 0 {
+		t.Fatalf("expected stale co_committed edges to be pruned, got %+v", edgesAfter)
+	}
 }

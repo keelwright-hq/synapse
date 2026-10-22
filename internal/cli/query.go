@@ -121,12 +121,12 @@ var queryDocsCmd = &cobra.Command{
 	Short: "Documentation tied to a symbol",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		store, cleanup, err := openMemberQueryStore(cmd)
+		store, repoRoots, cleanup, err := openMemberQueryStoreWithRoots(cmd)
 		if err != nil {
 			return err
 		}
 		defer cleanup()
-		hits, err := rank.DocsForSymbol(store, args[0], queryRoot, queryLimit)
+		hits, err := rank.DocsForSymbolWithRoots(store, args[0], queryRoot, repoRoots, queryLimit)
 		if err != nil {
 			return err
 		}
@@ -141,29 +141,34 @@ var queryDocsCmd = &cobra.Command{
 }
 
 func openMemberQueryStore(cmd *cobra.Command) (graph.Store, func(), error) {
+	store, _, cleanup, err := openMemberQueryStoreWithRoots(cmd)
+	return store, cleanup, err
+}
+
+func openMemberQueryStoreWithRoots(cmd *cobra.Command) (graph.Store, map[string]string, func(), error) {
 	if workspacePath != "" {
 		opened, err := openWorkspaceStore(workspacePath, dataDir, repoName)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		return opened.Store, func() { _ = opened.Closer.Close() }, nil
+		return opened.Store, opened.Workspace.RepoRoots(), func() { _ = opened.Closer.Close() }, nil
 	}
 	repo, err := resolveRepoName(queryRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if repoName != "" {
 		repo = repoName
 	}
 	resolvedDataDir, err := resolveSingleRepoDataDir(cmd, queryRoot)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	store, err := badger.OpenWithRepo(resolvedDataDir, repo)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return store, func() { _ = store.Close() }, nil
+	return store, nil, func() { _ = store.Close() }, nil
 }
 
 func writeJSON(cmd *cobra.Command, v any) error {

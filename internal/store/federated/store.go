@@ -179,6 +179,34 @@ func (s *Store) pin(id graph.NodeID, idx int) {
 	s.mu.Unlock()
 }
 
+func (s *Store) pinIfUnset(id graph.NodeID, idx int) {
+	s.mu.Lock()
+	if _, ok := s.idOwner[id]; !ok {
+		s.idOwner[id] = idx
+	}
+	s.mu.Unlock()
+}
+
+// PinnedRepo returns the logical repo name currently pinned for id, if any.
+func (s *Store) PinnedRepo(id graph.NodeID) string {
+	if idx, ok := s.owner(id); ok && idx >= 0 && idx < len(s.members) {
+		return s.members[idx].Name
+	}
+	return ""
+}
+
+func (s *Store) memberIndexByName(repo string) (int, bool) {
+	if repo == "" {
+		return -1, false
+	}
+	for i, m := range s.members {
+		if m.Name == repo {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 func (s *Store) owner(id graph.NodeID) (int, bool) {
 	s.mu.RLock()
 	idx, ok := s.idOwner[id]
@@ -240,10 +268,28 @@ func (s *Store) GetNode(id graph.NodeID) (graph.Node, error) {
 	return s.members[idx].Store.GetNode(id)
 }
 
+// GetNodeInRepo fetches id from the named member shard without overwriting
+// an existing cross-repo pin for id.
+func (s *Store) GetNodeInRepo(repo string, id graph.NodeID) (graph.Node, error) {
+	if idx, ok := s.memberIndexByName(repo); ok {
+		n, err := s.members[idx].Store.GetNode(id)
+		if err == nil {
+			s.pinIfUnset(id, idx)
+		}
+		return n, err
+	}
+	return s.GetNode(id)
+}
+
 func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
+	n, _, err := s.getNodeByURI(repoURI, true)
+	return n, err
+}
+
+func (s *Store) getNodeByURI(repoURI string, clobberPin bool) (graph.Node, string, error) {
 	u, err := uri.Parse(repoURI)
 	if err != nil {
-		return graph.Node{}, err
+		return graph.Node{}, "", err
 	}
 	canonical := u.String()
 	ctx, cancel := s.lookupCtx()
@@ -251,80 +297,129 @@ func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
 
 	for i, m := range s.members {
 		if err := ctx.Err(); err != nil {
-			return graph.Node{}, fmt.Errorf("federated: lookup timeout: %w", err)
+			return graph.Node{}, "", fmt.Errorf("federated: lookup timeout: %w", err)
 		}
 		if m.Name != u.Repo {
 			continue
 		}
 		n, err := m.Store.GetNodeByURI(canonical)
 		if err != nil {
-			return graph.Node{}, err
+			return graph.Node{}, "", err
 		}
-		s.pin(n.ID, i)
-		return n, nil
+		if clobberPin {
+			s.pin(n.ID, i)
+		} else {
+			s.pinIfUnset(n.ID, i)
+		}
+		return n, m.Name, nil
 	}
 	// Fallback: scan all (covers misnamed members).
 	for i, m := range s.members {
 		if err := ctx.Err(); err != nil {
-			return graph.Node{}, fmt.Errorf("federated: lookup timeout: %w", err)
+			return graph.Node{}, "", fmt.Errorf("federated: lookup timeout: %w", err)
 		}
 		n, err := m.Store.GetNodeByURI(canonical)
 		if err == nil {
-			s.pin(n.ID, i)
-			return n, nil
+			if clobberPin {
+				s.pin(n.ID, i)
+			} else {
+				s.pinIfUnset(n.ID, i)
+			}
+			return n, m.Name, nil
 		}
 		if err != graph.ErrNotFound {
-			return graph.Node{}, err
+			return graph.Node{}, "", err
 		}
 	}
-	return graph.Node{}, graph.ErrNotFound
+	return graph.Node{}, "", graph.ErrNotFound
 }
 
 func (s *Store) OutEdges(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
-	idx, err := s.resolveOwner(from)
-	if err != nil {
-		return nil, err
+	return s.OutEdgesInRepo("", from, edgeType)
+}
+
+// OutEdgesInRepo returns outgoing member + overlay edges for from in repo
+// (or resolves repo via owner pin when repo is empty).
+func (s *Store) OutEdgesInRepo(repo string, from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
+	idx, ok := s.memberIndexByName(repo)
+	if !ok {
+		var err error
+		idx, err = s.resolveOwner(from)
+		if err != nil {
+			return nil, err
+		}
 	}
+	memberRepo := s.members[idx].Name
 	edges, err := s.members[idx].Store.OutEdges(from, edgeType)
 	if err != nil {
 		return nil, err
 	}
+	out := make([]graph.Edge, 0, len(edges))
 	for _, e := range edges {
-		s.pin(e.From, idx)
-		s.pin(e.To, idx)
+		s.pinIfUnset(e.From, idx)
+		s.pinIfUnset(e.To, idx)
+		out = append(out, stampEdgeRepos(e, memberRepo, memberRepo))
 	}
-	overlayEdges, err := s.overlayOut(from, edgeType)
+	overlayEdges, err := s.overlayOutForMember(idx, from, edgeType)
 	if err != nil {
 		return nil, err
 	}
-	return append(edges, overlayEdges...), nil
+	return append(out, overlayEdges...), nil
 }
 
 func (s *Store) InEdges(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
-	idx, err := s.resolveOwner(to)
-	if err != nil {
-		return nil, err
+	return s.InEdgesInRepo("", to, edgeType)
+}
+
+// InEdgesInRepo returns incoming member + overlay edges for to in repo
+// (or resolves repo via owner pin when repo is empty).
+func (s *Store) InEdgesInRepo(repo string, to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
+	idx, ok := s.memberIndexByName(repo)
+	if !ok {
+		var err error
+		idx, err = s.resolveOwner(to)
+		if err != nil {
+			return nil, err
+		}
 	}
+	memberRepo := s.members[idx].Name
 	edges, err := s.members[idx].Store.InEdges(to, edgeType)
 	if err != nil {
 		return nil, err
 	}
+	out := make([]graph.Edge, 0, len(edges))
 	for _, e := range edges {
-		s.pin(e.From, idx)
-		s.pin(e.To, idx)
+		s.pinIfUnset(e.From, idx)
+		s.pinIfUnset(e.To, idx)
+		out = append(out, stampEdgeRepos(e, memberRepo, memberRepo))
 	}
-	overlayEdges, err := s.overlayIn(to, edgeType)
+	overlayEdges, err := s.overlayInForMember(idx, to, edgeType)
 	if err != nil {
 		return nil, err
 	}
-	return append(edges, overlayEdges...), nil
+	return append(out, overlayEdges...), nil
 }
 
-func (s *Store) overlayOut(from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
+func stampEdgeRepos(e graph.Edge, fromRepo, toRepo string) graph.Edge {
+	props := make(map[string]string, len(e.Props)+2)
+	for k, v := range e.Props {
+		props[k] = v
+	}
+	if fromRepo != "" {
+		props["from_repo"] = fromRepo
+	}
+	if toRepo != "" {
+		props["to_repo"] = toRepo
+	}
+	e.Props = props
+	return e
+}
+
+func (s *Store) overlayOutForMember(idx int, from graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
 	if s.overlay == nil {
 		return nil, nil
 	}
-	n, err := s.GetNode(from)
+	n, err := s.members[idx].Store.GetNode(from)
 	if err != nil {
 		return nil, err
 	}
@@ -342,28 +437,29 @@ func (s *Store) overlayOut(from graph.NodeID, edgeType graph.EdgeType) ([]graph.
 		}
 		return nil, err
 	}
+	fromRepo := s.members[idx].Name
 	out := make([]graph.Edge, 0, len(raw))
 	for _, e := range raw {
-		toNode, err := s.GetNodeByURI(string(e.To))
+		toNode, toRepo, err := s.getNodeByURI(string(e.To), false)
 		if err != nil {
 			s.warn(fmt.Sprintf("overlay edge %s → %s unresolved: %v", e.From, e.To, err))
 			continue
 		}
-		out = append(out, graph.Edge{
+		out = append(out, stampEdgeRepos(graph.Edge{
 			From:  from,
 			To:    toNode.ID,
 			Type:  e.Type,
 			Props: e.Props,
-		})
+		}, fromRepo, toRepo))
 	}
 	return out, nil
 }
 
-func (s *Store) overlayIn(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
+func (s *Store) overlayInForMember(idx int, to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edge, error) {
 	if s.overlay == nil {
 		return nil, nil
 	}
-	n, err := s.GetNode(to)
+	n, err := s.members[idx].Store.GetNode(to)
 	if err != nil {
 		return nil, err
 	}
@@ -381,19 +477,20 @@ func (s *Store) overlayIn(to graph.NodeID, edgeType graph.EdgeType) ([]graph.Edg
 		}
 		return nil, err
 	}
+	toRepo := s.members[idx].Name
 	out := make([]graph.Edge, 0, len(raw))
 	for _, e := range raw {
-		fromNode, err := s.GetNodeByURI(string(e.From))
+		fromNode, fromRepo, err := s.getNodeByURI(string(e.From), false)
 		if err != nil {
 			s.warn(fmt.Sprintf("overlay edge %s → %s unresolved: %v", e.From, e.To, err))
 			continue
 		}
-		out = append(out, graph.Edge{
+		out = append(out, stampEdgeRepos(graph.Edge{
 			From:  fromNode.ID,
 			To:    to,
 			Type:  e.Type,
 			Props: e.Props,
-		})
+		}, fromRepo, toRepo))
 	}
 	return out, nil
 }

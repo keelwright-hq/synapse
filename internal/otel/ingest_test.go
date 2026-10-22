@@ -55,3 +55,74 @@ func TestImportResolveIngest(t *testing.T) {
 		t.Fatalf("count=%s", edges[0].Props[parse.PropCount])
 	}
 }
+
+func TestOTLPJSONSpanIDAndFilepathDisambiguation(t *testing.T) {
+	store := memory.New()
+	_ = store.PutNode(graph.Node{ID: "file:a/handler.go", Kind: parse.KindFile, Name: "handler.go", Path: "a/handler.go"})
+	_ = store.PutNode(graph.Node{ID: "func:a/handler.go#Handle", Kind: parse.KindFunction, Name: "Handle", Path: "a/handler.go"})
+	_ = store.PutNode(graph.Node{ID: "file:b/handler.go", Kind: parse.KindFile, Name: "handler.go", Path: "b/handler.go"})
+	_ = store.PutNode(graph.Node{ID: "func:b/handler.go#Handle", Kind: parse.KindFunction, Name: "Handle", Path: "b/handler.go"})
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "otlp.json")
+	// Standard OTLP/JSON export with two spans sharing the same name "HTTP GET"
+	// linked via spanId/parentSpanId and disambiguated via code.filepath + code.function.
+	body := `{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {"key": "service.name", "value": {"stringValue": "gateway"}}
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "spanId": "span-1",
+              "name": "HTTP GET",
+              "attributes": [
+                {"key": "code.function", "value": {"stringValue": "Handle"}},
+                {"key": "code.filepath", "value": {"stringValue": "a/handler.go"}}
+              ]
+            },
+            {
+              "spanId": "span-2",
+              "parentSpanId": "span-1",
+              "name": "HTTP GET",
+              "attributes": [
+                {"key": "code.function", "value": {"stringValue": "Handle"}},
+                {"key": "code.filepath", "value": {"stringValue": "b/handler.go"}}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	spans, err := otel.ImportFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spans) != 2 {
+		t.Fatalf("len(spans)=%d want 2", len(spans))
+	}
+	n, err := otel.Ingest(store, spans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("ingested=%d want 1", n)
+	}
+	edges, err := store.OutEdges("func:a/handler.go#Handle", parse.EdgeObservedCalls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) != 1 || edges[0].To != "func:b/handler.go#Handle" {
+		t.Fatalf("expected observed_calls func:a/handler.go#Handle -> func:b/handler.go#Handle, got %+v", edges)
+	}
+}

@@ -235,7 +235,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 			return toolErr(err), nil
 		}
 		defer closeFn()
-		hits, err := rank.DocsForSymbol(store, sym, opts.RootDir, limit)
+		hits, err := rank.DocsForSymbolWithRoots(store, sym, opts.RootDir, opts.RepoRoots, limit)
 		if err != nil {
 			return toolErr(err), nil
 		}
