@@ -16,35 +16,16 @@ import (
 )
 
 var (
-	headingRe = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
+	headingRe  = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 	backtickRe = regexp.MustCompile("`([^`]+)`")
-	pathRe    = regexp.MustCompile(`(?:^|[\s(])([A-Za-z0-9_./-]+\.(?:go|ts|tsx|js|jsx|py|swift|md))`)
-	adrIDRe   = regexp.MustCompile(`(?i)\bADR[- ]?(\d+)\b`)
+	pathRe     = regexp.MustCompile(`(?:^|[\s(])([A-Za-z0-9_./-]+\.(?:go|ts|tsx|js|jsx|py|swift|md))`)
+	adrIDRe    = regexp.MustCompile(`(?i)\bADR[- ]?(\d+)\b`)
 )
 
 // ListDocFiles returns absolute paths of Markdown docs under root.
 func ListDocFiles(root string, ignoreDirNames []string) ([]string, error) {
-	if ignoreDirNames == nil {
-		ignoreDirNames = []string{"vendor", "node_modules", ".git", ".synapse", ".synapse-out"}
-	}
-	ignoreSet := map[string]struct{}{}
-	for _, d := range ignoreDirNames {
-		ignoreSet[d] = struct{}{}
-	}
 	var files []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if _, skip := ignoreSet[d.Name()]; skip && path != root {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
+	err := parse.WalkFiles(root, ignoreDirNames, func(path string, d fs.DirEntry) error {
 		ext := strings.ToLower(filepath.Ext(path))
 		if ext != ".md" && ext != ".markdown" {
 			return nil
@@ -112,9 +93,10 @@ func ParseFile(absPath, relPath string) (parse.Result, error) {
 
 // LinkOptions configure the post-index documentation linker.
 type LinkOptions struct {
-	Root  string
-	Store graph.Store
-	Repo  string
+	Root           string
+	Store          graph.Store
+	Repo           string
+	IgnoreDirNames []string
 }
 
 // Link scans indexed markdown file contents and creates documents edges to code.
@@ -125,7 +107,14 @@ func Link(opts LinkOptions) (int, error) {
 	if err := clearDocEdges(opts.Store); err != nil {
 		return 0, err
 	}
-	files, err := ListDocFiles(opts.Root, nil)
+	files, err := ListDocFiles(opts.Root, opts.IgnoreDirNames)
+	if err != nil {
+		return 0, err
+	}
+	if len(files) == 0 {
+		return 0, nil
+	}
+	byName, err := buildSymbolNameIndex(opts.Store)
 	if err != nil {
 		return 0, err
 	}
@@ -161,7 +150,7 @@ func Link(opts LinkOptions) (int, error) {
 			lineNo++
 			lineText := sc.Text()
 			for _, m := range backtickRe.FindAllStringSubmatch(lineText, -1) {
-				if id, ok := resolveMention(opts.Store, m[1]); ok {
+				if id, ok := resolveMention(opts.Store, byName, m[1]); ok {
 					recordTarget(id, lineNo)
 				}
 			}
@@ -231,7 +220,22 @@ func clearDocEdges(s graph.Store) error {
 	return nil
 }
 
-func resolveMention(store graph.Store, mention string) (graph.NodeID, bool) {
+func buildSymbolNameIndex(store graph.Store) (map[string][]graph.NodeID, error) {
+	byName := make(map[string][]graph.NodeID)
+	err := store.ForEachNode(func(n graph.Node) bool {
+		switch n.Kind {
+		case parse.KindSymbol, parse.KindImport, parse.KindDoc, parse.KindHeading:
+			return true
+		}
+		if n.Name != "" && len(byName[n.Name]) < 2 {
+			byName[n.Name] = append(byName[n.Name], n.ID)
+		}
+		return true
+	})
+	return byName, err
+}
+
+func resolveMention(store graph.Store, byName map[string][]graph.NodeID, mention string) (graph.NodeID, bool) {
 	mention = strings.TrimSpace(mention)
 	if mention == "" {
 		return "", false
@@ -245,19 +249,7 @@ func resolveMention(store graph.Store, mention string) (graph.NodeID, bool) {
 			return fid, true
 		}
 	}
-	var matches []graph.NodeID
-	_ = store.ForEachNode(func(n graph.Node) bool {
-		switch n.Kind {
-		case parse.KindSymbol, parse.KindImport, parse.KindDoc, parse.KindHeading:
-			return true
-		}
-		if n.Name == mention {
-			matches = append(matches, n.ID)
-			return len(matches) < 2
-		}
-		return true
-	})
-	if len(matches) == 1 {
+	if matches := byName[mention]; len(matches) == 1 {
 		return matches[0], true
 	}
 	return "", false

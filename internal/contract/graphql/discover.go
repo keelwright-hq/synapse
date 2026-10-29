@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
 // Candidate extensions that may contain GraphQL SDL documents.
@@ -17,27 +19,8 @@ var candidateExts = map[string]struct{}{
 // ListSpecFiles walks root and returns absolute paths of GraphQL SDL schema docs.
 // Directories named in ignoreDirNames are skipped (defaults match parse.DefaultIgnoreDirNames).
 func ListSpecFiles(root string, ignoreDirNames []string) ([]string, error) {
-	if ignoreDirNames == nil {
-		ignoreDirNames = []string{"vendor", "node_modules", ".git", ".synapse", ".synapse-out"}
-	}
-	ignoreSet := make(map[string]struct{}, len(ignoreDirNames))
-	for _, d := range ignoreDirNames {
-		ignoreSet[d] = struct{}{}
-	}
 	var files []string
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if _, skip := ignoreSet[d.Name()]; skip && path != root {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
+	err := parse.WalkFiles(root, ignoreDirNames, func(path string, d fs.DirEntry) error {
 		ext := strings.ToLower(filepath.Ext(path))
 		if _, ok := candidateExts[ext]; !ok {
 			return nil

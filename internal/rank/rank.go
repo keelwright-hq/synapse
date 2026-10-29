@@ -16,7 +16,7 @@ import (
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).
 // Phase 3 families (git / runtime / docs) are explicit so they do not fall back to 0.3.
 var DefaultEdgeWeights = map[graph.EdgeType]float64{
-	parse.EdgeContains:      1.0,
+	parse.EdgeContains:      0.75,
 	parse.EdgeCalls:         0.8,
 	parse.EdgeImplements:    0.9,
 	parse.EdgeConsumes:      0.9,
@@ -167,6 +167,7 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			if w == 0 {
 				w = 0.3
 			}
+			w *= edgeSignalMultiplier(e.Props)
 			score := cur.score * w
 			reason := fmt.Sprintf("%s:%s", dir, e.Type)
 			var explain []ScorePart
@@ -316,6 +317,29 @@ func propInt(props map[string]string, key string) int {
 		return 0
 	}
 	return v
+}
+
+// edgeSignalMultiplier returns a bounded multiplier in (0.95, 1.05) based on
+// per-edge weight or count properties (1.0 when absent or equal to 1).
+func edgeSignalMultiplier(props map[string]string) float64 {
+	if props == nil {
+		return 1.0
+	}
+	var signal float64
+	if raw := props[parse.PropWeight]; raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
+			signal = v
+		}
+	}
+	if raw := props[parse.PropCount]; raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > signal {
+			signal = v
+		}
+	}
+	if signal <= 0 || signal == 1.0 {
+		return 1.0
+	}
+	return 0.95 + 0.1*(signal/(signal+1.0))
 }
 
 func extractSnippet(root string, node graph.Node, start, end int) string {

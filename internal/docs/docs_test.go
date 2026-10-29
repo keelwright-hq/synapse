@@ -155,3 +155,54 @@ func TestDuplicateHeadingsAndStaleDocEdgePruning(t *testing.T) {
 		t.Fatalf("expected 1 documents edge to Beta, got %v", inBetaAfter)
 	}
 }
+
+func TestListDocFilesAndLinkRespectGitignoreAndThirdParty(t *testing.T) {
+	root := t.TempDir()
+	mustWrite := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(".gitignore", "build_docs/\n")
+	mustWrite("README.md", "# Main\n\nMentions `Alpha`.\n")
+	mustWrite("third_party/README.md", "# ThirdParty\n\nMentions `Beta`.\n")
+	mustWrite("build_docs/guide.md", "# Guide\n\nMentions `Beta`.\n")
+
+	files, err := docs.ListDocFiles(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || filepath.Base(files[0]) != "README.md" {
+		t.Fatalf("expected only root README.md, got %v", files)
+	}
+
+	store := memory.New()
+	res, err := docs.ParseFile(filepath.Join(root, "README.md"), "README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range res.Nodes {
+		_ = store.PutNode(n)
+	}
+	for _, e := range res.Edges {
+		_ = store.PutEdge(e)
+	}
+	_ = store.PutNode(graph.Node{ID: "func:a.go#Alpha", Kind: parse.KindFunction, Name: "Alpha", Path: "a.go"})
+	_ = store.PutNode(graph.Node{ID: "func:a.go#Beta", Kind: parse.KindFunction, Name: "Beta", Path: "a.go"})
+
+	n, err := docs.Link(docs.LinkOptions{Root: root, Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		t.Fatal("expected documents edges for Alpha")
+	}
+	if inBeta, _ := store.InEdges("func:a.go#Beta", parse.EdgeDocuments); len(inBeta) != 0 {
+		t.Fatalf("expected no documents edges to Beta from ignored docs, got %v", inBeta)
+	}
+}

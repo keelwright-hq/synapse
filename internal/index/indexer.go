@@ -322,11 +322,19 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 	return stats, nil
 }
 
+type fileBatchStore interface {
+	ReplaceFileGraph(relPath, hash string, nodes []graph.Node, edges []graph.Edge, owned []graph.NodeID) error
+	DeleteFileGraph(relPath string) error
+}
+
 func (idx *Indexer) replaceFile(relPath, hash string, res parse.Result) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
 	owned := ownedNodeIDs(res)
+	if bs, ok := idx.store.(fileBatchStore); ok {
+		return bs.ReplaceFileGraph(relPath, hash, res.Nodes, res.Edges, owned)
+	}
 	old, err := idx.store.GetOwnedNodes(relPath)
 	if err != nil {
 		return err
@@ -356,6 +364,9 @@ func (idx *Indexer) deleteFile(relPath string) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
+	if bs, ok := idx.store.(fileBatchStore); ok {
+		return bs.DeleteFileGraph(relPath)
+	}
 	old, err := idx.store.GetOwnedNodes(relPath)
 	if err != nil {
 		return err
@@ -417,6 +428,9 @@ func rewritePaths(res parse.Result, absPath, relPath string) parse.Result {
 		switch n.Path {
 		case absSlash, absNative, res.Path:
 			n.Path = relPath
+		}
+		if n.Kind == parse.KindFile {
+			n.Name = filepath.Base(relPath)
 		}
 		out.Nodes = append(out.Nodes, n)
 	}

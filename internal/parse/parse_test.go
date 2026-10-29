@@ -559,6 +559,150 @@ func TestWalkTreeRejectsMissingRoot(t *testing.T) {
 	}
 }
 
+func TestWalkSkipsThirdPartyAndGitignore(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, ".gitignore"), "ignored_dir/\n*.gen.go\n!keep.gen.go\n")
+	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, "keep.gen.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, "skip.gen.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, "third_party", "grammar.c"), "int x;\n")
+	mustWrite(t, filepath.Join(root, "dist", "bundle.js"), "export const x = 1;\n")
+	mustWrite(t, filepath.Join(root, "ignored_dir", "secret.go"), "package secret\n")
+	mustWrite(t, filepath.Join(root, "sub", ".gitignore"), "local_skip.py\n")
+	mustWrite(t, filepath.Join(root, "sub", "local_skip.py"), "def f(): pass\n")
+	mustWrite(t, filepath.Join(root, "sub", "ok.py"), "def ok(): pass\n")
+
+	files, err := parse.ListSourceFiles(root, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rels []string
+	for _, f := range files {
+		rel, err := filepath.Rel(root, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rels = append(rels, filepath.ToSlash(rel))
+	}
+	want := []string{"keep.gen.go", "main.go", "sub/ok.py"}
+	if len(rels) != len(want) {
+		t.Fatalf("got files %v, want %v", rels, want)
+	}
+	for i := range want {
+		if rels[i] != want[i] {
+			t.Fatalf("files[%d] = %q, want %q (all: %v)", i, rels[i], want[i], rels)
+		}
+	}
+}
+
+func TestInlineDocCommentsAcrossLanguages(t *testing.T) {
+	reg := parse.NewRegistry()
+	cases := []struct {
+		file string
+		src  string
+		kind string
+		name string
+		want string
+	}{
+		{
+			file: "a.ts",
+			src:  "/** User account model. */\nexport interface User { id: string }\n",
+			kind: parse.KindType,
+			name: "User",
+			want: "User account model.",
+		},
+		{
+			file: "b.js",
+			src:  "/** Greets a user by name. */\nexport function greet(name) { return name; }\n",
+			kind: parse.KindFunction,
+			name: "greet",
+			want: "Greets a user by name.",
+		},
+		{
+			file: "c.py",
+			src:  "def compute(x):\n    \"\"\"Computes the square.\"\"\"\n    return x * x\n",
+			kind: parse.KindFunction,
+			name: "compute",
+			want: "Computes the square.",
+		},
+		{
+			file: "d.swift",
+			src:  "/// Swift doc comment.\nfunc runTask() {}\n",
+			kind: parse.KindFunction,
+			name: "runTask",
+			want: "Swift doc comment.",
+		},
+		{
+			file: "E.java",
+			src:  "/** Java class doc. */\npublic class E {\n  /** Java method doc. */\n  public void work() {}\n}\n",
+			kind: parse.KindMethod,
+			name: "work",
+			want: "Java method doc.",
+		},
+		{
+			file: "F.kt",
+			src:  "/** Kotlin function doc. */\nfun runKt() {}\n",
+			kind: parse.KindFunction,
+			name: "runKt",
+			want: "Kotlin function doc.",
+		},
+		{
+			file: "g.rb",
+			src:  "# Ruby method doc.\ndef greet_rb\nend\n",
+			kind: parse.KindFunction,
+			name: "greet_rb",
+			want: "Ruby method doc.",
+		},
+		{
+			file: "h.php",
+			src:  "<?php\n/** PHP function doc. */\nfunction run_php() {}\n",
+			kind: parse.KindFunction,
+			name: "run_php",
+			want: "PHP function doc.",
+		},
+		{
+			file: "i.c",
+			src:  "/** C function doc. */\nvoid run_c(void) {}\n",
+			kind: parse.KindFunction,
+			name: "run_c",
+			want: "C function doc.",
+		},
+		{
+			file: "J.cs",
+			src:  "class J {\n  /// CSharp method doc.\n  void RunCs() {}\n}\n",
+			kind: parse.KindMethod,
+			name: "RunCs",
+			want: "CSharp method doc.",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.file, func(t *testing.T) {
+			res, err := parse.ParseSource(reg, tc.file, []byte(tc.src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got string
+			var found bool
+			for _, n := range res.Nodes {
+				if n.Kind == tc.kind && n.Name == tc.name {
+					found = true
+					if n.Props != nil {
+						got = n.Props[parse.PropDoc]
+					}
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("node %s %s not found in %+v", tc.kind, tc.name, res.Nodes)
+			}
+			if got != tc.want {
+				t.Fatalf("PropDoc=%q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func assertHasKind(t *testing.T, res parse.Result, kind, name string) {
 	t.Helper()
 	for _, n := range res.Nodes {

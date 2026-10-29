@@ -163,3 +163,72 @@ func TestFindReferencesUnlinkedSymbolFallback(t *testing.T) {
 		t.Fatalf("expected fallback incoming call from Greet, got %+v", refs)
 	}
 }
+
+func TestNeighborhoodDirectSemanticNeighborsBeatTwoHopContainsSiblings(t *testing.T) {
+	store := memory.New()
+	seed := graph.NodeID("func:a.go#Alpha")
+	fileA := graph.NodeID("file:a.go")
+	sibling := graph.NodeID("func:a.go#Sibling")
+	callee := graph.NodeID("func:b.go#Callee")
+	docNode := graph.NodeID("doc:README.md#README")
+
+	for _, n := range []graph.Node{
+		{ID: fileA, Kind: parse.KindFile, Name: "a.go", Path: "a.go"},
+		{ID: seed, Kind: parse.KindFunction, Name: "Alpha", Path: "a.go"},
+		{ID: sibling, Kind: parse.KindFunction, Name: "Sibling", Path: "a.go"},
+		{ID: callee, Kind: parse.KindFunction, Name: "Callee", Path: "b.go"},
+		{ID: docNode, Kind: parse.KindDoc, Name: "README", Path: "README.md"},
+	} {
+		mustPut(t, store, n)
+	}
+	mustEdge(t, store, graph.Edge{From: fileA, To: seed, Type: parse.EdgeContains})
+	mustEdge(t, store, graph.Edge{From: fileA, To: sibling, Type: parse.EdgeContains})
+	mustEdge(t, store, graph.Edge{From: seed, To: callee, Type: parse.EdgeCalls})
+	mustEdge(t, store, graph.Edge{From: docNode, To: seed, Type: parse.EdgeDocuments})
+
+	res, err := rank.Neighborhood(store, seed, rank.Options{Depth: 2, MaxNodes: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scores := map[graph.NodeID]float64{}
+	for _, h := range res.Hits {
+		scores[h.ID] = h.Score
+	}
+	if scores[callee] <= scores[sibling] {
+		t.Fatalf("expected direct call neighbor (%v) > 2-hop sibling (%v)", scores[callee], scores[sibling])
+	}
+	if scores[docNode] <= scores[sibling] {
+		t.Fatalf("expected direct doc neighbor (%v) > 2-hop sibling (%v)", scores[docNode], scores[sibling])
+	}
+}
+
+func TestNeighborhoodIncorporatesEdgeWeightAndCount(t *testing.T) {
+	store := memory.New()
+	seed := graph.NodeID("func:a.go#Alpha")
+	low := graph.NodeID("func:a.go#Low")
+	high := graph.NodeID("func:a.go#High")
+
+	mustPut(t, store, graph.Node{ID: seed, Kind: parse.KindFunction, Name: "Alpha", Path: "a.go"})
+	mustPut(t, store, graph.Node{ID: low, Kind: parse.KindFunction, Name: "Low", Path: "a.go"})
+	mustPut(t, store, graph.Node{ID: high, Kind: parse.KindFunction, Name: "High", Path: "a.go"})
+
+	mustEdge(t, store, graph.Edge{
+		From: seed, To: low, Type: parse.EdgeObservedCalls,
+		Props: map[string]string{parse.PropCount: "1"},
+	})
+	mustEdge(t, store, graph.Edge{
+		From: seed, To: high, Type: parse.EdgeObservedCalls,
+		Props: map[string]string{parse.PropCount: "25"},
+	})
+
+	res, err := rank.Neighborhood(store, seed, rank.Options{Depth: 1, MaxNodes: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) < 3 {
+		t.Fatalf("expected 3 hits, got %+v", res.Hits)
+	}
+	if res.Hits[1].ID != high || res.Hits[2].ID != low {
+		t.Fatalf("expected High to rank above Low, got %+v", res.Hits)
+	}
+}

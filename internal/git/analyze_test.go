@@ -119,3 +119,69 @@ func TestWalkAggregateAnalyze(t *testing.T) {
 		t.Fatalf("expected stale co_committed edges to be pruned, got %+v", edgesAfter)
 	}
 }
+
+func TestWalkEmptyRepoAndCommitBounds(t *testing.T) {
+	emptyRoot := t.TempDir()
+	if _, err := git.PlainInit(emptyRoot, false); err != nil {
+		t.Fatal(err)
+	}
+	commits, err := synapsegit.Walk(emptyRoot, synapsegit.Options{})
+	if err != nil {
+		t.Fatalf("expected nil error on empty git init repo, got %v", err)
+	}
+	if len(commits) != 0 {
+		t.Fatalf("expected 0 commits on empty repo, got %d", len(commits))
+	}
+
+	root := t.TempDir()
+	r, err := git.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitFiles := func(msg string, files ...string) {
+		t.Helper()
+		for _, f := range files {
+			p := filepath.Join(root, f)
+			b, _ := os.ReadFile(p)
+			if err := os.WriteFile(p, append(b, 'x'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.Add(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := w.Commit(msg, &git.CommitOptions{
+			Author: &object.Signature{Name: "t", Email: "t@t", When: time.Now()},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Older multi-file commit, then a large commit touching 3 files, then two single-file commits.
+	commitFiles("pair", "a.go", "b.go")
+	commitFiles("bulk", "a.go", "b.go", "c.go")
+	commitFiles("single1", "a.go")
+	commitFiles("single2", "a.go")
+
+	// MaxCommits=2 should only inspect the 2 most recent (single-file) commits and stop.
+	bounded, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bounded) != 0 {
+		t.Fatalf("expected MaxCommits=2 to stop after 2 single-file commits, got %d multi-file commits", len(bounded))
+	}
+
+	// MaxFilesPerCommit=2 should skip the 3-file "bulk" commit and keep only the 2-file "pair" commit.
+	filtered, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 10, MaxFilesPerCommit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || len(filtered[0].Paths) != 2 {
+		t.Fatalf("expected 1 2-file commit with MaxFilesPerCommit=2, got %+v", filtered)
+	}
+}

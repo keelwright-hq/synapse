@@ -3,10 +3,12 @@ package index_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/parse"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
@@ -290,4 +292,44 @@ func main() {
 			t.Fatalf("expected %s to remain unresolved, got %+v", sym, symEdges)
 		}
 	}
+}
+
+func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "third_party"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "ignored"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGo(t, filepath.Join(root, ".gitignore"), "ignored/\n")
+	writeGo(t, filepath.Join(root, "sub", "hello.go"), "package sub\n\nfunc Hello() {}\n")
+	writeGo(t, filepath.Join(root, "third_party", "vendored.go"), "package tp\n\nfunc Vendored() {}\n")
+	writeGo(t, filepath.Join(root, "ignored", "skip.go"), "package ig\n\nfunc Skip() {}\n")
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	fn, err := store.GetNode("file:sub/hello.go")
+	if err != nil {
+		t.Fatalf("missing file:sub/hello.go: %v", err)
+	}
+	if fn.Name != "hello.go" {
+		t.Fatalf("file node Name=%q, want %q", fn.Name, "hello.go")
+	}
+	if strings.Contains(fn.Name, root) || strings.Contains(fn.Path, root) {
+		t.Fatalf("file node leaked absolute root path: %+v", fn)
+	}
+	if _, err := store.GetNode("file:third_party/vendored.go"); err != graph.ErrNotFound {
+		t.Fatalf("expected third_party file to be ignored, got err=%v", err)
+	}
+	if _, err := store.GetNode("file:ignored/skip.go"); err != graph.ErrNotFound {
+		t.Fatalf("expected gitignored file to be ignored, got err=%v", err)
+	}
+	_ = parse.KindFile
 }

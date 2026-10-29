@@ -2,6 +2,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -11,16 +12,26 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
+// DefaultMaxFilesPerCommit caps the number of files in a single commit that
+// contribute to pairwise co-change edges, preventing O(k^2) explosions on
+// bulk formatting or initial-import commits.
+const DefaultMaxFilesPerCommit = 100
+
+var errStopWalk = errors.New("git: stop")
+
 // Options configure history walking and co-change aggregation.
 type Options struct {
 	MaxCommits int
-	Since      time.Time
-	MinSupport int
+	// MaxFilesPerCommit skips commits touching more than this many files (default: 100).
+	MaxFilesPerCommit int
+	Since             time.Time
+	MinSupport        int
 	// HalfLifeDays controls recency decay (weight *= 0.5^(ageDays/HalfLifeDays)).
 	HalfLifeDays float64
 }
@@ -45,18 +56,32 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 	if opts.MaxCommits <= 0 {
 		opts.MaxCommits = 500
 	}
+	maxFiles := opts.MaxFilesPerCommit
+	if maxFiles <= 0 {
+		maxFiles = DefaultMaxFilesPerCommit
+	}
 	r, err := git.PlainOpen(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("git walk: %w", err)
 	}
 	iter, err := r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})
 	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("git log: %w", err)
 	}
 	defer iter.Close()
 
-	var out []CommitFiles
+	var (
+		out    []CommitFiles
+		walked int
+	)
 	err = iter.ForEach(func(c *object.Commit) error {
+		if walked >= opts.MaxCommits {
+			return errStopWalk
+		}
+		walked++
 		if !opts.Since.IsZero() && c.Committer.When.Before(opts.Since) {
 			return nil
 		}
@@ -78,7 +103,7 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 			seen[p] = struct{}{}
 			paths = append(paths, p)
 		}
-		if len(paths) < 2 {
+		if len(paths) < 2 || len(paths) > maxFiles {
 			return nil
 		}
 		sort.Strings(paths)
@@ -87,12 +112,9 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 			When:  c.Committer.When,
 			Paths: paths,
 		})
-		if len(out) >= opts.MaxCommits {
-			return fmt.Errorf("git: stop")
-		}
 		return nil
 	})
-	if err != nil && err.Error() != "git: stop" {
+	if err != nil && !errors.Is(err, errStopWalk) {
 		return nil, err
 	}
 	return out, nil
@@ -105,6 +127,10 @@ func Aggregate(commits []CommitFiles, opts Options) []Pair {
 	}
 	if opts.HalfLifeDays <= 0 {
 		opts.HalfLifeDays = 90
+	}
+	maxFiles := opts.MaxFilesPerCommit
+	if maxFiles <= 0 {
+		maxFiles = DefaultMaxFilesPerCommit
 	}
 	now := time.Now()
 	type acc struct {
@@ -121,6 +147,9 @@ func Aggregate(commits []CommitFiles, opts Options) []Pair {
 		return a + "\x00" + b
 	}
 	for _, c := range commits {
+		if len(c.Paths) < 2 || len(c.Paths) > maxFiles {
+			continue
+		}
 		ageDays := now.Sub(c.When).Hours() / 24
 		if ageDays < 0 {
 			ageDays = 0
