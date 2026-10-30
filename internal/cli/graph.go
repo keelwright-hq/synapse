@@ -52,15 +52,12 @@ var graphExportCmd = &cobra.Command{
 			if nerr != nil {
 				return nerr
 			}
-			switch {
-			case badger.ShardExists(dataDir, name):
-				store, err = badger.OpenRepo(dataDir, name)
-			case badger.SingleRepoExists(dataDir):
-				store, err = badger.OpenWithRepo(dataDir, name)
-			default:
+			layout, ok := badger.ResolveRepoLayout(dataDir, name)
+			if !ok {
 				return fmt.Errorf("graph export: no graph store found for repo %q under %s", name, dataDir)
 			}
-			meta = snapshot.Meta{Repo: name, Kind: snapshot.KindRepo}
+			store, err = badger.OpenSingleOrRepo(dataDir, name)
+			meta = snapshot.Meta{Repo: name, Kind: snapshot.KindRepo, Layout: string(layout)}
 		}
 		if err != nil {
 			return err
@@ -121,9 +118,14 @@ var graphImportCmd = &cobra.Command{
 			defer closer.Close()
 		}
 
+		peekedMeta, inReader, err := snapshot.PeekMeta(in)
+		if err != nil {
+			return err
+		}
+		in = inReader
+
 		var (
 			store      *badger.Store
-			err        error
 			targetRepo string
 		)
 		if graphImportOverlay {
@@ -133,11 +135,15 @@ var graphImportCmd = &cobra.Command{
 			if nerr != nil {
 				return nerr
 			}
-			if !badger.ShardExists(dataDir, name) && badger.SingleRepoExists(dataDir) {
-				store, err = badger.OpenWithRepo(dataDir, name)
-			} else {
-				store, err = badger.OpenRepo(dataDir, name)
+			layout, ok := badger.ResolveRepoLayout(dataDir, name)
+			if !ok {
+				if peekedMeta.Layout == string(badger.LayoutSingle) {
+					layout = badger.LayoutSingle
+				} else {
+					layout = badger.LayoutShard
+				}
 			}
+			store, err = badger.OpenLayout(dataDir, name, layout)
 			targetRepo = name
 		}
 		if err != nil {

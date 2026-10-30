@@ -41,14 +41,47 @@ func SingleRepoExists(dataDir string) bool {
 	return err == nil && info.IsDir()
 }
 
-// OpenSingleOrRepo opens a workspace member shard at dataDir/repos/<repoName>/graph
-// when that shard exists on disk and no single-repo store exists at dataDir/graph;
-// otherwise it opens the single-repo store at dataDir/graph.
-func OpenSingleOrRepo(dataDir, repoName string) (*Store, error) {
-	if !SingleRepoExists(dataDir) && ShardExists(dataDir, repoName) {
+// RepoLayout identifies where a repository graph store lives under dataDir.
+type RepoLayout string
+
+const (
+	// LayoutSingle stores a single-repo graph at dataDir/graph.
+	LayoutSingle RepoLayout = "single"
+	// LayoutShard stores a workspace member shard at dataDir/repos/<repoName>/graph.
+	LayoutShard RepoLayout = "shard"
+)
+
+// ResolveRepoLayout inspects dataDir for an existing store for repoName.
+// When both a workspace shard (dataDir/repos/<repoName>/graph) and a single-repo
+// store (dataDir/graph) exist on disk, the workspace shard wins so export,
+// import, query, mcp, and otel agree on which store to open.
+func ResolveRepoLayout(dataDir, repoName string) (RepoLayout, bool) {
+	if ShardExists(dataDir, repoName) {
+		return LayoutShard, true
+	}
+	if SingleRepoExists(dataDir) {
+		return LayoutSingle, true
+	}
+	return "", false
+}
+
+// OpenLayout opens (or creates) the Badger store for repoName using layout.
+// An unknown or empty layout defaults to LayoutSingle.
+func OpenLayout(dataDir, repoName string, layout RepoLayout) (*Store, error) {
+	if layout == LayoutShard {
 		return OpenRepo(dataDir, repoName)
 	}
 	return OpenWithRepo(dataDir, repoName)
+}
+
+// OpenSingleOrRepo opens an existing store for repoName (preferring a workspace
+// shard at dataDir/repos/<repoName>/graph over dataDir/graph when present), or
+// creates a single-repo store at dataDir/graph when neither exists on disk.
+func OpenSingleOrRepo(dataDir, repoName string) (*Store, error) {
+	if layout, ok := ResolveRepoLayout(dataDir, repoName); ok {
+		return OpenLayout(dataDir, repoName, layout)
+	}
+	return OpenLayout(dataDir, repoName, LayoutSingle)
 }
 
 // OpenRepo opens (and migrates) the Badger store for one workspace member

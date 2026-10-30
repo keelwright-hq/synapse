@@ -73,15 +73,11 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 	}
 	defer iter.Close()
 
-	var (
-		out    []CommitFiles
-		walked int
-	)
+	var out []CommitFiles
 	err = iter.ForEach(func(c *object.Commit) error {
-		if walked >= opts.MaxCommits {
+		if len(out) >= opts.MaxCommits {
 			return errStopWalk
 		}
-		walked++
 		if !opts.Since.IsZero() && c.Committer.When.Before(opts.Since) {
 			return nil
 		}
@@ -112,6 +108,9 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 			When:  c.Committer.When,
 			Paths: paths,
 		})
+		if len(out) >= opts.MaxCommits {
+			return errStopWalk
+		}
 		return nil
 	})
 	if err != nil && !errors.Is(err, errStopWalk) {

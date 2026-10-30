@@ -324,18 +324,26 @@ func TestGraphExportImportSingleRepo(t *testing.T) {
 	if strings.Contains(buf.String(), "nodes=0") {
 		t.Fatalf("expected non-empty single-repo snapshot import, got:\n%s", buf.String())
 	}
+	if !badger.SingleRepoExists(dstDir) {
+		t.Fatalf("expected single-repo import into empty dir to create single-repo layout at %s/graph", dstDir)
+	}
+	if badger.ShardExists(dstDir, "api-copy") {
+		t.Fatalf("did not expect single-repo import into empty dir to create workspace shard")
+	}
 
-	resetPersistentFlags(t, cmd)
-	buf.Reset()
-	cmd.SetArgs([]string{"--repo", "api-copy", "--data-dir", dstDir, "query", "neighborhood", "ListUsers", "--json"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("query imported single-repo shard: %v\n%s", err, buf.String())
-	}
-	var res rank.Result
-	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
-		t.Fatalf("json: %v\n%s", err, buf.String())
-	}
-	if len(res.Hits) == 0 {
-		t.Fatalf("expected neighborhood hits from imported single-repo shard")
+	for attempt := 1; attempt <= 2; attempt++ {
+		resetPersistentFlags(t, cmd)
+		buf.Reset()
+		cmd.SetArgs([]string{"--repo", "api-copy", "--data-dir", dstDir, "query", "neighborhood", "ListUsers", "--json"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("query imported single-repo store (attempt %d): %v\n%s", attempt, err, buf.String())
+		}
+		var res rank.Result
+		if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+			t.Fatalf("json (attempt %d): %v\n%s", attempt, err, buf.String())
+		}
+		if len(res.Hits) == 0 {
+			t.Fatalf("expected neighborhood hits from imported single-repo store on attempt %d", attempt)
+		}
 	}
 }

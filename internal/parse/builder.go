@@ -179,6 +179,14 @@ func isDocWrapperKind(kind string) bool {
 }
 
 func extractPythonDocstring(b *builder, ts *tree_sitter.Node) string {
+	if ts == nil {
+		return ""
+	}
+	switch ts.Kind() {
+	case "function_definition", "class_definition":
+	default:
+		return ""
+	}
 	body := field(ts, "body")
 	if body == nil || body.Kind() != "block" || body.NamedChildCount() == 0 {
 		return ""
@@ -241,7 +249,7 @@ func precedingComments(b *builder, n *tree_sitter.Node) string {
 		}
 		raw := strings.TrimSpace(b.text(prev))
 		if strings.HasPrefix(raw, "/*") {
-			if len(lines) == 0 {
+			if len(lines) == 0 && isDocBlockComment(raw) {
 				return cleanBlockComment(raw)
 			}
 			break
@@ -268,13 +276,21 @@ func precedingComments(b *builder, n *tree_sitter.Node) string {
 		}
 		raw := strings.TrimSpace(b.text(ch))
 		if strings.HasPrefix(raw, "/*") {
-			return cleanBlockComment(raw)
+			if isDocBlockComment(raw) {
+				return cleanBlockComment(raw)
+			}
+			break
 		}
 		if cleaned := cleanLineComment(raw); cleaned != "" {
 			childLines = append(childLines, cleaned)
 		}
 	}
 	return strings.TrimSpace(strings.Join(childLines, "\n"))
+}
+
+func isDocBlockComment(raw string) bool {
+	t := strings.TrimSpace(raw)
+	return (strings.HasPrefix(t, "/**") && !strings.HasPrefix(t, "/***")) || strings.HasPrefix(t, "/*!")
 }
 
 func isCommentNode(n *tree_sitter.Node) bool {

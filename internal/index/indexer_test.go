@@ -8,7 +8,6 @@ import (
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/index"
-	"github.com/keelwright-hq/synapse/internal/parse"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
@@ -338,5 +337,4 @@ func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T)
 	if _, err := store.GetNode("file:ignored/skip.go"); err != graph.ErrNotFound {
 		t.Fatalf("expected gitignored file to be ignored, got err=%v", err)
 	}
-	_ = parse.KindFile
 }

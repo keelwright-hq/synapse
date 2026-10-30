@@ -3,6 +3,7 @@ package snapshot
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,8 +24,9 @@ const (
 
 // Meta describes the snapshot header.
 type Meta struct {
-	Repo string // logical repo:// name; empty for overlay
-	Kind string // KindRepo or KindOverlay
+	Repo   string // logical repo:// name; empty for overlay
+	Kind   string // KindRepo or KindOverlay
+	Layout string // optional layout hint ("single" or "shard") for empty-dir imports
 }
 
 type headerRecord struct {
@@ -33,6 +35,7 @@ type headerRecord struct {
 	Version int    `json:"version"`
 	Repo    string `json:"repo,omitempty"`
 	Kind    string `json:"kind"`
+	Layout  string `json:"layout,omitempty"`
 }
 
 type nodeRecord struct {
@@ -76,6 +79,7 @@ func Export(w io.Writer, store graph.Store, meta Meta) error {
 		Version: Version,
 		Repo:    meta.Repo,
 		Kind:    kind,
+		Layout:  meta.Layout,
 	}); err != nil {
 		return fmt.Errorf("snapshot: write header: %w", err)
 	}
@@ -155,6 +159,34 @@ type ImportOptions struct {
 	RewriteRepo bool
 }
 
+// PeekMeta reads the first non-empty record of r to extract header Meta
+// (including optional Layout) and returns a replacement io.Reader that replays
+// the consumed bytes ahead of the rest of r.
+func PeekMeta(r io.Reader) (Meta, io.Reader, error) {
+	br := bufio.NewReader(r)
+	var consumed bytes.Buffer
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			_, _ = consumed.Write(line)
+			trimmed := bytes.TrimSpace(line)
+			if len(trimmed) > 0 {
+				var h headerRecord
+				if jerr := json.Unmarshal(trimmed, &h); jerr == nil && h.Type == "header" {
+					return Meta{Repo: h.Repo, Kind: h.Kind, Layout: h.Layout}, io.MultiReader(&consumed, br), nil
+				}
+				return Meta{}, io.MultiReader(&consumed, br), nil
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return Meta{}, io.MultiReader(&consumed, br), nil
+			}
+			return Meta{}, nil, fmt.Errorf("snapshot: read: %w", err)
+		}
+	}
+}
+
 // Import streams a v1 NDJSON snapshot from r into store.
 func Import(r io.Reader, store graph.Store) (ImportResult, error) {
 	return ImportWithOptions(r, store, ImportOptions{})
@@ -207,7 +239,7 @@ func ImportWithOptions(r io.Reader, store graph.Store, opts ImportOptions) (Impo
 				return out, fmt.Errorf("snapshot: header missing repo")
 			}
 			out.HeaderSeen = true
-			out.Meta = Meta{Repo: h.Repo, Kind: h.Kind}
+			out.Meta = Meta{Repo: h.Repo, Kind: h.Kind, Layout: h.Layout}
 			if h.Kind == KindRepo && opts.TargetRepo != "" && h.Repo != opts.TargetRepo {
 				if !opts.RewriteRepo {
 					return out, fmt.Errorf("snapshot: repo %q does not match target %q (pass --rewrite-repo to remap repo_uri)", h.Repo, opts.TargetRepo)

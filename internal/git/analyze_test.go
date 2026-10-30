@@ -167,21 +167,23 @@ func TestWalkEmptyRepoAndCommitBounds(t *testing.T) {
 	commitFiles("single1", "a.go")
 	commitFiles("single2", "a.go")
 
-	// MaxCommits=2 should only inspect the 2 most recent (single-file) commits and stop.
-	bounded, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 2})
+	// MaxCommits counts pair-producing commits, so the 2 recent single-file commits do not
+	// exhaust MaxCommits=1; it returns the newest multi-file commit ("bulk", 3 files).
+	bounded, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bounded) != 0 {
-		t.Fatalf("expected MaxCommits=2 to stop after 2 single-file commits, got %d multi-file commits", len(bounded))
+	if len(bounded) != 1 || len(bounded[0].Paths) != 3 {
+		t.Fatalf("expected MaxCommits=1 to skip single-file commits and return 1 multi-file commit, got %+v", bounded)
 	}
 
-	// MaxFilesPerCommit=2 should skip the 3-file "bulk" commit and keep only the 2-file "pair" commit.
-	filtered, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 10, MaxFilesPerCommit: 2})
+	// MaxFilesPerCommit=2 should skip the 3-file "bulk" commit without burning MaxCommits=1,
+	// keeping the older 2-file "pair" commit.
+	filtered, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 1, MaxFilesPerCommit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(filtered) != 1 || len(filtered[0].Paths) != 2 {
-		t.Fatalf("expected 1 2-file commit with MaxFilesPerCommit=2, got %+v", filtered)
+		t.Fatalf("expected 1 2-file commit with MaxCommits=1 MaxFilesPerCommit=2, got %+v", filtered)
 	}
 }

@@ -561,12 +561,14 @@ func TestWalkTreeRejectsMissingRoot(t *testing.T) {
 
 func TestWalkSkipsThirdPartyAndGitignore(t *testing.T) {
 	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, ".gitignore"), "ignored_dir/\n*.gen.go\n!keep.gen.go\n")
+	mustWrite(t, filepath.Join(root, ".gitignore"), "ignored_dir/\nbuild/\n!build/keep.go\n*.gen.go\n!keep.gen.go\n")
 	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")
 	mustWrite(t, filepath.Join(root, "keep.gen.go"), "package main\n")
 	mustWrite(t, filepath.Join(root, "skip.gen.go"), "package main\n")
 	mustWrite(t, filepath.Join(root, "third_party", "grammar.c"), "int x;\n")
-	mustWrite(t, filepath.Join(root, "dist", "bundle.js"), "export const x = 1;\n")
+	mustWrite(t, filepath.Join(root, "build", "skip.go"), "package build\n")
+	mustWrite(t, filepath.Join(root, "build", "keep.go"), "package build\n")
+	mustWrite(t, filepath.Join(root, "tools", "dist", "pkg.go"), "package dist\n")
 	mustWrite(t, filepath.Join(root, "ignored_dir", "secret.go"), "package secret\n")
 	mustWrite(t, filepath.Join(root, "sub", ".gitignore"), "local_skip.py\n")
 	mustWrite(t, filepath.Join(root, "sub", "local_skip.py"), "def f(): pass\n")
@@ -584,7 +586,7 @@ func TestWalkSkipsThirdPartyAndGitignore(t *testing.T) {
 		}
 		rels = append(rels, filepath.ToSlash(rel))
 	}
-	want := []string{"keep.gen.go", "main.go", "sub/ok.py"}
+	want := []string{"build/keep.go", "keep.gen.go", "main.go", "sub/ok.py", "tools/dist/pkg.go"}
 	if len(rels) != len(want) {
 		t.Fatalf("got files %v, want %v", rels, want)
 	}
@@ -610,6 +612,13 @@ func TestInlineDocCommentsAcrossLanguages(t *testing.T) {
 			kind: parse.KindType,
 			name: "User",
 			want: "User account model.",
+		},
+		{
+			file: "copyright.ts",
+			src:  "/* Copyright 2026 Example Corp. */\nexport interface Plain { id: string }\n",
+			kind: parse.KindType,
+			name: "Plain",
+			want: "",
 		},
 		{
 			file: "b.js",
@@ -638,6 +647,13 @@ func TestInlineDocCommentsAcrossLanguages(t *testing.T) {
 			kind: parse.KindMethod,
 			name: "work",
 			want: "Java method doc.",
+		},
+		{
+			file: "NoDoc.java",
+			src:  "/* License header */\npublic class NoDoc {\n  public void work() { \"not a docstring\"; }\n}\n",
+			kind: parse.KindMethod,
+			name: "work",
+			want: "",
 		},
 		{
 			file: "F.kt",

@@ -171,6 +171,7 @@ func TestNeighborhoodDirectSemanticNeighborsBeatTwoHopContainsSiblings(t *testin
 	sibling := graph.NodeID("func:a.go#Sibling")
 	callee := graph.NodeID("func:b.go#Callee")
 	docNode := graph.NodeID("doc:README.md#README")
+	pkgNode := graph.NodeID("pkg:fmt")
 
 	for _, n := range []graph.Node{
 		{ID: fileA, Kind: parse.KindFile, Name: "a.go", Path: "a.go"},
@@ -178,6 +179,7 @@ func TestNeighborhoodDirectSemanticNeighborsBeatTwoHopContainsSiblings(t *testin
 		{ID: sibling, Kind: parse.KindFunction, Name: "Sibling", Path: "a.go"},
 		{ID: callee, Kind: parse.KindFunction, Name: "Callee", Path: "b.go"},
 		{ID: docNode, Kind: parse.KindDoc, Name: "README", Path: "README.md"},
+		{ID: pkgNode, Kind: parse.KindPackage, Name: "fmt"},
 	} {
 		mustPut(t, store, n)
 	}
@@ -185,6 +187,7 @@ func TestNeighborhoodDirectSemanticNeighborsBeatTwoHopContainsSiblings(t *testin
 	mustEdge(t, store, graph.Edge{From: fileA, To: sibling, Type: parse.EdgeContains})
 	mustEdge(t, store, graph.Edge{From: seed, To: callee, Type: parse.EdgeCalls})
 	mustEdge(t, store, graph.Edge{From: docNode, To: seed, Type: parse.EdgeDocuments})
+	mustEdge(t, store, graph.Edge{From: seed, To: pkgNode, Type: parse.EdgeImports})
 
 	res, err := rank.Neighborhood(store, seed, rank.Options{Depth: 2, MaxNodes: 10})
 	if err != nil {
@@ -200,6 +203,9 @@ func TestNeighborhoodDirectSemanticNeighborsBeatTwoHopContainsSiblings(t *testin
 	if scores[docNode] <= scores[sibling] {
 		t.Fatalf("expected direct doc neighbor (%v) > 2-hop sibling (%v)", scores[docNode], scores[sibling])
 	}
+	if scores[pkgNode] <= scores[sibling] {
+		t.Fatalf("expected direct import neighbor (%v) > 2-hop sibling (%v)", scores[pkgNode], scores[sibling])
+	}
 }
 
 func TestNeighborhoodIncorporatesEdgeWeightAndCount(t *testing.T) {
@@ -207,10 +213,14 @@ func TestNeighborhoodIncorporatesEdgeWeightAndCount(t *testing.T) {
 	seed := graph.NodeID("func:a.go#Alpha")
 	low := graph.NodeID("func:a.go#Low")
 	high := graph.NodeID("func:a.go#High")
+	docNeighbor := graph.NodeID("doc:README.md#Doc")
+	heavyImport := graph.NodeID("pkg:heavy")
 
 	mustPut(t, store, graph.Node{ID: seed, Kind: parse.KindFunction, Name: "Alpha", Path: "a.go"})
 	mustPut(t, store, graph.Node{ID: low, Kind: parse.KindFunction, Name: "Low", Path: "a.go"})
 	mustPut(t, store, graph.Node{ID: high, Kind: parse.KindFunction, Name: "High", Path: "a.go"})
+	mustPut(t, store, graph.Node{ID: docNeighbor, Kind: parse.KindDoc, Name: "Doc", Path: "README.md"})
+	mustPut(t, store, graph.Node{ID: heavyImport, Kind: parse.KindPackage, Name: "heavy"})
 
 	mustEdge(t, store, graph.Edge{
 		From: seed, To: low, Type: parse.EdgeObservedCalls,
@@ -220,15 +230,26 @@ func TestNeighborhoodIncorporatesEdgeWeightAndCount(t *testing.T) {
 		From: seed, To: high, Type: parse.EdgeObservedCalls,
 		Props: map[string]string{parse.PropCount: "25"},
 	})
+	mustEdge(t, store, graph.Edge{
+		From: docNeighbor, To: seed, Type: parse.EdgeDocuments,
+	})
+	mustEdge(t, store, graph.Edge{
+		From: seed, To: heavyImport, Type: parse.EdgeImports,
+		Props: map[string]string{parse.PropCount: "32"},
+	})
 
 	res, err := rank.Neighborhood(store, seed, rank.Options{Depth: 1, MaxNodes: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Hits) < 3 {
-		t.Fatalf("expected 3 hits, got %+v", res.Hits)
+	scores := map[graph.NodeID]float64{}
+	for _, h := range res.Hits {
+		scores[h.ID] = h.Score
 	}
-	if res.Hits[1].ID != high || res.Hits[2].ID != low {
-		t.Fatalf("expected High to rank above Low, got %+v", res.Hits)
+	if scores[high] <= scores[low] {
+		t.Fatalf("expected High (%v) to rank above Low (%v)", scores[high], scores[low])
+	}
+	if scores[heavyImport] <= scores[docNeighbor] {
+		t.Fatalf("expected high-count import (%v) to outrank baseline documents edge (%v)", scores[heavyImport], scores[docNeighbor])
 	}
 }

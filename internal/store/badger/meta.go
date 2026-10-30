@@ -128,8 +128,11 @@ func (s *Store) DeleteOwnedNodes(path string) error {
 	})
 }
 
-// ReplaceFileGraph atomically replaces a file's owned subgraph, ownership list,
-// and fingerprint using batched Badger transactions (splitting only on ErrTxnTooBig).
+// ReplaceFileGraph replaces a file's owned subgraph, ownership list, and
+// fingerprint in a single Badger transaction when it fits, or across multiple
+// committed batches when Badger returns ErrTxnTooBig. The fingerprint is
+// written last so an interrupted multi-batch replacement will be re-indexed on
+// the next run.
 func (s *Store) ReplaceFileGraph(relPath, hash string, nodes []graph.Node, edges []graph.Edge, owned []graph.NodeID) error {
 	if relPath == "" {
 		return fmt.Errorf("badger: path is required")

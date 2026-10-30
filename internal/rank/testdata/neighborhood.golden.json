@@ -25,7 +25,7 @@
       "kind": "file",
       "name": "a.go",
       "path": "a.go",
-      "score": 0.75,
+      "score": 0.65,
       "depth": 1,
       "edge_reason": "in:contains"
     },
@@ -34,7 +34,7 @@
       "kind": "function",
       "name": "Beta",
       "path": "a.go",
-      "score": 0.5625,
+      "score": 0.42250000000000004,
       "depth": 2,
       "edge_reason": "out:contains"
     }

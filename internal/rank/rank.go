@@ -2,6 +2,7 @@ package rank
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,7 +17,7 @@ import (
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).
 // Phase 3 families (git / runtime / docs) are explicit so they do not fall back to 0.3.
 var DefaultEdgeWeights = map[graph.EdgeType]float64{
-	parse.EdgeContains:      0.75,
+	parse.EdgeContains:      0.65,
 	parse.EdgeCalls:         0.8,
 	parse.EdgeImplements:    0.9,
 	parse.EdgeConsumes:      0.9,
@@ -163,11 +164,14 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			if neighborRepo == "" {
 				neighborRepo = cur.repo
 			}
-			w := weights[e.Type]
-			if w == 0 {
-				w = 0.3
+			baseW := weights[e.Type]
+			if baseW == 0 {
+				baseW = 0.3
 			}
-			w *= edgeSignalMultiplier(e.Props)
+			w := baseW * edgeSignalMultiplier(e.Props)
+			if baseW <= 0.99 && w > 0.99 {
+				w = 0.99
+			}
 			score := cur.score * w
 			reason := fmt.Sprintf("%s:%s", dir, e.Type)
 			var explain []ScorePart
@@ -328,27 +332,65 @@ func propInt(props map[string]string, key string) int {
 	return v
 }
 
-// edgeSignalMultiplier returns a bounded multiplier in (0.95, 1.05) based on
-// per-edge weight or count properties (1.0 when absent or equal to 1).
+// edgeSignalMultiplier returns a log-scaled multiplier in [0.80, 1.40] based on
+// per-edge weight, count, and support properties (1.0 when absent or equal to 1).
+// When both weight and count/support are present, count/support reinforces weight
+// rather than overwriting it.
 func edgeSignalMultiplier(props map[string]string) float64 {
 	if props == nil {
 		return 1.0
 	}
-	var signal float64
+	var (
+		weight, count, support float64
+		hasWeight, hasCount    bool
+	)
 	if raw := props[parse.PropWeight]; raw != "" {
 		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
-			signal = v
+			weight = v
+			hasWeight = true
 		}
 	}
 	if raw := props[parse.PropCount]; raw != "" {
-		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > signal {
-			signal = v
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
+			count = v
+			hasCount = true
 		}
+	}
+	if raw := props[parse.PropSupport]; raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
+			support = v
+		}
+	}
+
+	signal := 1.0
+	switch {
+	case hasWeight:
+		signal = weight
+		aux := count
+		if support > aux {
+			aux = support
+		}
+		if aux > 1.0 {
+			signal *= 1.0 + 0.1*math.Log2(aux)
+		}
+	case hasCount:
+		signal = count
+	case support > 0:
+		signal = support
+	default:
+		return 1.0
 	}
 	if signal <= 0 || signal == 1.0 {
 		return 1.0
 	}
-	return 0.95 + 0.1*(signal/(signal+1.0))
+	mult := 1.0 + 0.08*math.Log2(signal)
+	if mult < 0.80 {
+		return 0.80
+	}
+	if mult > 1.40 {
+		return 1.40
+	}
+	return mult
 }
 
 func extractSnippet(root string, node graph.Node, start, end int) string {
