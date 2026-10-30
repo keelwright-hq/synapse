@@ -432,6 +432,9 @@ func rewritePaths(res parse.Result, absPath, relPath string) parse.Result {
 		if n.Kind == parse.KindFile {
 			n.Name = filepath.Base(relPath)
 		}
+		if n.Kind == parse.KindSymbol {
+			n.Path = ""
+		}
 		out.Nodes = append(out.Nodes, n)
 	}
 	for _, e := range res.Edges {

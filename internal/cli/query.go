@@ -44,7 +44,7 @@ var queryNeighborhoodCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		store, err := badger.OpenWithRepo(resolvedDataDir, repo)
+		store, err := badger.OpenSingleOrRepo(resolvedDataDir, repo)
 		if err != nil {
 			return err
 		}
@@ -164,7 +164,7 @@ func openMemberQueryStoreWithRoots(cmd *cobra.Command) (graph.Store, map[string]
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	store, err := badger.OpenWithRepo(resolvedDataDir, repo)
+	store, err := badger.OpenSingleOrRepo(resolvedDataDir, repo)
 	if err != nil {
 		return nil, nil, nil, err
 	}

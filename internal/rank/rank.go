@@ -233,7 +233,11 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			StartLine:  propInt(node.Props, "start_line"),
 			EndLine:    propInt(node.Props, "end_line"),
 		}
-		h.Snippet = extractSnippet(rootForNode(opts, node), node, h.StartLine, h.EndLine)
+		if node.Kind == parse.KindSymbol {
+			h.Path = ""
+		} else {
+			h.Snippet = extractSnippet(rootForNode(opts, node), node, h.StartLine, h.EndLine)
+		}
 		hits = append(hits, h)
 	}
 
@@ -243,6 +247,11 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		}
 		if hits[i].Depth != hits[j].Depth {
 			return hits[i].Depth < hits[j].Depth
+		}
+		iPlaceholder := hits[i].Kind == parse.KindSymbol || hits[i].Kind == parse.KindImport
+		jPlaceholder := hits[j].Kind == parse.KindSymbol || hits[j].Kind == parse.KindImport
+		if iPlaceholder != jPlaceholder {
+			return !iPlaceholder
 		}
 		if hits[i].ID != hits[j].ID {
 			return hits[i].ID < hits[j].ID
@@ -434,7 +443,20 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if len(matches) == 0 {
 		return "", fmt.Errorf("%w: symbol %q", graph.ErrNotFound, query)
 	}
-	return "", fmt.Errorf("rank: ambiguous symbol %q (%d matches); use a repo:// URI or --repo to scope", query, len(matches))
+	candidates := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if u := propURI(m); u != "" {
+			candidates = append(candidates, u)
+		} else {
+			candidates = append(candidates, string(m.ID))
+		}
+	}
+	sort.Strings(candidates)
+	if len(candidates) > 5 {
+		candidates = append(candidates[:5], "...")
+	}
+	return "", fmt.Errorf("rank: ambiguous symbol %q (%d matches: %s); use a repo:// URI or --repo to scope",
+		query, len(matches), strings.Join(candidates, ", "))
 }
 
 // rootForNode picks the filesystem root for snippet extraction.

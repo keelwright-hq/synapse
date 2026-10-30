@@ -29,6 +29,28 @@ func OverlayExists(dataDir string) bool {
 	return err == nil && info.IsDir()
 }
 
+// SingleRepoExists reports whether a single-repo Badger graph directory exists
+// at dataDir/graph (or dataDir itself if already named "graph").
+func SingleRepoExists(dataDir string) bool {
+	cleaned := filepath.Clean(dataDir)
+	graphPath := filepath.Join(cleaned, "graph")
+	if filepath.Base(cleaned) == "graph" {
+		graphPath = cleaned
+	}
+	info, err := os.Stat(graphPath)
+	return err == nil && info.IsDir()
+}
+
+// OpenSingleOrRepo opens a workspace member shard at dataDir/repos/<repoName>/graph
+// when that shard exists on disk and no single-repo store exists at dataDir/graph;
+// otherwise it opens the single-repo store at dataDir/graph.
+func OpenSingleOrRepo(dataDir, repoName string) (*Store, error) {
+	if !SingleRepoExists(dataDir) && ShardExists(dataDir, repoName) {
+		return OpenRepo(dataDir, repoName)
+	}
+	return OpenWithRepo(dataDir, repoName)
+}
+
 // OpenRepo opens (and migrates) the Badger store for one workspace member
 // under dataDir/repos/<repoName>/graph.
 func OpenRepo(dataDir, repoName string) (*Store, error) {

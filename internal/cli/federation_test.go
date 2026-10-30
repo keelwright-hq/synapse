@@ -289,3 +289,53 @@ func TestGraphImportRepoMismatch(t *testing.T) {
 		t.Fatalf("old uri still present: %v", err)
 	}
 }
+
+func TestGraphExportImportSingleRepo(t *testing.T) {
+	wsDir := workspaceFixtureDir(t)
+	apiRoot := filepath.Join(wsDir, "api")
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	snapPath := filepath.Join(t.TempDir(), "single-api.ndjson")
+
+	cmd := cli.RootCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	resetPersistentFlags(t, cmd)
+	cmd.SetArgs([]string{"--repo", "api", "--data-dir", srcDir, "index", apiRoot})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("single-repo index: %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "export", "--data-dir", srcDir, "--repo", "api", "-o", snapPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("single-repo export: %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "import", "--data-dir", dstDir, "--repo", "api-copy", "--rewrite-repo", snapPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("single-repo import: %v\n%s", err, buf.String())
+	}
+	if strings.Contains(buf.String(), "nodes=0") {
+		t.Fatalf("expected non-empty single-repo snapshot import, got:\n%s", buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"--repo", "api-copy", "--data-dir", dstDir, "query", "neighborhood", "ListUsers", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("query imported single-repo shard: %v\n%s", err, buf.String())
+	}
+	var res rank.Result
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("json: %v\n%s", err, buf.String())
+	}
+	if len(res.Hits) == 0 {
+		t.Fatalf("expected neighborhood hits from imported single-repo shard")
+	}
+}

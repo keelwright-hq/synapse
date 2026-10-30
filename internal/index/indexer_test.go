@@ -306,7 +306,7 @@ func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T)
 		t.Fatal(err)
 	}
 	writeGo(t, filepath.Join(root, ".gitignore"), "ignored/\n")
-	writeGo(t, filepath.Join(root, "sub", "hello.go"), "package sub\n\nfunc Hello() {}\n")
+	writeGo(t, filepath.Join(root, "sub", "hello.go"), "package sub\n\nfunc Hello() { println(\"hi\") }\n")
 	writeGo(t, filepath.Join(root, "third_party", "vendored.go"), "package tp\n\nfunc Vendored() {}\n")
 	writeGo(t, filepath.Join(root, "ignored", "skip.go"), "package ig\n\nfunc Skip() {}\n")
 
@@ -324,6 +324,13 @@ func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T)
 	}
 	if strings.Contains(fn.Name, root) || strings.Contains(fn.Path, root) {
 		t.Fatalf("file node leaked absolute root path: %+v", fn)
+	}
+	sym, err := store.GetNode("symbol:println")
+	if err != nil {
+		t.Fatalf("missing symbol:println: %v", err)
+	}
+	if sym.Path != "" {
+		t.Fatalf("expected shared symbol node to have empty Path, got %q", sym.Path)
 	}
 	if _, err := store.GetNode("file:third_party/vendored.go"); err != graph.ErrNotFound {
 		t.Fatalf("expected third_party file to be ignored, got err=%v", err)

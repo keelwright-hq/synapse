@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/keelwright-hq/synapse/internal/graph/snapshot"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 	"github.com/keelwright-hq/synapse/internal/uri"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -52,7 +52,14 @@ var graphExportCmd = &cobra.Command{
 			if nerr != nil {
 				return nerr
 			}
-			store, err = badger.OpenRepo(dataDir, name)
+			switch {
+			case badger.ShardExists(dataDir, name):
+				store, err = badger.OpenRepo(dataDir, name)
+			case badger.SingleRepoExists(dataDir):
+				store, err = badger.OpenWithRepo(dataDir, name)
+			default:
+				return fmt.Errorf("graph export: no graph store found for repo %q under %s", name, dataDir)
+			}
 			meta = snapshot.Meta{Repo: name, Kind: snapshot.KindRepo}
 		}
 		if err != nil {
@@ -126,7 +133,11 @@ var graphImportCmd = &cobra.Command{
 			if nerr != nil {
 				return nerr
 			}
-			store, err = badger.OpenRepo(dataDir, name)
+			if !badger.ShardExists(dataDir, name) && badger.SingleRepoExists(dataDir) {
+				store, err = badger.OpenWithRepo(dataDir, name)
+			} else {
+				store, err = badger.OpenRepo(dataDir, name)
+			}
 			targetRepo = name
 		}
 		if err != nil {
