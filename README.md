@@ -94,24 +94,57 @@ From any target repository (with `synapse` on your `PATH`):
 ```bash
 synapse --help
 synapse version
+
+# 1. Index the current repository (writes Badger DB under ./.synapse)
 synapse --repo synapse index .
+
+# 2. (Optional) Also emit human-readable reports under ./.synapse-out/latest/
 synapse --repo synapse index . --report
+
+# 3. Query ranked neighborhood around a symbol
 synapse query neighborhood main --root . --json
+
+# 4. Query git co-changes, inline/Markdown docs, or runtime hot paths
+synapse query co-changes cmd/synapse/main.go --root . --json
+synapse query docs main --root . --json
+
+# 5. Start the MCP server over stdio for your IDE
 synapse mcp --root . --repo synapse
 ```
 
 Single-repo `index` writes an embedded Badger graph database under
-`<repo>/.synapse` by default (not a human-readable report). That folder is
-already on Synapse’s ignore list when walking source. Override with
-`--data-dir /tmp/synapse-test` for disposable runs. If you indexed an absolute
-path from outside the repo, pass the same `--data-dir` (or `cd` into the repo)
-for later `query` / `mcp` commands.
+`<repo>/.synapse/graph` by default. During indexing, Synapse respects root and
+nested `.gitignore` files (including `!` negation rules) and automatically skips
+`vendor`, `node_modules`, `third_party`, `.git`, `.synapse`, and `.synapse-out`.
+
+Override the storage path with `--data-dir /tmp/synapse-test` for disposable
+runs. If you indexed from outside the repo or used a custom `--data-dir`, pass
+the same `--data-dir` (or `--root`) to subsequent `query`, `otel`, `graph`, and
+`mcp` commands.
 
 Pass `--report` to also write readable dry-run artifacts under
 `<repo>/.synapse-out/` (`manifest.json`, `graph.json`, `GRAPH_REPORT.md`,
 `graph.html`). Open `.synapse-out/latest/graph.html` in a browser for an
 interactive view; dated subfolders keep history. Details:
 [docs/report.md](docs/report.md).
+
+## Semantic queries & runtime signals
+
+Beyond static AST edges (`calls`, `imports`, `implements`, `contains`), Synapse fuses three additional signal families into neighborhood ranking and dedicated CLI / MCP tools:
+
+| Signal family | How it is populated | CLI command | MCP tool |
+|---|---|---|---|
+| **Git co-change** (`co_committed`) | Automatically computed from git history during `synapse index` | `synapse query co-changes <path> --json` | `co_changes` |
+| **Documentation** (`props.doc` + `documents`) | Extracted inline doc comments (Go, TS/JS, Python, Swift, Java, Kotlin, Ruby, PHP, C/C++, C#) + Markdown/ADR links during `synapse index` | `synapse query docs <symbol> --json` | `docs_for_symbol` |
+| **Runtime traces** (`observed_calls`) | Ingested from OTLP/JSON traces via `synapse otel ingest <traces.json>` | `synapse query hot-paths <symbol> --json` | `hot_paths` |
+
+Inspect per-family score contributions on any neighborhood query with `--explain`:
+
+```bash
+synapse query neighborhood Handle --explain --json
+```
+
+Details: [docs/reviewer-workflows.md](docs/reviewer-workflows.md), [docs/phase3.md](docs/phase3.md), and [docs/otel.md](docs/otel.md).
 
 ## Multi-repo workspace
 
@@ -189,19 +222,25 @@ Details: [docs/protobuf.md](docs/protobuf.md).
 
 ## Federation / snapshots
 
-Move graph shards between machines with NDJSON snapshots (no cloud required):
+Move single-repo stores or workspace graph shards between machines with NDJSON snapshots (no cloud required):
 
 ```bash
+# Export a single-repo store or workspace member shard
 synapse graph export --data-dir .synapse --repo api -o api.ndjson
+
+# Import into another data-dir (preserves single-repo vs. workspace shard layout)
 synapse graph import --data-dir /tmp/shards --repo api api.ndjson
 
 # Import under a different logical name (rewrites props.repo_uri)
 synapse graph import --data-dir /tmp/shards --repo renamed --rewrite-repo api.ndjson
 ```
 
-A mismatched `--repo` fails by default so shards never keep another repo’s
+A mismatched `--repo` fails by default so stores never keep another repo’s
 `repo_uri`. Pass `--rewrite-repo` to remap `props.repo_uri` (and URI-keyed
-overlay endpoints) to the target name.
+overlay endpoints) to the target name. When importing into an empty `--data-dir`,
+Synapse preserves the exported layout (`single` at `{data-dir}/graph` or `shard`
+at `{data-dir}/repos/{repo}/graph`) so subsequent `query`, `otel ingest`, and
+`mcp` commands read the imported store directly.
 
 Federated workspace queries soft-fail missing shards (partial results + warnings).
 Details: [docs/federation.md](docs/federation.md).
