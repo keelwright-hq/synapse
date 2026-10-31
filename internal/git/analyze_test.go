@@ -186,4 +186,14 @@ func TestWalkEmptyRepoAndCommitBounds(t *testing.T) {
 	if len(filtered) != 1 || len(filtered[0].Paths) != 2 {
 		t.Fatalf("expected 1 2-file commit with MaxCommits=1 MaxFilesPerCommit=2, got %+v", filtered)
 	}
+
+	// MaxScanCommits=2 stops after inspecting the two newest single-file commits,
+	// before reaching older multi-file commits.
+	scanBounded, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 10, MaxScanCommits: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scanBounded) != 0 {
+		t.Fatalf("expected 0 qualifying commits when MaxScanCommits=2 stops on single-file commits, got %+v", scanBounded)
+	}
 }

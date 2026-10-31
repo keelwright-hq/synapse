@@ -23,11 +23,19 @@ import (
 // bulk formatting or initial-import commits.
 const DefaultMaxFilesPerCommit = 100
 
+// DefaultMaxScanCommits caps the total number of commits inspected (including
+// single-file and bulk commits) so Walk remains bounded when recent history
+// contains few multi-file commits.
+const DefaultMaxScanCommits = 2000
+
 var errStopWalk = errors.New("git: stop")
 
 // Options configure history walking and co-change aggregation.
 type Options struct {
+	// MaxCommits caps the number of qualifying multi-file commits returned (default: 500).
 	MaxCommits int
+	// MaxScanCommits caps total commits inspected before stopping (default: max(4*MaxCommits, 2000)).
+	MaxScanCommits int
 	// MaxFilesPerCommit skips commits touching more than this many files (default: 100).
 	MaxFilesPerCommit int
 	Since             time.Time
@@ -56,6 +64,13 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 	if opts.MaxCommits <= 0 {
 		opts.MaxCommits = 500
 	}
+	maxScan := opts.MaxScanCommits
+	if maxScan <= 0 {
+		maxScan = opts.MaxCommits * 4
+		if maxScan < DefaultMaxScanCommits {
+			maxScan = DefaultMaxScanCommits
+		}
+	}
 	maxFiles := opts.MaxFilesPerCommit
 	if maxFiles <= 0 {
 		maxFiles = DefaultMaxFilesPerCommit
@@ -73,14 +88,18 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 	}
 	defer iter.Close()
 
-	var out []CommitFiles
+	var (
+		out     []CommitFiles
+		scanned int
+	)
 	err = iter.ForEach(func(c *object.Commit) error {
-		if len(out) >= opts.MaxCommits {
+		if !opts.Since.IsZero() && c.Committer.When.Before(opts.Since) {
 			return errStopWalk
 		}
-		if !opts.Since.IsZero() && c.Committer.When.Before(opts.Since) {
-			return nil
+		if scanned >= maxScan {
+			return errStopWalk
 		}
+		scanned++
 		stats, err := c.Stats()
 		if err != nil {
 			// Merge commits / empty trees — skip quietly.

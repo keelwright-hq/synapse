@@ -179,6 +179,19 @@ func (s *Store) ReplaceFileGraph(relPath, hash string, nodes []graph.Node, edges
 		}
 	}
 
+	if len(owned) > 0 {
+		unionBytes := ownedBytes
+		if len(old) > 0 {
+			var err error
+			unionBytes, err = json.Marshal(unionNodeIDs(old, owned))
+			if err != nil {
+				return err
+			}
+		}
+		if err := setEntry(ownershipKey(relPath), unionBytes); err != nil {
+			return err
+		}
+	}
 	for _, id := range old {
 		if err := deleteNodeInTxn(txn, delKey, id); err != nil && err != graph.ErrNotFound {
 			return err
@@ -242,6 +255,24 @@ func (s *Store) ReplaceFileGraph(relPath, hash string, nodes []graph.Node, edges
 	err = txn.Commit()
 	txn = nil
 	return err
+}
+
+func unionNodeIDs(a, b []graph.NodeID) []graph.NodeID {
+	seen := make(map[graph.NodeID]struct{}, len(a)+len(b))
+	out := make([]graph.NodeID, 0, len(a)+len(b))
+	for _, id := range a {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	for _, id := range b {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // DeleteFileGraph deletes a file's owned nodes, ownership entry, and fingerprint
