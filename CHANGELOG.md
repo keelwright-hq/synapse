@@ -5,7 +5,8 @@
 ### Fixed & Improved
 
 - **Walker & file nodes (SYN-121):** `synapse index` now respects root and nested
-  `.gitignore` files (including `!` negation patterns inside ignored directories),
+  `.gitignore` files (including `!` negation, with git's rule that files under an
+  excluded directory cannot be re-included),
   skips `third_party/` by default, and normalizes `file` node `Name` to the
   relative file basename rather than leaking host-absolute paths.
 - **Git co-change resilience & bounds (SYN-122):** Empty or unborn git

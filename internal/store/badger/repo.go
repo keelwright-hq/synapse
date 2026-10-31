@@ -41,6 +41,27 @@ func SingleRepoExists(dataDir string) bool {
 	return err == nil && info.IsDir()
 }
 
+// SingleRepoName returns the repo name recorded in the single-repo store at
+// dataDir/graph without migrating or renaming it ("" when none is recorded).
+func SingleRepoName(dataDir string) (string, error) {
+	s, err := Open(dataDir)
+	if err != nil {
+		return "", err
+	}
+	defer s.Close()
+	return s.RepoName()
+}
+
+// SingleRepoMatches reports whether the single-repo store at dataDir/graph
+// belongs to repoName. Stores with no recorded name are treated as a match.
+func SingleRepoMatches(dataDir, repoName string) (bool, error) {
+	name, err := SingleRepoName(dataDir)
+	if err != nil {
+		return false, err
+	}
+	return name == "" || name == repoName, nil
+}
+
 // RepoLayout identifies where a repository graph store lives under dataDir.
 type RepoLayout string
 

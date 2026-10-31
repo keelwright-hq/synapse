@@ -561,7 +561,11 @@ func TestWalkTreeRejectsMissingRoot(t *testing.T) {
 
 func TestWalkSkipsThirdPartyAndGitignore(t *testing.T) {
 	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, ".gitignore"), "ignored_dir/\nbuild/\n!build/keep.go\n*.gen.go\n!keep.gen.go\n")
+	// As in git, "!build/keep.go" cannot re-include a file under the excluded "build/"
+	// directory, while "dist/*" excludes only the contents so "!dist/keep.go" applies.
+	mustWrite(t, filepath.Join(root, ".gitignore"), "ignored_dir/\nbuild/\n!build/keep.go\ndist/*\n!dist/keep.go\n*.gen.go\n!keep.gen.go\n")
+	mustWrite(t, filepath.Join(root, "dist", "skip.go"), "package dist\n")
+	mustWrite(t, filepath.Join(root, "dist", "keep.go"), "package dist\n")
 	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")
 	mustWrite(t, filepath.Join(root, "keep.gen.go"), "package main\n")
 	mustWrite(t, filepath.Join(root, "skip.gen.go"), "package main\n")
@@ -586,7 +590,7 @@ func TestWalkSkipsThirdPartyAndGitignore(t *testing.T) {
 		}
 		rels = append(rels, filepath.ToSlash(rel))
 	}
-	want := []string{"build/keep.go", "keep.gen.go", "main.go", "sub/ok.py", "tools/dist/pkg.go"}
+	want := []string{"dist/keep.go", "keep.gen.go", "main.go", "sub/ok.py", "tools/dist/pkg.go"}
 	if len(rels) != len(want) {
 		t.Fatalf("got files %v, want %v", rels, want)
 	}

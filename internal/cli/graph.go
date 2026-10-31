@@ -56,7 +56,16 @@ var graphExportCmd = &cobra.Command{
 			if !ok {
 				return fmt.Errorf("graph export: no graph store found for repo %q under %s", name, dataDir)
 			}
-			store, err = badger.OpenSingleOrRepo(dataDir, name)
+			if layout == badger.LayoutSingle {
+				stored, serr := badger.SingleRepoName(dataDir)
+				if serr != nil {
+					return serr
+				}
+				if stored != "" && stored != name {
+					return fmt.Errorf("graph export: store under %s belongs to repo %q, not %q", dataDir, stored, name)
+				}
+			}
+			store, err = badger.OpenLayout(dataDir, name, layout)
 			meta = snapshot.Meta{Repo: name, Kind: snapshot.KindRepo, Layout: string(layout)}
 		}
 		if err != nil {
@@ -136,6 +145,17 @@ var graphImportCmd = &cobra.Command{
 				return nerr
 			}
 			layout, ok := badger.ResolveRepoLayout(dataDir, name)
+			if ok && layout == badger.LayoutSingle {
+				// Never merge into a single-repo store that belongs to another repo;
+				// import into its own workspace shard instead.
+				match, merr := badger.SingleRepoMatches(dataDir, name)
+				if merr != nil {
+					return merr
+				}
+				if !match {
+					layout = badger.LayoutShard
+				}
+			}
 			if !ok {
 				if peekedMeta.Layout == string(badger.LayoutSingle) {
 					layout = badger.LayoutSingle

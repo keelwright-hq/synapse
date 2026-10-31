@@ -39,16 +39,10 @@ type WalkResult struct {
 	Errors  []error
 }
 
-type gitignoreRule struct {
-	pattern  gitignore.Pattern
-	negation bool
-	domain   []string
-	parts    []string
-}
-
 // WalkFiles walks root, skipping directories in ignoreDirNames (defaulting to
 // DefaultIgnoreDirNames when nil) and paths matched by .gitignore files under
-// root, and invokes visit for each regular file.
+// root, and invokes visit for each regular file. As in git, files inside an
+// excluded directory cannot be re-included by a later '!' rule.
 func WalkFiles(root string, ignoreDirNames []string, visit func(path string, d fs.DirEntry) error) error {
 	if ignoreDirNames == nil {
 		ignoreDirNames = DefaultIgnoreDirNames
@@ -58,7 +52,6 @@ func WalkFiles(root string, ignoreDirNames []string, visit func(path string, d f
 		ignoreSet[d] = struct{}{}
 	}
 	var (
-		rules    []gitignoreRule
 		patterns []gitignore.Pattern
 		matcher  gitignore.Matcher
 	)
@@ -73,16 +66,11 @@ func WalkFiles(root string, ignoreDirNames []string, visit func(path string, d f
 					return filepath.SkipDir
 				}
 				if matcher != nil && len(relParts) > 0 && matcher.Match(relParts, true) {
-					if !hasLaterNegationForDir(rules, relParts) {
-						return filepath.SkipDir
-					}
+					return filepath.SkipDir
 				}
 			}
-			if dirRules := readGitignoreRules(path, relParts); len(dirRules) > 0 {
-				for _, r := range dirRules {
-					rules = append(rules, r)
-					patterns = append(patterns, r.pattern)
-				}
+			if dirPatterns := readGitignorePatterns(path, relParts); len(dirPatterns) > 0 {
+				patterns = append(patterns, dirPatterns...)
 				matcher = gitignore.NewMatcher(patterns)
 			}
 			return nil
@@ -105,90 +93,27 @@ func splitRelPath(root, path string) []string {
 	return strings.Split(filepath.ToSlash(rel), "/")
 }
 
-func readGitignoreRules(dir string, domain []string) []gitignoreRule {
+func readGitignorePatterns(dir string, domain []string) []gitignore.Pattern {
 	f, err := os.Open(filepath.Join(dir, ".gitignore"))
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
 
-	var out []gitignoreRule
+	var domCopy []string
+	if len(domain) > 0 {
+		domCopy = append([]string(nil), domain...)
+	}
+	var out []gitignore.Pattern
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimRight(sc.Text(), "\r")
 		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		neg := strings.HasPrefix(line, "!")
-		raw := strings.TrimPrefix(line, "!")
-		raw = strings.Trim(raw, "/")
-		var parts []string
-		if raw != "" {
-			parts = strings.Split(raw, "/")
-		}
-		var domCopy []string
-		if len(domain) > 0 {
-			domCopy = append([]string(nil), domain...)
-		}
-		out = append(out, gitignoreRule{
-			pattern:  gitignore.ParsePattern(line, domCopy),
-			negation: neg,
-			domain:   domCopy,
-			parts:    parts,
-		})
+		out = append(out, gitignore.ParsePattern(line, domCopy))
 	}
 	return out
-}
-
-// hasLaterNegationForDir reports whether any '!' rule after the last rule
-// excluding dirParts can match a path inside dirParts.
-func hasLaterNegationForDir(rules []gitignoreRule, dirParts []string) bool {
-	lastExclude := -1
-	for i, r := range rules {
-		switch r.pattern.Match(dirParts, true) {
-		case gitignore.Exclude:
-			lastExclude = i
-		case gitignore.Include:
-			lastExclude = -1
-		}
-	}
-	if lastExclude < 0 {
-		return false
-	}
-	for i := lastExclude + 1; i < len(rules); i++ {
-		if rules[i].negation && negationCanMatchUnderDir(rules[i], dirParts) {
-			return true
-		}
-	}
-	return false
-}
-
-func negationCanMatchUnderDir(r gitignoreRule, dirParts []string) bool {
-	if len(dirParts) < len(r.domain) {
-		return false
-	}
-	for i, d := range r.domain {
-		if dirParts[i] != d {
-			return false
-		}
-	}
-	subDir := dirParts[len(r.domain):]
-	if len(r.parts) <= 1 {
-		// Unanchored basename pattern (e.g. "!keep.go" or "!*.gen.go") can match at any depth.
-		return len(r.parts) == 1
-	}
-	for i := 0; i < len(subDir); i++ {
-		if i >= len(r.parts) {
-			return false
-		}
-		if r.parts[i] == "**" {
-			return true
-		}
-		if matched, err := filepath.Match(r.parts[i], subDir[i]); err != nil || !matched {
-			return false
-		}
-	}
-	return len(r.parts) > len(subDir)
 }
 
 // WalkTree walks root, skipping ignored dirs, and parses registered source files concurrently.

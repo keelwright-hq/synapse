@@ -87,6 +87,26 @@ func (s *Store) setSchemaVersion(ver int) error {
 	})
 }
 
+// RepoName returns the logical repo name recorded by EnsureSchema, or "" for
+// stores that predate it.
+func (s *Store) RepoName() (string, error) {
+	var name string
+	err := s.db.View(func(txn *badgerdb.Txn) error {
+		item, err := txn.Get(repoNameKey())
+		if err != nil {
+			if err == badgerdb.ErrKeyNotFound {
+				return nil
+			}
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			name = string(val)
+			return nil
+		})
+	})
+	return name, err
+}
+
 func (s *Store) setRepoName(repo string) error {
 	return s.db.Update(func(txn *badgerdb.Txn) error {
 		return txn.Set(repoNameKey(), []byte(repo))
