@@ -564,6 +564,8 @@ func TestWalkSkipsThirdPartyAndGitignore(t *testing.T) {
 	// As in git, "!build/keep.go" cannot re-include a file under the excluded "build/"
 	// directory, while "dist/*" excludes only the contents so "!dist/keep.go" applies.
 	mustWrite(t, filepath.Join(root, ".gitignore"), "ignored_dir/\nbuild/\n!build/keep.go\ndist/*\n!dist/keep.go\n*.gen.go\n!keep.gen.go\n")
+	mustWrite(t, filepath.Join(root, ".git", "info", "exclude"), ".claude/worktrees/\n")
+	mustWrite(t, filepath.Join(root, ".claude", "worktrees", "wt", "dup.go"), "package dup\n")
 	mustWrite(t, filepath.Join(root, "dist", "skip.go"), "package dist\n")
 	mustWrite(t, filepath.Join(root, "dist", "keep.go"), "package dist\n")
 	mustWrite(t, filepath.Join(root, "main.go"), "package main\n")

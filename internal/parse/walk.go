@@ -40,9 +40,10 @@ type WalkResult struct {
 }
 
 // WalkFiles walks root, skipping directories in ignoreDirNames (defaulting to
-// DefaultIgnoreDirNames when nil) and paths matched by .gitignore files under
-// root, and invokes visit for each regular file. As in git, files inside an
-// excluded directory cannot be re-included by a later '!' rule.
+// DefaultIgnoreDirNames when nil) and paths matched by .git/info/exclude or
+// .gitignore files under root, and invokes visit for each regular file. As in
+// git, files inside an excluded directory cannot be re-included by a later '!'
+// rule.
 func WalkFiles(root string, ignoreDirNames []string, visit func(path string, d fs.DirEntry) error) error {
 	if ignoreDirNames == nil {
 		ignoreDirNames = DefaultIgnoreDirNames
@@ -69,7 +70,13 @@ func WalkFiles(root string, ignoreDirNames []string, visit func(path string, d f
 					return filepath.SkipDir
 				}
 			}
-			if dirPatterns := readGitignorePatterns(path, relParts); len(dirPatterns) > 0 {
+			if path == root {
+				if excludePatterns := readGitignoreFile(filepath.Join(path, ".git", "info", "exclude"), nil); len(excludePatterns) > 0 {
+					patterns = append(patterns, excludePatterns...)
+					matcher = gitignore.NewMatcher(patterns)
+				}
+			}
+			if dirPatterns := readGitignoreFile(filepath.Join(path, ".gitignore"), relParts); len(dirPatterns) > 0 {
 				patterns = append(patterns, dirPatterns...)
 				matcher = gitignore.NewMatcher(patterns)
 			}
@@ -93,8 +100,8 @@ func splitRelPath(root, path string) []string {
 	return strings.Split(filepath.ToSlash(rel), "/")
 }
 
-func readGitignorePatterns(dir string, domain []string) []gitignore.Pattern {
-	f, err := os.Open(filepath.Join(dir, ".gitignore"))
+func readGitignoreFile(filePath string, domain []string) []gitignore.Pattern {
+	f, err := os.Open(filePath)
 	if err != nil {
 		return nil
 	}
