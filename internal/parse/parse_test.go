@@ -511,6 +511,26 @@ class Greeter {
 	}
 }
 
+func TestSwiftDeferIsNotACall(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "deferred.swift")
+	mustWrite(t, path, `
+func work() {
+    defer { cleanup() }
+}
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHasKind(t, res, parse.KindSymbol, "cleanup")
+	for _, n := range res.Nodes {
+		if n.ID == "symbol:defer" {
+			t.Fatalf("defer statement recorded as a call: %+v", n)
+		}
+	}
+}
+
 func TestJSDefaultParamCallsCaptured(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "defaults.js")
@@ -646,6 +666,20 @@ func TestInlineDocCommentsAcrossLanguages(t *testing.T) {
 			kind: parse.KindFunction,
 			name: "runTask",
 			want: "Swift doc comment.",
+		},
+		{
+			file: "mark.swift",
+			src:  "// MARK: - Networking\nfunc fetch() {}\n",
+			kind: parse.KindFunction,
+			name: "fetch",
+			want: "",
+		},
+		{
+			file: "markdoc.swift",
+			src:  "// MARK: - Networking\n/// Fetches the forecast.\nfunc fetchForecast() {}\n",
+			kind: parse.KindFunction,
+			name: "fetchForecast",
+			want: "Fetches the forecast.",
 		},
 		{
 			file: "E.java",

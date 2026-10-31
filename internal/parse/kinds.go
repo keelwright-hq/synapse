@@ -41,6 +41,9 @@ const (
 	PropCount      = "count"
 	PropLastSeen   = "last_seen"
 	PropDoc        = "doc" // godoc / TSDoc / JSDoc text on a symbol node
+	// PropExtension marks a type node that only extends a type declared
+	// elsewhere (Swift `extension Foo`), so it is not that type's definition.
+	PropExtension = "extension"
 
 	ProvenanceExtracted  = "EXTRACTED"
 	ProvenanceInferred   = "INFERRED"

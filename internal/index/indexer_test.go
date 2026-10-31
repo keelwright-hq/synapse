@@ -338,3 +338,79 @@ func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T)
 		t.Fatalf("expected gitignored file to be ignored, got err=%v", err)
 	}
 }
+
+func TestIndexerResolvesSwiftCallsAcrossFiles(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"App", "Services", "Models"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeGo(t, filepath.Join(root, "Models", "Temperature.swift"), `struct Temperature {
+    let value: Double
+}
+`)
+	writeGo(t, filepath.Join(root, "Services", "NotificationService.swift"), `final class NotificationService {
+    static let shared = NotificationService()
+    func reconcile() {}
+}
+`)
+	writeGo(t, filepath.Join(root, "Services", "Store.swift"), `final class Store {
+    func refreshAll() {}
+}
+`)
+	writeGo(t, filepath.Join(root, "App", "ViewModel.swift"), `final class ViewModel {
+    let store = Store()
+    func load() {
+        let t = Temperature(value: 1)
+        NotificationService.shared.reconcile()
+        store.refreshAll()
+        JSONDecoder().decodeThing()
+        Date()
+        _ = Double(2)
+    }
+}
+`)
+	writeGo(t, filepath.Join(root, "App", "Other.swift"), `final class Other {
+    func decodeThing() {}
+}
+`)
+	// Extensions are not definitions: Temperature keeps one constructible type,
+	// and an extension of an external type does not capture Double(...) calls.
+	writeGo(t, filepath.Join(root, "Models", "Temperature+Format.swift"), `extension Temperature {
+    func label() -> String { "" }
+}
+extension Double {
+    func roundedHalf() -> Double { self }
+}
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	caller := graph.NodeID("method:App/ViewModel.swift#ViewModel.load")
+	out, err := store.OutEdges(caller, "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[graph.NodeID]bool{}
+	for _, e := range out {
+		got[e.To] = true
+	}
+	for _, want := range []graph.NodeID{
+		"type:Models/Temperature.swift#Temperature",
+		"method:Services/NotificationService.swift#NotificationService.reconcile",
+		"method:Services/Store.swift#Store.refreshAll",
+		"symbol:JSONDecoder.decodeThing",
+		"symbol:Date",
+		"symbol:Double",
+	} {
+		if !got[want] {
+			t.Errorf("missing calls edge %s -> %s (got %v)", caller, want, got)
+		}
+	}
+	if got["method:App/Other.swift#Other.decodeThing"] {
+		t.Errorf("call on external type JSONDecoder bound to a repo method")
+	}
+}

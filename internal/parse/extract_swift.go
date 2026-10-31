@@ -57,7 +57,16 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		name := swiftDeclName(b, n)
 		if name != "" {
 			id := typeID(b.path, name)
-			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
+			// tree-sitter-swift parses `extension Foo` as a class_declaration.
+			if isSwiftExtension(b, n) {
+				// Never let an extension replace the type's own declaration in this file.
+				if _, declared := b.nodes[id]; !declared {
+					b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path,
+						Props: map[string]string{PropExtension: "true"}})
+				}
+			} else {
+				b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
+			}
 			b.edge(module, id, EdgeContains)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
@@ -72,7 +81,9 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				fn = n.NamedChild(0)
 			}
 			name := calleeName(b, fn)
-			if name != "" {
+			// tree-sitter-swift parses `defer { ... }` as a call with a trailing
+			// closure; the statement is not a call, but its body still is walked.
+			if name != "" && name != "defer" {
 				sid := symbolID(name)
 				b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
 				b.edge(current, sid, EdgeCalls)
@@ -104,6 +115,11 @@ func swiftDeclName(b *builder, n *tree_sitter.Node) string {
 		}
 	}
 	return ""
+}
+
+func isSwiftExtension(b *builder, n *tree_sitter.Node) bool {
+	k := field(n, "declaration_kind")
+	return k != nil && b.text(k) == "extension"
 }
 
 func containingSwiftType(b *builder, n *tree_sitter.Node) string {
