@@ -1,7 +1,9 @@
 package git_test
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -195,5 +197,61 @@ func TestWalkEmptyRepoAndCommitBounds(t *testing.T) {
 	}
 	if len(scanBounded) != 0 {
 		t.Fatalf("expected 0 qualifying commits when MaxScanCommits=2 stops on single-file commits, got %+v", scanBounded)
+	}
+}
+
+func TestAnalyzeLinkedWorktreeAndEmptyRepo(t *testing.T) {
+	emptyRoot := t.TempDir()
+	if _, err := git.PlainInit(emptyRoot, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := synapsegit.Analyze(memory.New(), emptyRoot, synapsegit.Options{}); !errors.Is(err, synapsegit.ErrNoCommits) {
+		t.Fatalf("Analyze on empty repo: err=%v, want ErrNoCommits", err)
+	}
+
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git CLI not available to create a linked worktree")
+	}
+	root := t.TempDir()
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(gitBin, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	runGit(root, "init", "-q")
+	for i := 0; i < 2; i++ {
+		for _, f := range []string{"a.go", "b.go"} {
+			p := filepath.Join(root, f)
+			b, _ := os.ReadFile(p)
+			if err := os.WriteFile(p, append(b, 'x'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runGit(root, "add", "a.go", "b.go")
+		runGit(root, "commit", "-q", "-m", "pair")
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	runGit(root, "worktree", "add", "-q", "--detach", wt)
+
+	store := memory.New()
+	for _, p := range []string{"a.go", "b.go"} {
+		if err := store.PutNode(graph.Node{ID: graph.NodeID("file:" + p), Kind: parse.KindFile, Name: p, Path: p}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := synapsegit.Analyze(store, wt, synapsegit.Options{MinSupport: 2})
+	if err != nil {
+		t.Fatalf("Analyze in linked worktree: %v", err)
+	}
+	if n == 0 {
+		t.Fatal("expected co_committed edges from a linked worktree")
 	}
 }

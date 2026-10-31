@@ -30,6 +30,16 @@ const DefaultMaxScanCommits = 2000
 
 var errStopWalk = errors.New("git: stop")
 
+// ErrNoCommits is returned by Analyze when the repository has no commits yet
+// (empty or unborn HEAD), so callers can warn instead of silently skipping.
+var ErrNoCommits = errors.New("git: repository has no commits")
+
+// openRepo opens repoRoot, resolving linked worktrees (whose refs live in the
+// main repository's common .git directory).
+func openRepo(repoRoot string) (*git.Repository, error) {
+	return git.PlainOpenWithOptions(repoRoot, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+}
+
 // Options configure history walking and co-change aggregation.
 type Options struct {
 	// MaxCommits caps the number of qualifying multi-file commits returned (default: 500).
@@ -75,7 +85,7 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 	if maxFiles <= 0 {
 		maxFiles = DefaultMaxFilesPerCommit
 	}
-	r, err := git.PlainOpen(repoRoot)
+	r, err := openRepo(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("git walk: %w", err)
 	}
@@ -213,8 +223,12 @@ func Aggregate(commits []CommitFiles, opts Options) []Pair {
 // Analyze walks history and upserts co_committed edges between existing file nodes.
 // Soft-skips when repoRoot is not a git repository. Writes to the member store only.
 func Analyze(store graph.Store, repoRoot string, opts Options) (int, error) {
-	if _, err := git.PlainOpen(repoRoot); err != nil {
+	r, err := openRepo(repoRoot)
+	if err != nil {
 		return 0, nil
+	}
+	if _, err := r.Head(); errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return 0, ErrNoCommits
 	}
 	commits, err := Walk(repoRoot, opts)
 	if err != nil {
