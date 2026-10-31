@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
@@ -46,6 +47,11 @@ func (b *builder) putSpan(ts *tree_sitter.Node, n graph.Node) {
 		}
 		n.Props["start_line"] = fmt.Sprintf("%d", ts.StartPosition().Row+1)
 		n.Props["end_line"] = fmt.Sprintf("%d", ts.EndPosition().Row+1)
+		if n.Props[PropDoc] == "" {
+			if doc := extractDocComment(b, ts); doc != "" {
+				n.Props[PropDoc] = doc
+			}
+		}
 	}
 	b.put(n)
 }
@@ -138,4 +144,205 @@ func unquote(s string) string {
 		}
 	}
 	return s
+}
+
+func extractDocComment(b *builder, ts *tree_sitter.Node) string {
+	if ts == nil {
+		return ""
+	}
+	if doc := extractPythonDocstring(b, ts); doc != "" {
+		return doc
+	}
+	cur := ts
+	for cur != nil {
+		if doc := precedingComments(b, cur); doc != "" {
+			return doc
+		}
+		p := cur.Parent()
+		if p == nil || !isDocWrapperKind(p.Kind()) {
+			break
+		}
+		cur = p
+	}
+	return ""
+}
+
+func isDocWrapperKind(kind string) bool {
+	switch kind {
+	case "export_statement", "decorated_definition", "type_declaration",
+		"variable_declarator", "lexical_declaration", "variable_declaration",
+		"type_definition", "template_declaration", "declaration":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractPythonDocstring(b *builder, ts *tree_sitter.Node) string {
+	if ts == nil {
+		return ""
+	}
+	switch ts.Kind() {
+	case "function_definition", "class_definition":
+	default:
+		return ""
+	}
+	body := field(ts, "body")
+	if body == nil || body.Kind() != "block" || body.NamedChildCount() == 0 {
+		return ""
+	}
+	first := body.NamedChild(0)
+	if first == nil {
+		return ""
+	}
+	var strNode *tree_sitter.Node
+	if first.Kind() == "string" {
+		strNode = first
+	} else if first.Kind() == "expression_statement" && first.NamedChildCount() > 0 {
+		if ch := first.NamedChild(0); ch != nil && ch.Kind() == "string" {
+			strNode = ch
+		}
+	}
+	if strNode == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(b.text(strNode))
+	for _, prefix := range []string{"r", "u", "b", "f", "R", "U", "B", "F"} {
+		if strings.HasPrefix(raw, prefix+`"`) || strings.HasPrefix(raw, prefix+`'`) {
+			raw = raw[1:]
+			break
+		}
+	}
+	switch {
+	case strings.HasPrefix(raw, `"""`) && strings.HasSuffix(raw, `"""`) && len(raw) >= 6:
+		raw = raw[3 : len(raw)-3]
+	case strings.HasPrefix(raw, `'''`) && strings.HasSuffix(raw, `'''`) && len(raw) >= 6:
+		raw = raw[3 : len(raw)-3]
+	case len(raw) >= 2 && ((raw[0] == '"' && raw[len(raw)-1] == '"') || (raw[0] == '\'' && raw[len(raw)-1] == '\'')):
+		raw = raw[1 : len(raw)-1]
+	default:
+		return ""
+	}
+	var lines []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func precedingComments(b *builder, n *tree_sitter.Node) string {
+	if n == nil {
+		return ""
+	}
+	var lines []string
+	nextRow := n.StartPosition().Row
+	prev := n.PrevSibling()
+	for prev != nil {
+		if !isCommentNode(prev) {
+			break
+		}
+		if prev.EndPosition().Row+1 < nextRow {
+			break
+		}
+		raw := strings.TrimSpace(b.text(prev))
+		if strings.HasPrefix(raw, "/*") {
+			if len(lines) == 0 && isDocBlockComment(raw) {
+				return cleanBlockComment(raw)
+			}
+			break
+		}
+		if cleaned := cleanLineComment(raw); cleaned != "" {
+			lines = append([]string{cleaned}, lines...)
+		}
+		nextRow = prev.StartPosition().Row
+		prev = prev.PrevSibling()
+	}
+	if len(lines) > 0 {
+		return strings.TrimSpace(strings.Join(lines, "\n"))
+	}
+
+	// Some grammars attach leading comments as initial children of the declaration node.
+	var childLines []string
+	for i := uint(0); i < n.ChildCount(); i++ {
+		ch := n.Child(i)
+		if ch == nil {
+			continue
+		}
+		if !isCommentNode(ch) {
+			break
+		}
+		raw := strings.TrimSpace(b.text(ch))
+		if strings.HasPrefix(raw, "/*") {
+			if isDocBlockComment(raw) {
+				return cleanBlockComment(raw)
+			}
+			break
+		}
+		if cleaned := cleanLineComment(raw); cleaned != "" {
+			childLines = append(childLines, cleaned)
+		}
+	}
+	return strings.TrimSpace(strings.Join(childLines, "\n"))
+}
+
+func isDocBlockComment(raw string) bool {
+	t := strings.TrimSpace(raw)
+	return (strings.HasPrefix(t, "/**") && !strings.HasPrefix(t, "/***")) || strings.HasPrefix(t, "/*!")
+}
+
+func isCommentNode(n *tree_sitter.Node) bool {
+	if n == nil {
+		return false
+	}
+	return strings.Contains(n.Kind(), "comment")
+}
+
+func cleanBlockComment(raw string) string {
+	t := strings.TrimSpace(raw)
+	switch {
+	case strings.HasPrefix(t, "/**"):
+		t = strings.TrimPrefix(t, "/**")
+	case strings.HasPrefix(t, "/*!"):
+		t = strings.TrimPrefix(t, "/*!")
+	case strings.HasPrefix(t, "/*"):
+		t = strings.TrimPrefix(t, "/*")
+	}
+	t = strings.TrimSuffix(t, "*/")
+	var lines []string
+	for _, line := range strings.Split(t, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "*")
+		line = strings.TrimSpace(line)
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func cleanLineComment(raw string) string {
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		l := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(l, "///"):
+			l = strings.TrimPrefix(l, "///")
+		case strings.HasPrefix(l, "//!"):
+			l = strings.TrimPrefix(l, "//!")
+		case strings.HasPrefix(l, "//"):
+			l = strings.TrimPrefix(l, "//")
+		case strings.HasPrefix(l, "##"):
+			l = strings.TrimPrefix(l, "##")
+		case strings.HasPrefix(l, "#"):
+			l = strings.TrimPrefix(l, "#")
+		}
+		l = strings.TrimSpace(l)
+		if l != "" {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "\n")
 }

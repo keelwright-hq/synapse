@@ -29,6 +29,82 @@ func OverlayExists(dataDir string) bool {
 	return err == nil && info.IsDir()
 }
 
+// SingleRepoExists reports whether a single-repo Badger graph directory exists
+// at dataDir/graph (or dataDir itself if already named "graph").
+func SingleRepoExists(dataDir string) bool {
+	cleaned := filepath.Clean(dataDir)
+	graphPath := filepath.Join(cleaned, "graph")
+	if filepath.Base(cleaned) == "graph" {
+		graphPath = cleaned
+	}
+	info, err := os.Stat(graphPath)
+	return err == nil && info.IsDir()
+}
+
+// SingleRepoName returns the repo name recorded in the single-repo store at
+// dataDir/graph without migrating or renaming it ("" when none is recorded).
+func SingleRepoName(dataDir string) (string, error) {
+	s, err := Open(dataDir)
+	if err != nil {
+		return "", err
+	}
+	defer s.Close()
+	return s.RepoName()
+}
+
+// SingleRepoMatches reports whether the single-repo store at dataDir/graph
+// belongs to repoName. Stores with no recorded name are treated as a match.
+func SingleRepoMatches(dataDir, repoName string) (bool, error) {
+	name, err := SingleRepoName(dataDir)
+	if err != nil {
+		return false, err
+	}
+	return name == "" || name == repoName, nil
+}
+
+// RepoLayout identifies where a repository graph store lives under dataDir.
+type RepoLayout string
+
+const (
+	// LayoutSingle stores a single-repo graph at dataDir/graph.
+	LayoutSingle RepoLayout = "single"
+	// LayoutShard stores a workspace member shard at dataDir/repos/<repoName>/graph.
+	LayoutShard RepoLayout = "shard"
+)
+
+// ResolveRepoLayout inspects dataDir for an existing store for repoName.
+// When both a workspace shard (dataDir/repos/<repoName>/graph) and a single-repo
+// store (dataDir/graph) exist on disk, the workspace shard wins so export,
+// import, query, mcp, and otel agree on which store to open.
+func ResolveRepoLayout(dataDir, repoName string) (RepoLayout, bool) {
+	if ShardExists(dataDir, repoName) {
+		return LayoutShard, true
+	}
+	if SingleRepoExists(dataDir) {
+		return LayoutSingle, true
+	}
+	return "", false
+}
+
+// OpenLayout opens (or creates) the Badger store for repoName using layout.
+// An unknown or empty layout defaults to LayoutSingle.
+func OpenLayout(dataDir, repoName string, layout RepoLayout) (*Store, error) {
+	if layout == LayoutShard {
+		return OpenRepo(dataDir, repoName)
+	}
+	return OpenWithRepo(dataDir, repoName)
+}
+
+// OpenSingleOrRepo opens an existing store for repoName (preferring a workspace
+// shard at dataDir/repos/<repoName>/graph over dataDir/graph when present), or
+// creates a single-repo store at dataDir/graph when neither exists on disk.
+func OpenSingleOrRepo(dataDir, repoName string) (*Store, error) {
+	if layout, ok := ResolveRepoLayout(dataDir, repoName); ok {
+		return OpenLayout(dataDir, repoName, layout)
+	}
+	return OpenLayout(dataDir, repoName, LayoutSingle)
+}
+
 // OpenRepo opens (and migrates) the Badger store for one workspace member
 // under dataDir/repos/<repoName>/graph.
 func OpenRepo(dataDir, repoName string) (*Store, error) {

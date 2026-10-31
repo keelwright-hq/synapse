@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/keelwright-hq/synapse/internal/graph/snapshot"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 	"github.com/keelwright-hq/synapse/internal/uri"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -52,8 +52,21 @@ var graphExportCmd = &cobra.Command{
 			if nerr != nil {
 				return nerr
 			}
-			store, err = badger.OpenRepo(dataDir, name)
-			meta = snapshot.Meta{Repo: name, Kind: snapshot.KindRepo}
+			layout, ok := badger.ResolveRepoLayout(dataDir, name)
+			if !ok {
+				return fmt.Errorf("graph export: no graph store found for repo %q under %s", name, dataDir)
+			}
+			if layout == badger.LayoutSingle {
+				stored, serr := badger.SingleRepoName(dataDir)
+				if serr != nil {
+					return serr
+				}
+				if stored != "" && stored != name {
+					return fmt.Errorf("graph export: store under %s belongs to repo %q, not %q", dataDir, stored, name)
+				}
+			}
+			store, err = badger.OpenLayout(dataDir, name, layout)
+			meta = snapshot.Meta{Repo: name, Kind: snapshot.KindRepo, Layout: string(layout)}
 		}
 		if err != nil {
 			return err
@@ -114,9 +127,14 @@ var graphImportCmd = &cobra.Command{
 			defer closer.Close()
 		}
 
+		peekedMeta, inReader, err := snapshot.PeekMeta(in)
+		if err != nil {
+			return err
+		}
+		in = inReader
+
 		var (
 			store      *badger.Store
-			err        error
 			targetRepo string
 		)
 		if graphImportOverlay {
@@ -126,7 +144,26 @@ var graphImportCmd = &cobra.Command{
 			if nerr != nil {
 				return nerr
 			}
-			store, err = badger.OpenRepo(dataDir, name)
+			layout, ok := badger.ResolveRepoLayout(dataDir, name)
+			if ok && layout == badger.LayoutSingle {
+				// Never merge into a single-repo store that belongs to another repo;
+				// import into its own workspace shard instead.
+				match, merr := badger.SingleRepoMatches(dataDir, name)
+				if merr != nil {
+					return merr
+				}
+				if !match {
+					layout = badger.LayoutShard
+				}
+			}
+			if !ok {
+				if peekedMeta.Layout == string(badger.LayoutSingle) {
+					layout = badger.LayoutSingle
+				} else {
+					layout = badger.LayoutShard
+				}
+			}
+			store, err = badger.OpenLayout(dataDir, name, layout)
 			targetRepo = name
 		}
 		if err != nil {

@@ -67,7 +67,7 @@ Requires a prior synapse index (single-repo or --workspace).`,
 		if err != nil {
 			return err
 		}
-		store, err := badger.OpenWithRepo(resolvedDataDir, repo)
+		store, err := badger.OpenSingleOrRepo(resolvedDataDir, repo)
 		if err != nil {
 			return err
 		}
@@ -76,7 +76,7 @@ Requires a prior synapse index (single-repo or --workspace).`,
 		s := mcpserver.New(mcpserver.Options{
 			RootDir: root,
 			OpenSession: func() (graph.Store, []string, func(), error) {
-				cur, err := badger.OpenWithRepo(resolvedDataDir, repo)
+				cur, err := badger.OpenSingleOrRepo(resolvedDataDir, repo)
 				if err != nil {
 					return nil, nil, nil, err
 				}

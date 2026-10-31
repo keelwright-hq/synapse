@@ -29,7 +29,7 @@ Streaming **NDJSON** (one JSON object per line). First record is a header.
 ### Header
 
 ```json
-{"type":"header","format":"synapse.graph.snapshot","version":1,"repo":"api","kind":"repo"}
+{"type":"header","format":"synapse.graph.snapshot","version":1,"repo":"api","kind":"repo","layout":"shard"}
 ```
 
 | Field | Required | Notes |
@@ -39,6 +39,7 @@ Streaming **NDJSON** (one JSON object per line). First record is a header.
 | `version` | yes | `1` (unsupported versions are a hard error on import) |
 | `repo` | repo shards | Logical `repo://` name |
 | `kind` | yes | `"repo"` or `"overlay"` |
+| `layout` | optional | `"shard"` (`{data-dir}/repos/{name}/graph`) or `"single"` (`{data-dir}/graph`) |
 
 ### Node / edge records
 

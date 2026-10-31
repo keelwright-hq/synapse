@@ -1,10 +1,13 @@
 package badger
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/graph/storetest"
 )
@@ -160,4 +163,92 @@ func TestOpenWaitsForTransientLockRelease(t *testing.T) {
 		t.Fatalf("Open second while first releasing lock: %v", err)
 	}
 	defer s2.Close()
+}
+
+func TestReplaceAndDeleteFileGraphSplitsOnErrTxnTooBig(t *testing.T) {
+	opts := badgerdb.DefaultOptions("").
+		WithInMemory(true).
+		WithLogger(nil).
+		WithMemTableSize(1 << 20).
+		WithValueThreshold(32 << 10)
+	db, err := badgerdb.Open(opts)
+	if err != nil {
+		t.Fatalf("badger Open: %v", err)
+	}
+	s := &Store{db: db}
+	defer s.Close()
+
+	const path = "pkg/huge.go"
+	pad := strings.Repeat("x", 1024)
+	const count = 250
+	nodes := make([]graph.Node, 0, count)
+	owned := make([]graph.NodeID, 0, count)
+	edges := make([]graph.Edge, 0, count)
+	for i := 0; i < count; i++ {
+		id := graph.NodeID(fmt.Sprintf("func:%s#F%d", path, i))
+		owned = append(owned, id)
+		nodes = append(nodes, graph.Node{
+			ID:    id,
+			Kind:  "function",
+			Name:  fmt.Sprintf("F%d", i),
+			Path:  path,
+			Props: map[string]string{"doc": pad},
+		})
+		if i > 0 {
+			edges = append(edges, graph.Edge{
+				From: graph.NodeID(fmt.Sprintf("func:%s#F%d", path, i-1)),
+				To:   id,
+				Type: "calls",
+			})
+		}
+	}
+
+	if err := s.ReplaceFileGraph(path, "fp-1", nodes, edges, owned); err != nil {
+		t.Fatalf("ReplaceFileGraph initial: %v", err)
+	}
+	fp, ok, err := s.GetFingerprint(path)
+	if err != nil || !ok || fp != "fp-1" {
+		t.Fatalf("GetFingerprint = (%q, %v, %v), want fp-1", fp, ok, err)
+	}
+	gotOwned, err := s.GetOwnedNodes(path)
+	if err != nil || len(gotOwned) != count {
+		t.Fatalf("GetOwnedNodes count = %d (err=%v), want %d", len(gotOwned), err, count)
+	}
+	if _, err := s.GetNode(owned[count-1]); err != nil {
+		t.Fatalf("GetNode last owned: %v", err)
+	}
+
+	// Replace with a single node to force deletion of the large prior batch across split transactions.
+	onlyID := graph.NodeID("func:" + path + "#Only")
+	replacement := []graph.Node{{
+		ID:   onlyID,
+		Kind: "function",
+		Name: "Only",
+		Path: path,
+	}}
+	if err := s.ReplaceFileGraph(path, "fp-2", replacement, nil, []graph.NodeID{onlyID}); err != nil {
+		t.Fatalf("ReplaceFileGraph replacement: %v", err)
+	}
+	gotAfterReplace, err := s.GetOwnedNodes(path)
+	if err != nil || len(gotAfterReplace) != 1 || gotAfterReplace[0] != onlyID {
+		t.Fatalf("GetOwnedNodes after replacement = %+v (err=%v)", gotAfterReplace, err)
+	}
+	if _, err := s.GetNode(owned[0]); err != graph.ErrNotFound {
+		t.Fatalf("expected old node deleted after replacement, got err=%v", err)
+	}
+
+	// Re-populate and test DeleteFileGraph across split transactions.
+	if err := s.ReplaceFileGraph(path, "fp-3", nodes, edges, owned); err != nil {
+		t.Fatalf("ReplaceFileGraph re-populate: %v", err)
+	}
+	if err := s.DeleteFileGraph(path); err != nil {
+		t.Fatalf("DeleteFileGraph: %v", err)
+	}
+	gotAfterDelete, err := s.GetOwnedNodes(path)
+	if err != nil || len(gotAfterDelete) != 0 {
+		t.Fatalf("GetOwnedNodes after delete = %d (err=%v), want 0", len(gotAfterDelete), err)
+	}
+	if _, err := s.GetNode(owned[count-1]); err != graph.ErrNotFound {
+		t.Fatalf("expected node deleted after DeleteFileGraph, got err=%v", err)
+	}
 }

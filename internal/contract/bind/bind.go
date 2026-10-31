@@ -103,7 +103,6 @@ func Bind(opts Options) error {
 					store:   m.Store,
 					root:    m.Root,
 					repoURI: n.Props[uri.PropKey],
-					fold:    foldName(symbolMatchName(n)),
 				})
 			}
 			return true
@@ -111,6 +110,12 @@ func Bind(opts Options) error {
 		if err != nil {
 			return err
 		}
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	for i := range syms {
+		syms[i].fold = foldName(symbolMatchName(syms[i].node))
 	}
 
 	type edgeKey struct {

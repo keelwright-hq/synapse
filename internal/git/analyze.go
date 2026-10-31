@@ -2,6 +2,7 @@
 package git
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
@@ -11,16 +12,44 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
 )
 
+// DefaultMaxFilesPerCommit caps the number of files in a single commit that
+// contribute to pairwise co-change edges, preventing O(k^2) explosions on
+// bulk formatting or initial-import commits.
+const DefaultMaxFilesPerCommit = 100
+
+// DefaultMaxScanCommits caps the total number of commits inspected (including
+// single-file and bulk commits) so Walk remains bounded when recent history
+// contains few multi-file commits.
+const DefaultMaxScanCommits = 2000
+
+var errStopWalk = errors.New("git: stop")
+
+// ErrNoCommits is returned by Analyze when the repository has no commits yet
+// (empty or unborn HEAD), so callers can warn instead of silently skipping.
+var ErrNoCommits = errors.New("git: repository has no commits")
+
+// openRepo opens repoRoot, resolving linked worktrees (whose refs live in the
+// main repository's common .git directory).
+func openRepo(repoRoot string) (*git.Repository, error) {
+	return git.PlainOpenWithOptions(repoRoot, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+}
+
 // Options configure history walking and co-change aggregation.
 type Options struct {
+	// MaxCommits caps the number of qualifying multi-file commits returned (default: 500).
 	MaxCommits int
-	Since      time.Time
-	MinSupport int
+	// MaxScanCommits caps total commits inspected before stopping (default: max(4*MaxCommits, 2000)).
+	MaxScanCommits int
+	// MaxFilesPerCommit skips commits touching more than this many files (default: 100).
+	MaxFilesPerCommit int
+	Since             time.Time
+	MinSupport        int
 	// HalfLifeDays controls recency decay (weight *= 0.5^(ageDays/HalfLifeDays)).
 	HalfLifeDays float64
 }
@@ -45,21 +74,42 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 	if opts.MaxCommits <= 0 {
 		opts.MaxCommits = 500
 	}
-	r, err := git.PlainOpen(repoRoot)
+	maxScan := opts.MaxScanCommits
+	if maxScan <= 0 {
+		maxScan = opts.MaxCommits * 4
+		if maxScan < DefaultMaxScanCommits {
+			maxScan = DefaultMaxScanCommits
+		}
+	}
+	maxFiles := opts.MaxFilesPerCommit
+	if maxFiles <= 0 {
+		maxFiles = DefaultMaxFilesPerCommit
+	}
+	r, err := openRepo(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("git walk: %w", err)
 	}
 	iter, err := r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})
 	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("git log: %w", err)
 	}
 	defer iter.Close()
 
-	var out []CommitFiles
+	var (
+		out     []CommitFiles
+		scanned int
+	)
 	err = iter.ForEach(func(c *object.Commit) error {
 		if !opts.Since.IsZero() && c.Committer.When.Before(opts.Since) {
-			return nil
+			return errStopWalk
 		}
+		if scanned >= maxScan {
+			return errStopWalk
+		}
+		scanned++
 		stats, err := c.Stats()
 		if err != nil {
 			// Merge commits / empty trees — skip quietly.
@@ -78,7 +128,7 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 			seen[p] = struct{}{}
 			paths = append(paths, p)
 		}
-		if len(paths) < 2 {
+		if len(paths) < 2 || len(paths) > maxFiles {
 			return nil
 		}
 		sort.Strings(paths)
@@ -88,11 +138,11 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 			Paths: paths,
 		})
 		if len(out) >= opts.MaxCommits {
-			return fmt.Errorf("git: stop")
+			return errStopWalk
 		}
 		return nil
 	})
-	if err != nil && err.Error() != "git: stop" {
+	if err != nil && !errors.Is(err, errStopWalk) {
 		return nil, err
 	}
 	return out, nil
@@ -105,6 +155,10 @@ func Aggregate(commits []CommitFiles, opts Options) []Pair {
 	}
 	if opts.HalfLifeDays <= 0 {
 		opts.HalfLifeDays = 90
+	}
+	maxFiles := opts.MaxFilesPerCommit
+	if maxFiles <= 0 {
+		maxFiles = DefaultMaxFilesPerCommit
 	}
 	now := time.Now()
 	type acc struct {
@@ -121,6 +175,9 @@ func Aggregate(commits []CommitFiles, opts Options) []Pair {
 		return a + "\x00" + b
 	}
 	for _, c := range commits {
+		if len(c.Paths) < 2 || len(c.Paths) > maxFiles {
+			continue
+		}
 		ageDays := now.Sub(c.When).Hours() / 24
 		if ageDays < 0 {
 			ageDays = 0
@@ -166,8 +223,12 @@ func Aggregate(commits []CommitFiles, opts Options) []Pair {
 // Analyze walks history and upserts co_committed edges between existing file nodes.
 // Soft-skips when repoRoot is not a git repository. Writes to the member store only.
 func Analyze(store graph.Store, repoRoot string, opts Options) (int, error) {
-	if _, err := git.PlainOpen(repoRoot); err != nil {
+	r, err := openRepo(repoRoot)
+	if err != nil {
 		return 0, nil
+	}
+	if _, err := r.Head(); errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return 0, ErrNoCommits
 	}
 	commits, err := Walk(repoRoot, opts)
 	if err != nil {

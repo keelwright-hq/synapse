@@ -1,7 +1,9 @@
 package git_test
 
 import (
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -117,5 +119,139 @@ func TestWalkAggregateAnalyze(t *testing.T) {
 	}
 	if len(edgesAfter) != 0 {
 		t.Fatalf("expected stale co_committed edges to be pruned, got %+v", edgesAfter)
+	}
+}
+
+func TestWalkEmptyRepoAndCommitBounds(t *testing.T) {
+	emptyRoot := t.TempDir()
+	if _, err := git.PlainInit(emptyRoot, false); err != nil {
+		t.Fatal(err)
+	}
+	commits, err := synapsegit.Walk(emptyRoot, synapsegit.Options{})
+	if err != nil {
+		t.Fatalf("expected nil error on empty git init repo, got %v", err)
+	}
+	if len(commits) != 0 {
+		t.Fatalf("expected 0 commits on empty repo, got %d", len(commits))
+	}
+
+	root := t.TempDir()
+	r, err := git.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitFiles := func(msg string, files ...string) {
+		t.Helper()
+		for _, f := range files {
+			p := filepath.Join(root, f)
+			b, _ := os.ReadFile(p)
+			if err := os.WriteFile(p, append(b, 'x'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.Add(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := w.Commit(msg, &git.CommitOptions{
+			Author: &object.Signature{Name: "t", Email: "t@t", When: time.Now()},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Older multi-file commit, then a large commit touching 3 files, then two single-file commits.
+	commitFiles("pair", "a.go", "b.go")
+	commitFiles("bulk", "a.go", "b.go", "c.go")
+	commitFiles("single1", "a.go")
+	commitFiles("single2", "a.go")
+
+	// MaxCommits counts pair-producing commits, so the 2 recent single-file commits do not
+	// exhaust MaxCommits=1; it returns the newest multi-file commit ("bulk", 3 files).
+	bounded, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bounded) != 1 || len(bounded[0].Paths) != 3 {
+		t.Fatalf("expected MaxCommits=1 to skip single-file commits and return 1 multi-file commit, got %+v", bounded)
+	}
+
+	// MaxFilesPerCommit=2 should skip the 3-file "bulk" commit without burning MaxCommits=1,
+	// keeping the older 2-file "pair" commit.
+	filtered, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 1, MaxFilesPerCommit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filtered) != 1 || len(filtered[0].Paths) != 2 {
+		t.Fatalf("expected 1 2-file commit with MaxCommits=1 MaxFilesPerCommit=2, got %+v", filtered)
+	}
+
+	// MaxScanCommits=2 stops after inspecting the two newest single-file commits,
+	// before reaching older multi-file commits.
+	scanBounded, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 10, MaxScanCommits: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scanBounded) != 0 {
+		t.Fatalf("expected 0 qualifying commits when MaxScanCommits=2 stops on single-file commits, got %+v", scanBounded)
+	}
+}
+
+func TestAnalyzeLinkedWorktreeAndEmptyRepo(t *testing.T) {
+	emptyRoot := t.TempDir()
+	if _, err := git.PlainInit(emptyRoot, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := synapsegit.Analyze(memory.New(), emptyRoot, synapsegit.Options{}); !errors.Is(err, synapsegit.ErrNoCommits) {
+		t.Fatalf("Analyze on empty repo: err=%v, want ErrNoCommits", err)
+	}
+
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git CLI not available to create a linked worktree")
+	}
+	root := t.TempDir()
+	runGit := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command(gitBin, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	runGit(root, "init", "-q")
+	for i := 0; i < 2; i++ {
+		for _, f := range []string{"a.go", "b.go"} {
+			p := filepath.Join(root, f)
+			b, _ := os.ReadFile(p)
+			if err := os.WriteFile(p, append(b, 'x'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		runGit(root, "add", "a.go", "b.go")
+		runGit(root, "commit", "-q", "-m", "pair")
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	runGit(root, "worktree", "add", "-q", "--detach", wt)
+
+	store := memory.New()
+	for _, p := range []string{"a.go", "b.go"} {
+		if err := store.PutNode(graph.Node{ID: graph.NodeID("file:" + p), Kind: parse.KindFile, Name: p, Path: p}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := synapsegit.Analyze(store, wt, synapsegit.Options{MinSupport: 2})
+	if err != nil {
+		t.Fatalf("Analyze in linked worktree: %v", err)
+	}
+	if n == 0 {
+		t.Fatal("expected co_committed edges from a linked worktree")
 	}
 }

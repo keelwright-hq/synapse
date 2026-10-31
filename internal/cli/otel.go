@@ -49,7 +49,7 @@ var otelIngestCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		store, err := badger.OpenWithRepo(resolvedDataDir, repo)
+		store, err := badger.OpenSingleOrRepo(resolvedDataDir, repo)
 		if err != nil {
 			return err
 		}

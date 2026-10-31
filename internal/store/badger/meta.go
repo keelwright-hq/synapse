@@ -6,6 +6,7 @@ import (
 
 	badgerdb "github.com/dgraph-io/badger/v4"
 	"github.com/keelwright-hq/synapse/internal/graph"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // Fingerprint and ownership keys live alongside graph keys:
@@ -125,4 +126,191 @@ func (s *Store) DeleteOwnedNodes(path string) error {
 	return s.db.Update(func(txn *badgerdb.Txn) error {
 		return txn.Delete(ownershipKey(path))
 	})
+}
+
+// ReplaceFileGraph replaces a file's owned subgraph, ownership list, and
+// fingerprint in a single Badger transaction when it fits, or across multiple
+// committed batches when Badger returns ErrTxnTooBig. The fingerprint is
+// written last so an interrupted multi-batch replacement will be re-indexed on
+// the next run.
+func (s *Store) ReplaceFileGraph(relPath, hash string, nodes []graph.Node, edges []graph.Edge, owned []graph.NodeID) error {
+	if relPath == "" {
+		return fmt.Errorf("badger: path is required")
+	}
+	old, err := s.GetOwnedNodes(relPath)
+	if err != nil {
+		return err
+	}
+	if owned == nil {
+		owned = []graph.NodeID{}
+	}
+	ownedBytes, err := json.Marshal(owned)
+	if err != nil {
+		return err
+	}
+
+	txn := s.db.NewTransaction(true)
+	defer func() {
+		if txn != nil {
+			txn.Discard()
+		}
+	}()
+
+	setEntry := func(k, v []byte) error {
+		if err := txn.Set(k, v); err == badgerdb.ErrTxnTooBig {
+			if err := txn.Commit(); err != nil {
+				return err
+			}
+			txn = s.db.NewTransaction(true)
+			return txn.Set(k, v)
+		} else {
+			return err
+		}
+	}
+	delKey := func(k []byte) error {
+		if err := txn.Delete(k); err == badgerdb.ErrTxnTooBig {
+			if err := txn.Commit(); err != nil {
+				return err
+			}
+			txn = s.db.NewTransaction(true)
+			return txn.Delete(k)
+		} else {
+			return err
+		}
+	}
+
+	if len(owned) > 0 {
+		unionBytes := ownedBytes
+		if len(old) > 0 {
+			var err error
+			unionBytes, err = json.Marshal(unionNodeIDs(old, owned))
+			if err != nil {
+				return err
+			}
+		}
+		if err := setEntry(ownershipKey(relPath), unionBytes); err != nil {
+			return err
+		}
+	}
+	for _, id := range old {
+		if err := deleteNodeInTxn(txn, delKey, id); err != nil && err != graph.ErrNotFound {
+			return err
+		}
+	}
+	for _, node := range nodes {
+		if node.ID == "" {
+			return fmt.Errorf("badger: node id is required")
+		}
+		data, err := marshalNode(node)
+		if err != nil {
+			return err
+		}
+		if err := clearURIIndexForNodeWith(txn, delKey, node.ID); err != nil {
+			return err
+		}
+		if node.Props != nil {
+			if newURI := node.Props[uri.PropKey]; newURI != "" {
+				if err := putURIIndexWith(txn, setEntry, newURI, node.ID); err != nil {
+					return err
+				}
+			}
+		}
+		if err := setEntry(nodeKey(node.ID), data); err != nil {
+			return err
+		}
+	}
+	for _, edge := range edges {
+		if edge.From == "" || edge.To == "" || edge.Type == "" {
+			return fmt.Errorf("badger: edge from, to, and type are required")
+		}
+		data, err := marshalEdge(edge)
+		if err != nil {
+			return err
+		}
+		if _, err := txn.Get(nodeKey(edge.From)); err != nil {
+			if err == badgerdb.ErrKeyNotFound {
+				return graph.ErrNotFound
+			}
+			return err
+		}
+		if _, err := txn.Get(nodeKey(edge.To)); err != nil {
+			if err == badgerdb.ErrKeyNotFound {
+				return graph.ErrNotFound
+			}
+			return err
+		}
+		if err := setEntry(outEdgeKey(edge.From, edge.Type, edge.To), data); err != nil {
+			return err
+		}
+		if err := setEntry(inEdgeKey(edge.To, edge.Type, edge.From), data); err != nil {
+			return err
+		}
+	}
+	if err := setEntry(ownershipKey(relPath), ownedBytes); err != nil {
+		return err
+	}
+	if err := setEntry(fingerprintKey(relPath), []byte(hash)); err != nil {
+		return err
+	}
+	err = txn.Commit()
+	txn = nil
+	return err
+}
+
+func unionNodeIDs(a, b []graph.NodeID) []graph.NodeID {
+	seen := make(map[graph.NodeID]struct{}, len(a)+len(b))
+	out := make([]graph.NodeID, 0, len(a)+len(b))
+	for _, id := range a {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	for _, id := range b {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// DeleteFileGraph deletes a file's owned nodes, ownership entry, and fingerprint
+// in a batched Badger transaction.
+func (s *Store) DeleteFileGraph(relPath string) error {
+	old, err := s.GetOwnedNodes(relPath)
+	if err != nil {
+		return err
+	}
+	txn := s.db.NewTransaction(true)
+	defer func() {
+		if txn != nil {
+			txn.Discard()
+		}
+	}()
+	delKey := func(k []byte) error {
+		if err := txn.Delete(k); err == badgerdb.ErrTxnTooBig {
+			if err := txn.Commit(); err != nil {
+				return err
+			}
+			txn = s.db.NewTransaction(true)
+			return txn.Delete(k)
+		} else {
+			return err
+		}
+	}
+	for _, id := range old {
+		if err := deleteNodeInTxn(txn, delKey, id); err != nil && err != graph.ErrNotFound {
+			return err
+		}
+	}
+	if err := delKey(ownershipKey(relPath)); err != nil {
+		return err
+	}
+	if err := delKey(fingerprintKey(relPath)); err != nil {
+		return err
+	}
+	err = txn.Commit()
+	txn = nil
+	return err
 }

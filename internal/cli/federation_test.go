@@ -289,3 +289,110 @@ func TestGraphImportRepoMismatch(t *testing.T) {
 		t.Fatalf("old uri still present: %v", err)
 	}
 }
+
+func TestGraphExportImportSingleRepo(t *testing.T) {
+	wsDir := workspaceFixtureDir(t)
+	apiRoot := filepath.Join(wsDir, "api")
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	snapPath := filepath.Join(t.TempDir(), "single-api.ndjson")
+
+	cmd := cli.RootCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	resetPersistentFlags(t, cmd)
+	cmd.SetArgs([]string{"--repo", "api", "--data-dir", srcDir, "index", apiRoot})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("single-repo index: %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "export", "--data-dir", srcDir, "--repo", "api", "-o", snapPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("single-repo export: %v\n%s", err, buf.String())
+	}
+
+	resetPersistentFlags(t, cmd)
+	buf.Reset()
+	cmd.SetArgs([]string{"graph", "import", "--data-dir", dstDir, "--repo", "api-copy", "--rewrite-repo", snapPath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("single-repo import: %v\n%s", err, buf.String())
+	}
+	if strings.Contains(buf.String(), "nodes=0") {
+		t.Fatalf("expected non-empty single-repo snapshot import, got:\n%s", buf.String())
+	}
+	if !badger.SingleRepoExists(dstDir) {
+		t.Fatalf("expected single-repo import into empty dir to create single-repo layout at %s/graph", dstDir)
+	}
+	if badger.ShardExists(dstDir, "api-copy") {
+		t.Fatalf("did not expect single-repo import into empty dir to create workspace shard")
+	}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		resetPersistentFlags(t, cmd)
+		buf.Reset()
+		cmd.SetArgs([]string{"--repo", "api-copy", "--data-dir", dstDir, "query", "neighborhood", "ListUsers", "--json"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("query imported single-repo store (attempt %d): %v\n%s", attempt, err, buf.String())
+		}
+		var res rank.Result
+		if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+			t.Fatalf("json (attempt %d): %v\n%s", attempt, err, buf.String())
+		}
+		if len(res.Hits) == 0 {
+			t.Fatalf("expected neighborhood hits from imported single-repo store on attempt %d", attempt)
+		}
+	}
+}
+
+func TestGraphImportExportDoNotTouchOtherRepoSingleStore(t *testing.T) {
+	wsDir := workspaceFixtureDir(t)
+	apiRoot := filepath.Join(wsDir, "api")
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	snapPath := filepath.Join(t.TempDir(), "api.ndjson")
+
+	cmd := cli.RootCommand()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+
+	run := func(args ...string) error {
+		t.Helper()
+		resetPersistentFlags(t, cmd)
+		buf.Reset()
+		cmd.SetArgs(args)
+		return cmd.Execute()
+	}
+
+	if err := run("--repo", "api", "--data-dir", srcDir, "index", apiRoot); err != nil {
+		t.Fatalf("index api: %v\n%s", err, buf.String())
+	}
+	if err := run("--repo", "web", "--data-dir", dstDir, "index", apiRoot); err != nil {
+		t.Fatalf("index web: %v\n%s", err, buf.String())
+	}
+
+	// Exporting under another repo name must not read (or rename) the single-repo store.
+	if err := run("graph", "export", "--data-dir", srcDir, "--repo", "other", "-o", snapPath); err == nil {
+		t.Fatalf("expected export of mismatched repo to fail, got:\n%s", buf.String())
+	}
+	if name, err := badger.SingleRepoName(srcDir); err != nil || name != "api" {
+		t.Fatalf("single-repo store name after mismatched export = %q (err=%v), want api", name, err)
+	}
+
+	if err := run("graph", "export", "--data-dir", srcDir, "--repo", "api", "-o", snapPath); err != nil {
+		t.Fatalf("export api: %v\n%s", err, buf.String())
+	}
+	if err := run("graph", "import", "--data-dir", dstDir, "--repo", "api", snapPath); err != nil {
+		t.Fatalf("import api: %v\n%s", err, buf.String())
+	}
+	if !badger.ShardExists(dstDir, "api") {
+		t.Fatalf("expected api import to land in its own shard next to web's single-repo store")
+	}
+	if name, err := badger.SingleRepoName(dstDir); err != nil || name != "web" {
+		t.Fatalf("web single-repo store name after import = %q (err=%v), want web", name, err)
+	}
+}

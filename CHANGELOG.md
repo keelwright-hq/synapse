@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.4.1 — P2 Stabilization & Quality
+
+### Fixed & Improved
+
+- **Ignore `third_party/` and respect `.gitignore` (SYN-121):** `synapse index`,
+  Markdown doc indexing, and contract discovery now respect root and nested
+  `.gitignore` files (including `!` negation, with git's rule that files under an
+  excluded directory cannot be re-included) and skip `third_party/` by default
+  via shared `parse.WalkFiles`.
+- **Consistent relative file node names (SYN-122):** Normalized AST `file` node
+  `Name` to the relative file basename rather than leaking host-absolute OS
+  paths during indexing.
+- **Indexing, storage & git walk bounds (SYN-123):** Pre-grouped symbol lookup in
+  `docs.Link`; batched Badger `ReplaceFileGraph` and `DeleteFileGraph` with
+  automatic `ErrTxnTooBig` transaction splitting; `bind.Bind` short-circuits
+  when no contract operations or endpoints exist; `git.Walk` handles empty/unborn
+  repositories cleanly, skips bulk commits exceeding `MaxFilesPerCommit`
+  (default 100) without consuming `MaxCommits`, bounds total scanned commits via
+  `MaxScanCommits` (default 2000), and stops early when reaching `Since`.
+- **Neighborhood ranking, store layout & inline doc comments (SYN-124):** Lowered
+  `contains` weight (`0.65`) so 1-hop semantic edges (`calls`, `implements`,
+  `documents`, `imports`) outrank 2-hop `contains` siblings; widened the
+  log-scaled edge `weight` / `count` / `support` multiplier (`[0.80, 1.40]`);
+  unified repo-aware single-repo vs. workspace shard resolution across
+  `graph export`, `graph import`, `query`, `otel ingest`, and `mcp`; extended
+  inline doc comment extraction (`props.doc`) to Python, Swift, Java, Kotlin,
+  Ruby, PHP, C, C++, and C#.
+
 ## v0.4.0 — Phase 3: Advanced Semantic Extraction (SYN-3)
 
 ### Added

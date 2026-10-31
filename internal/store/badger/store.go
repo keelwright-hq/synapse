@@ -179,20 +179,7 @@ func (s *Store) GetNodeByURI(repoURI string) (graph.Node, error) {
 
 func (s *Store) DeleteNode(id graph.NodeID) error {
 	return s.db.Update(func(txn *badgerdb.Txn) error {
-		if _, err := txn.Get(nodeKey(id)); err != nil {
-			if err == badgerdb.ErrKeyNotFound {
-				return graph.ErrNotFound
-			}
-			return err
-		}
-
-		if err := clearURIIndexForNode(txn, id); err != nil {
-			return err
-		}
-		if err := deleteEdgesForNode(txn, id); err != nil {
-			return err
-		}
-		return txn.Delete(nodeKey(id))
+		return deleteNodeInTxn(txn, txn.Delete, id)
 	})
 }
 
@@ -329,10 +316,46 @@ func (s *Store) ForEachNode(fn func(graph.Node) bool) error {
 	})
 }
 
-func deleteEdgesForNode(txn *badgerdb.Txn, id graph.NodeID) error {
+func deleteNodeInTxn(txn *badgerdb.Txn, delKey func([]byte) error, id graph.NodeID) error {
+	item, err := txn.Get(nodeKey(id))
+	if err != nil {
+		if err == badgerdb.ErrKeyNotFound {
+			return graph.ErrNotFound
+		}
+		return err
+	}
+	var node graph.Node
+	if err := item.Value(func(val []byte) error {
+		var e error
+		node, e = unmarshalNode(val)
+		return e
+	}); err != nil {
+		return err
+	}
+	var keys [][]byte
+	if node.Props != nil {
+		if u := node.Props[uri.PropKey]; u != "" {
+			keys = append(keys, uriIndexKey(u))
+		}
+	}
+	edgeKeys, err := collectEdgeKeysForNode(txn, id)
+	if err != nil {
+		return err
+	}
+	keys = append(keys, edgeKeys...)
+	keys = append(keys, nodeKey(id))
+	for _, k := range keys {
+		if err := delKey(k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func collectEdgeKeysForNode(txn *badgerdb.Txn, id graph.NodeID) ([][]byte, error) {
+	var keys [][]byte
 	outPrefix := outEdgePrefix(id)
 	it := txn.NewIterator(badgerdb.DefaultIteratorOptions)
-	defer it.Close()
 	for it.Seek(outPrefix); it.ValidForPrefix(outPrefix); it.Next() {
 		item := it.Item()
 		var edge graph.Edge
@@ -344,19 +367,15 @@ func deleteEdgesForNode(txn *badgerdb.Txn, id graph.NodeID) error {
 			edge = parsed
 			return nil
 		}); err != nil {
-			return err
+			it.Close()
+			return nil, err
 		}
-		if err := txn.Delete(item.KeyCopy(nil)); err != nil {
-			return err
-		}
-		if err := txn.Delete(inEdgeKey(edge.To, edge.Type, edge.From)); err != nil {
-			return err
-		}
+		keys = append(keys, item.KeyCopy(nil), inEdgeKey(edge.To, edge.Type, edge.From))
 	}
+	it.Close()
 
 	inPrefix := inEdgePrefix(id)
 	it2 := txn.NewIterator(badgerdb.DefaultIteratorOptions)
-	defer it2.Close()
 	for it2.Seek(inPrefix); it2.ValidForPrefix(inPrefix); it2.Next() {
 		item := it2.Item()
 		var edge graph.Edge
@@ -368,16 +387,13 @@ func deleteEdgesForNode(txn *badgerdb.Txn, id graph.NodeID) error {
 			edge = parsed
 			return nil
 		}); err != nil {
-			return err
+			it2.Close()
+			return nil, err
 		}
-		if err := txn.Delete(item.KeyCopy(nil)); err != nil {
-			return err
-		}
-		if err := txn.Delete(outEdgeKey(edge.From, edge.Type, edge.To)); err != nil {
-			return err
-		}
+		keys = append(keys, item.KeyCopy(nil), outEdgeKey(edge.From, edge.Type, edge.To))
 	}
-	return nil
+	it2.Close()
+	return keys, nil
 }
 
 // Key segments use \x00 so NodeIDs containing '/' (file/package paths) cannot
@@ -415,6 +431,10 @@ func inEdgeKey(to graph.NodeID, edgeType graph.EdgeType, from graph.NodeID) []by
 }
 
 func clearURIIndexForNode(txn *badgerdb.Txn, id graph.NodeID) error {
+	return clearURIIndexForNodeWith(txn, txn.Delete, id)
+}
+
+func clearURIIndexForNodeWith(txn *badgerdb.Txn, delKey func([]byte) error, id graph.NodeID) error {
 	item, err := txn.Get(nodeKey(id))
 	if err != nil {
 		if err == badgerdb.ErrKeyNotFound {
@@ -437,10 +457,14 @@ func clearURIIndexForNode(txn *badgerdb.Txn, id graph.NodeID) error {
 	if u == "" {
 		return nil
 	}
-	return txn.Delete(uriIndexKey(u))
+	return delKey(uriIndexKey(u))
 }
 
 func putURIIndex(txn *badgerdb.Txn, repoURI string, id graph.NodeID) error {
+	return putURIIndexWith(txn, txn.Set, repoURI, id)
+}
+
+func putURIIndexWith(txn *badgerdb.Txn, setEntry func([]byte, []byte) error, repoURI string, id graph.NodeID) error {
 	item, err := txn.Get(uriIndexKey(repoURI))
 	if err != nil && err != badgerdb.ErrKeyNotFound {
 		return err
@@ -457,5 +481,5 @@ func putURIIndex(txn *badgerdb.Txn, repoURI string, id graph.NodeID) error {
 			return fmt.Errorf("%w: uri %q already bound to %s", graph.ErrConflict, repoURI, existing)
 		}
 	}
-	return txn.Set(uriIndexKey(repoURI), []byte(id))
+	return setEntry(uriIndexKey(repoURI), []byte(id))
 }

@@ -2,6 +2,7 @@ package rank
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,7 +17,7 @@ import (
 // DefaultEdgeWeights score adjacency by edge type (higher = closer / more relevant).
 // Phase 3 families (git / runtime / docs) are explicit so they do not fall back to 0.3.
 var DefaultEdgeWeights = map[graph.EdgeType]float64{
-	parse.EdgeContains:      1.0,
+	parse.EdgeContains:      0.65,
 	parse.EdgeCalls:         0.8,
 	parse.EdgeImplements:    0.9,
 	parse.EdgeConsumes:      0.9,
@@ -163,9 +164,13 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			if neighborRepo == "" {
 				neighborRepo = cur.repo
 			}
-			w := weights[e.Type]
-			if w == 0 {
-				w = 0.3
+			baseW := weights[e.Type]
+			if baseW == 0 {
+				baseW = 0.3
+			}
+			w := baseW * edgeSignalMultiplier(e.Props)
+			if baseW <= 0.99 && w > 0.99 {
+				w = 0.99
 			}
 			score := cur.score * w
 			reason := fmt.Sprintf("%s:%s", dir, e.Type)
@@ -232,7 +237,11 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 			StartLine:  propInt(node.Props, "start_line"),
 			EndLine:    propInt(node.Props, "end_line"),
 		}
-		h.Snippet = extractSnippet(rootForNode(opts, node), node, h.StartLine, h.EndLine)
+		if node.Kind == parse.KindSymbol {
+			h.Path = ""
+		} else {
+			h.Snippet = extractSnippet(rootForNode(opts, node), node, h.StartLine, h.EndLine)
+		}
 		hits = append(hits, h)
 	}
 
@@ -242,6 +251,11 @@ func Neighborhood(store graph.Store, seed graph.NodeID, opts Options) (Result, e
 		}
 		if hits[i].Depth != hits[j].Depth {
 			return hits[i].Depth < hits[j].Depth
+		}
+		iPlaceholder := hits[i].Kind == parse.KindSymbol || hits[i].Kind == parse.KindImport
+		jPlaceholder := hits[j].Kind == parse.KindSymbol || hits[j].Kind == parse.KindImport
+		if iPlaceholder != jPlaceholder {
+			return !iPlaceholder
 		}
 		if hits[i].ID != hits[j].ID {
 			return hits[i].ID < hits[j].ID
@@ -316,6 +330,67 @@ func propInt(props map[string]string, key string) int {
 		return 0
 	}
 	return v
+}
+
+// edgeSignalMultiplier returns a log-scaled multiplier in [0.80, 1.40] based on
+// per-edge weight, count, and support properties (1.0 when absent or equal to 1).
+// When both weight and count/support are present, count/support reinforces weight
+// rather than overwriting it.
+func edgeSignalMultiplier(props map[string]string) float64 {
+	if props == nil {
+		return 1.0
+	}
+	var (
+		weight, count, support float64
+		hasWeight, hasCount    bool
+	)
+	if raw := props[parse.PropWeight]; raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
+			weight = v
+			hasWeight = true
+		}
+	}
+	if raw := props[parse.PropCount]; raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
+			count = v
+			hasCount = true
+		}
+	}
+	if raw := props[parse.PropSupport]; raw != "" {
+		if v, err := strconv.ParseFloat(raw, 64); err == nil && v > 0 {
+			support = v
+		}
+	}
+
+	signal := 1.0
+	switch {
+	case hasWeight:
+		signal = weight
+		aux := count
+		if support > aux {
+			aux = support
+		}
+		if aux > 1.0 {
+			signal *= 1.0 + 0.1*math.Log2(aux)
+		}
+	case hasCount:
+		signal = count
+	case support > 0:
+		signal = support
+	default:
+		return 1.0
+	}
+	if signal <= 0 || signal == 1.0 {
+		return 1.0
+	}
+	mult := 1.0 + 0.08*math.Log2(signal)
+	if mult < 0.80 {
+		return 0.80
+	}
+	if mult > 1.40 {
+		return 1.40
+	}
+	return mult
 }
 
 func extractSnippet(root string, node graph.Node, start, end int) string {
@@ -410,7 +485,20 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if len(matches) == 0 {
 		return "", fmt.Errorf("%w: symbol %q", graph.ErrNotFound, query)
 	}
-	return "", fmt.Errorf("rank: ambiguous symbol %q (%d matches); use a repo:// URI or --repo to scope", query, len(matches))
+	candidates := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if u := propURI(m); u != "" {
+			candidates = append(candidates, u)
+		} else {
+			candidates = append(candidates, string(m.ID))
+		}
+	}
+	sort.Strings(candidates)
+	if len(candidates) > 5 {
+		candidates = append(candidates[:5], "...")
+	}
+	return "", fmt.Errorf("rank: ambiguous symbol %q (%d matches: %s); use a repo:// URI or --repo to scope",
+		query, len(matches), strings.Join(candidates, ", "))
 }
 
 // rootForNode picks the filesystem root for snippet extraction.
