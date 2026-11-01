@@ -465,3 +465,94 @@ extension Double {
 		}
 	}
 }
+
+func TestIndexerBareCallInMethodPrefersFunctionWithoutImplicitSelf(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "srv"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Python and Go never resolve a bare call inside a method to self.method.
+	writeGo(t, filepath.Join(root, "app.py"), `def validate():
+    pass
+
+class Server:
+    def validate(self):
+        pass
+
+    def start(self):
+        validate()
+`)
+	writeGo(t, filepath.Join(root, "srv", "server.go"), "package srv\n\ntype Server struct{}\n\nfunc (s *Server) Start() { validate() }\n")
+	writeGo(t, filepath.Join(root, "srv", "server_validate.go"), "package srv\n\nfunc (s *Server) validate() {}\n")
+	writeGo(t, filepath.Join(root, "srv", "util.go"), "package srv\n\nfunc validate() {}\n")
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	for caller, want := range map[graph.NodeID]graph.NodeID{
+		"method:app.py#Server.start":        "func:app.py#validate",
+		"method:srv/server.go#Server.Start": "func:srv/util.go#validate",
+	} {
+		out, err := store.OutEdges(caller, "calls")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(out) != 1 || out[0].To != want {
+			t.Errorf("%s: want calls -> %s, got %+v", caller, want, out)
+		}
+	}
+}
+
+func TestIndexerSwiftConformerDoesNotBindToSiblingImplementation(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Tests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// center.add is UNUserNotificationCenter's API; the only other repo `add`
+	// is a test fake conforming to the same protocol and must not be chosen.
+	writeGo(t, filepath.Join(root, "NotificationService.swift"), `protocol NotificationClient {
+    func add(_ request: Int) async throws
+}
+struct SystemNotificationClient: NotificationClient {
+    let center = UNUserNotificationCenter.current()
+    func add(_ request: Int) async throws { try await center.add(request) }
+}
+`)
+	writeGo(t, filepath.Join(root, "Tests", "FakeClient.swift"), `final class FakeNotificationClient: NotificationClient {
+    func add(_ request: Int) async throws {}
+}
+`)
+	// A property named after its type's suffix still resolves among same-named methods.
+	writeGo(t, filepath.Join(root, "WeatherRepository.swift"), `final class WeatherRepository {
+    func setProvider(_ p: Int) {}
+}
+`)
+	writeGo(t, filepath.Join(root, "WeatherViewModel.swift"), `final class WeatherViewModel {
+    let repository = WeatherRepository()
+    func setProvider(_ p: Int) { repository.setProvider(p) }
+}
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := store.OutEdges("method:NotificationService.swift#SystemNotificationClient.add", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range out {
+		if e.To == "method:Tests/FakeClient.swift#FakeNotificationClient.add" {
+			t.Fatalf("production add bound to test fake: %+v", out)
+		}
+	}
+
+	vm, err := store.OutEdges("method:WeatherViewModel.swift#WeatherViewModel.setProvider", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vm) != 1 || vm[0].To != "method:WeatherRepository.swift#WeatherRepository.setProvider" {
+		t.Fatalf("repository.setProvider: want WeatherRepository.setProvider, got %+v", vm)
+	}
+}

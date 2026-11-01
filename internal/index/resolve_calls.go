@@ -240,8 +240,8 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 			return "", "", false
 		}
 
-		// Tier 1b: Same receiver type across files (e.g. Swift extensions, Go/C# split types).
-		if recv := methodReceiver(caller); recv != "" {
+		// Tier 1b: Same receiver type across files (e.g. Swift extensions, C# partial types).
+		if recv := implicitSelfReceiver(caller); recv != "" {
 			var sameRecv []graph.Node
 			for _, c := range candidates {
 				if methodReceiver(c) == recv {
@@ -420,25 +420,17 @@ func pickSwiftModuleTarget(caller graph.Node, calleeName string, candidates []gr
 		if i := strings.LastIndexByte(lastSeg, '.'); i >= 0 {
 			lastSeg = lastSeg[i+1:]
 		}
+		// Match the property name to the end of the receiver type, so
+		// `repository.save` picks WeatherRepository.save; ambiguity stays unresolved.
+		lastSeg = strings.ToLower(lastSeg)
 		var byPropName []graph.Node
 		for _, c := range swiftDefs {
-			if strings.EqualFold(methodReceiver(c), lastSeg) {
+			if lastSeg != "" && strings.HasSuffix(strings.ToLower(methodReceiver(c)), lastSeg) {
 				byPropName = append(byPropName, c)
 			}
 		}
 		if len(byPropName) == 1 {
 			return byPropName[0].ID, parse.ProvenanceInferred, true
-		}
-		if recv := methodReceiver(caller); recv != "" {
-			var otherRecv []graph.Node
-			for _, c := range swiftDefs {
-				if c.Kind == parse.KindMethod && methodReceiver(c) != recv {
-					otherRecv = append(otherRecv, c)
-				}
-			}
-			if len(otherRecv) == 1 {
-				return otherRecv[0].ID, parse.ProvenanceInferred, true
-			}
 		}
 	}
 	return "", "", false
@@ -468,12 +460,26 @@ func methodReceiver(n graph.Node) string {
 	return ""
 }
 
+// implicitSelfReceiver returns the caller's receiver type when its language
+// resolves a bare call inside a method against the method's own type first
+// (Swift, Kotlin, Java, C#, C++, Ruby). In Go, Python, JavaScript, TypeScript
+// and PHP a bare call never means self.method, so it returns "".
+func implicitSelfReceiver(caller graph.Node) string {
+	switch strings.ToLower(filepath.Ext(caller.Path)) {
+	case ".swift", ".kt", ".kts", ".java", ".cs", ".rb",
+		".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx":
+		return methodReceiver(caller)
+	default:
+		return ""
+	}
+}
+
 func isSwiftPath(p string) bool {
 	return strings.EqualFold(filepath.Ext(p), ".swift")
 }
 
 func disambiguateCandidates(caller graph.Node, candidates []graph.Node) (graph.NodeID, bool) {
-	if recv := methodReceiver(caller); recv != "" {
+	if recv := implicitSelfReceiver(caller); recv != "" {
 		var byRecv []graph.Node
 		for _, c := range candidates {
 			if methodReceiver(c) == recv {
