@@ -12,6 +12,11 @@
   unknown capitalized name are treated as external types and stay unresolved.
   Swift `extension` declarations are marked (`props.extension`) and never
   count as the type's definition.
+- **Bare calls in methods respect language semantics:** A bare call inside a
+  method prefers the caller's own type only in languages with implicit `self`
+  (Swift, Kotlin, Java, C#, C++, Ruby). In Go, Python, JavaScript, TypeScript
+  and PHP, `validate()` now links to the function `validate`, not a same-named
+  method on the caller's type.
 - **Co-change ignores merge commits:** `git.Walk` skips commits with more than
   one parent. Merges replayed changes already counted on the merged branch, which
   inflated `co_committed` support (about 2× on branch-heavy histories).
