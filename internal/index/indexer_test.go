@@ -338,3 +338,221 @@ func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T)
 		t.Fatalf("expected gitignored file to be ignored, got err=%v", err)
 	}
 }
+
+func TestIndexerResolvesSwiftCallsAcrossFiles(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"App", "Services", "Models", "Extensions"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeGo(t, filepath.Join(root, "Models", "Temperature.swift"), `struct Temperature {
+    let value: Double
+    func summary() -> String {
+        _ = self.rounded()
+        return label()
+    }
+}
+`)
+	writeGo(t, filepath.Join(root, "Models", "Wind.swift"), `struct Wind {
+    func label() -> String { "" }
+}
+`)
+	writeGo(t, filepath.Join(root, "Services", "NotificationService.swift"), `final class NotificationService {
+    static let shared = NotificationService()
+    func reconcile() {}
+}
+`)
+	writeGo(t, filepath.Join(root, "Services", "Store.swift"), `final class Store {
+    func refreshAll() {}
+}
+`)
+	writeGo(t, filepath.Join(root, "App", "ViewModel.swift"), `final class ViewModel {
+    let store = Store()
+    func refreshAll() {
+        self.store.refreshAll()
+    }
+    func load() {
+        let t = Temperature(value: 1)
+        NotificationService.shared.reconcile()
+        self.store.refreshAll()
+        JSONDecoder().decodeThing()
+        self.decodeThing()
+        Temperature.decodeThing()
+        "literal".decodeThing()
+        Date()
+        _ = Double(2)
+    }
+}
+`)
+	writeGo(t, filepath.Join(root, "App", "Other.swift"), `final class Other {
+    func decodeThing() {}
+}
+`)
+	// Extensions are not definitions: Temperature keeps one constructible type,
+	// and an extension of an external type does not capture Double(...) calls.
+	// Putting Temperature+Format in Extensions/ also verifies that Temperature.summary's
+	// bare label() call resolves to Temperature.label across directories rather than
+	// same-directory Wind.label in Models/.
+	writeGo(t, filepath.Join(root, "Extensions", "Temperature+Format.swift"), `extension Temperature {
+    func label() -> String { "" }
+    func rounded() -> Temperature { self }
+}
+extension Double {
+    func roundedHalf() -> Double { self }
+}
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	caller := graph.NodeID("method:App/ViewModel.swift#ViewModel.load")
+	out, err := store.OutEdges(caller, "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[graph.NodeID]bool{}
+	for _, e := range out {
+		got[e.To] = true
+	}
+	for _, want := range []graph.NodeID{
+		"type:Models/Temperature.swift#Temperature",
+		"method:Services/NotificationService.swift#NotificationService.reconcile",
+		"method:Services/Store.swift#Store.refreshAll",
+		"symbol:JSONDecoder.decodeThing",
+		"symbol:self.decodeThing",
+		"symbol:Temperature.decodeThing",
+		"symbol:_.decodeThing",
+		"symbol:Date",
+		"symbol:Double",
+	} {
+		if !got[want] {
+			t.Errorf("missing calls edge %s -> %s (got %v)", caller, want, got)
+		}
+	}
+	if got["method:App/Other.swift#Other.decodeThing"] {
+		t.Errorf("call on external/unrelated receiver bound to Other.decodeThing")
+	}
+	if got["method:App/ViewModel.swift#ViewModel.refreshAll"] {
+		t.Errorf("self.store.refreshAll() falsely bound to ViewModel.refreshAll instead of Store.refreshAll")
+	}
+
+	wrapperCaller := graph.NodeID("method:App/ViewModel.swift#ViewModel.refreshAll")
+	wrapperOut, err := store.OutEdges(wrapperCaller, "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapperOut) != 1 || wrapperOut[0].To != "method:Services/Store.swift#Store.refreshAll" {
+		t.Errorf("expected ViewModel.refreshAll -> Store.refreshAll, got %+v", wrapperOut)
+	}
+
+	tempSummary := graph.NodeID("method:Models/Temperature.swift#Temperature.summary")
+	tempOut, err := store.OutEdges(tempSummary, "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempGot := map[graph.NodeID]bool{}
+	for _, e := range tempOut {
+		tempGot[e.To] = true
+	}
+	for _, want := range []graph.NodeID{
+		"method:Extensions/Temperature+Format.swift#Temperature.label",
+		"method:Extensions/Temperature+Format.swift#Temperature.rounded",
+	} {
+		if !tempGot[want] {
+			t.Errorf("expected Temperature.summary -> %s in extension, got %+v", want, tempOut)
+		}
+	}
+}
+
+func TestIndexerBareCallInMethodPrefersFunctionWithoutImplicitSelf(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "srv"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Python and Go never resolve a bare call inside a method to self.method.
+	writeGo(t, filepath.Join(root, "app.py"), `def validate():
+    pass
+
+class Server:
+    def validate(self):
+        pass
+
+    def start(self):
+        validate()
+`)
+	writeGo(t, filepath.Join(root, "srv", "server.go"), "package srv\n\ntype Server struct{}\n\nfunc (s *Server) Start() { validate() }\n")
+	writeGo(t, filepath.Join(root, "srv", "server_validate.go"), "package srv\n\nfunc (s *Server) validate() {}\n")
+	writeGo(t, filepath.Join(root, "srv", "util.go"), "package srv\n\nfunc validate() {}\n")
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	for caller, want := range map[graph.NodeID]graph.NodeID{
+		"method:app.py#Server.start":        "func:app.py#validate",
+		"method:srv/server.go#Server.Start": "func:srv/util.go#validate",
+	} {
+		out, err := store.OutEdges(caller, "calls")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(out) != 1 || out[0].To != want {
+			t.Errorf("%s: want calls -> %s, got %+v", caller, want, out)
+		}
+	}
+}
+
+func TestIndexerSwiftConformerDoesNotBindToSiblingImplementation(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Tests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// center.add is UNUserNotificationCenter's API; the only other repo `add`
+	// is a test fake conforming to the same protocol and must not be chosen.
+	writeGo(t, filepath.Join(root, "NotificationService.swift"), `protocol NotificationClient {
+    func add(_ request: Int) async throws
+}
+struct SystemNotificationClient: NotificationClient {
+    let center = UNUserNotificationCenter.current()
+    func add(_ request: Int) async throws { try await center.add(request) }
+}
+`)
+	writeGo(t, filepath.Join(root, "Tests", "FakeClient.swift"), `final class FakeNotificationClient: NotificationClient {
+    func add(_ request: Int) async throws {}
+}
+`)
+	// A property named after its type's suffix still resolves among same-named methods.
+	writeGo(t, filepath.Join(root, "WeatherRepository.swift"), `final class WeatherRepository {
+    func setProvider(_ p: Int) {}
+}
+`)
+	writeGo(t, filepath.Join(root, "WeatherViewModel.swift"), `final class WeatherViewModel {
+    let repository = WeatherRepository()
+    func setProvider(_ p: Int) { repository.setProvider(p) }
+}
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := store.OutEdges("method:NotificationService.swift#SystemNotificationClient.add", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range out {
+		if e.To == "method:Tests/FakeClient.swift#FakeNotificationClient.add" {
+			t.Fatalf("production add bound to test fake: %+v", out)
+		}
+	}
+
+	vm, err := store.OutEdges("method:WeatherViewModel.swift#WeatherViewModel.setProvider", "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vm) != 1 || vm[0].To != "method:WeatherRepository.swift#WeatherRepository.setProvider" {
+		t.Fatalf("repository.setProvider: want WeatherRepository.setProvider, got %+v", vm)
+	}
+}

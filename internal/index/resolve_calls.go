@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
@@ -65,6 +66,7 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 	defer idx.mu.Unlock()
 
 	defsByName := make(map[string][]graph.Node)
+	swiftTypesByName := make(map[string][]graph.Node)
 	importsByFile := make(map[string][]string)
 	var callers []graph.Node
 	existingSymbols := make(map[graph.NodeID]bool)
@@ -74,6 +76,10 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		case parse.KindFunction, parse.KindMethod:
 			if n.Name != "" {
 				defsByName[n.Name] = append(defsByName[n.Name], n)
+			}
+		case parse.KindType:
+			if n.Name != "" && isSwiftPath(n.Path) && n.Props[parse.PropExtension] == "" {
+				swiftTypesByName[n.Name] = append(swiftTypesByName[n.Name], n)
 			}
 		case parse.KindImport:
 			if n.Path != "" && n.Name != "" {
@@ -91,10 +97,11 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		return err
 	}
 
-	for name := range defsByName {
-		defs := defsByName[name]
-		sort.Slice(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
-		defsByName[name] = defs
+	for _, byName := range []map[string][]graph.Node{defsByName, swiftTypesByName} {
+		for name, defs := range byName {
+			sort.Slice(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
+			byName[name] = defs
+		}
 	}
 	sort.Slice(callers, func(i, j int) bool { return callers[i].ID < callers[j].ID })
 
@@ -113,7 +120,11 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 				continue
 			}
 			_, memberName := splitCalleeQualifier(calleeName)
-			if targetID, prov, ok := pickCalleeTarget(caller, calleeName, defsByName[memberName], fileImports); ok {
+			targetID, prov, ok := pickCalleeTarget(caller, calleeName, defsByName[memberName], fileImports)
+			if !ok && isSwiftPath(caller.Path) {
+				targetID, prov, ok = pickSwiftModuleTarget(caller, calleeName, defsByName[memberName], swiftTypesByName)
+			}
+			if ok {
 				if targetID != caller.ID {
 					desired[targetID] = prov
 				}
@@ -229,6 +240,22 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 			return "", "", false
 		}
 
+		// Tier 1b: Same receiver type across files (e.g. Swift extensions, C# partial types).
+		if recv := implicitSelfReceiver(caller); recv != "" {
+			var sameRecv []graph.Node
+			for _, c := range candidates {
+				if methodReceiver(c) == recv {
+					sameRecv = append(sameRecv, c)
+				}
+			}
+			if len(sameRecv) == 1 {
+				return sameRecv[0].ID, parse.ProvenanceInferred, true
+			}
+			if len(sameRecv) > 1 {
+				return "", "", false
+			}
+		}
+
 		// Tier 2: Same directory / package.
 		callerDir := filepath.ToSlash(filepath.Dir(caller.Path))
 		var sameDir []graph.Node
@@ -267,6 +294,14 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 		}
 	}
 
+	// Tier 3b: Type-qualified call (Type.method, Type.shared.method, self.method)
+	// where exactly one candidate's receiver is named by the qualifier.
+	if !isBare {
+		if id, ok := pickByQualifierReceiver(caller, qualifier, candidates); ok {
+			return id, parse.ProvenanceInferred, true
+		}
+	}
+
 	// Tier 4: Unique top-level function across the repository (excluding common language builtins).
 	if isBare && !isCommonBuiltin(calleeName) && len(candidates) == 1 && candidates[0].Kind == parse.KindFunction {
 		return candidates[0].ID, parse.ProvenanceInferred, true
@@ -275,18 +310,184 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 	return "", "", false
 }
 
-func disambiguateCandidates(caller graph.Node, candidates []graph.Node) (graph.NodeID, bool) {
-	if caller.Props != nil {
-		if recv := caller.Props["receiver"]; recv != "" {
-			var byRecv []graph.Node
-			for _, c := range candidates {
-				if c.Props != nil && c.Props["receiver"] == recv {
-					byRecv = append(byRecv, c)
+// pickByQualifierReceiver matches a qualified call to the one candidate method
+// whose receiver type is a segment of the qualifier. Bare "self" and "this"
+// qualifiers stand for the caller's own receiver; chained field accesses like
+// "self.store.refreshAll" do not map "self" to the caller's receiver.
+func pickByQualifierReceiver(caller graph.Node, qualifier string, candidates []graph.Node) (graph.NodeID, bool) {
+	segs := map[string]bool{}
+	switch qualifier {
+	case "self", "this", "Self":
+		if recv := methodReceiver(caller); recv != "" {
+			segs[recv] = true
+		}
+	default:
+		for i, seg := range strings.FieldsFunc(qualifier, func(r rune) bool { return r == '.' || r == ':' }) {
+			switch seg {
+			case "self", "this":
+				// Property chain on self/this: the method receiver is the property, not caller.
+			case "Self":
+				if i == 0 {
+					if recv := methodReceiver(caller); recv != "" {
+						segs[recv] = true
+					}
+				}
+			default:
+				segs[seg] = true
+			}
+		}
+	}
+	var match []graph.Node
+	for _, c := range candidates {
+		if c.Kind == parse.KindMethod && segs[methodReceiver(c)] {
+			match = append(match, c)
+		}
+	}
+	if len(match) == 1 {
+		return match[0].ID, true
+	}
+	return "", false
+}
+
+// pickSwiftModuleTarget resolves calls the generic tiers cannot: every file in a
+// Swift module sees every other without imports, so a name that is unique among
+// the repository's Swift declarations is taken as the target. Bare calls to a
+// type name are initializers and link to the type. Qualifiers rooted at an
+// unknown capitalized name are treated as external types and left unresolved.
+func pickSwiftModuleTarget(caller graph.Node, calleeName string, candidates []graph.Node, swiftTypesByName map[string][]graph.Node) (graph.NodeID, string, bool) {
+	qualifier, member := splitCalleeQualifier(calleeName)
+	var swiftDefs []graph.Node
+	for _, c := range candidates {
+		if isSwiftPath(c.Path) {
+			swiftDefs = append(swiftDefs, c)
+		}
+	}
+
+	if qualifier == "" {
+		if recv := methodReceiver(caller); recv != "" {
+			var sameRecv []graph.Node
+			for _, c := range swiftDefs {
+				if methodReceiver(c) == recv {
+					sameRecv = append(sameRecv, c)
 				}
 			}
-			if len(byRecv) == 1 {
-				return byRecv[0].ID, true
+			if len(sameRecv) == 1 {
+				return sameRecv[0].ID, parse.ProvenanceInferred, true
 			}
+		}
+		if len(swiftDefs) == 1 {
+			return swiftDefs[0].ID, parse.ProvenanceInferred, true
+		}
+		if len(swiftDefs) == 0 {
+			if types := swiftTypesByName[member]; len(types) == 1 {
+				return types[0].ID, parse.ProvenanceInferred, true
+			}
+		}
+		return "", "", false
+	}
+
+	switch qualifier {
+	case "self", "this", "Self", "super":
+		// Direct receiver calls were already checked against caller's receiver by Tier 3b.
+		return "", "", false
+	}
+
+	root := qualifier
+	if i := strings.IndexByte(root, '.'); i >= 0 {
+		root = root[:i]
+	}
+	if root == "" || root == "_" {
+		return "", "", false
+	}
+	if unicode.IsUpper([]rune(root)[0]) {
+		if len(swiftTypesByName[root]) == 0 {
+			return "", "", false
+		}
+		// A direct Type.method() call was already checked against Type by Tier 3b;
+		// do not fall through to an unrelated type's method of the same name.
+		if !strings.Contains(qualifier, ".") {
+			if member == "init" && len(swiftDefs) == 0 && len(swiftTypesByName[qualifier]) == 1 {
+				return swiftTypesByName[qualifier][0].ID, parse.ProvenanceInferred, true
+			}
+			return "", "", false
+		}
+	}
+	if len(swiftDefs) == 1 {
+		return swiftDefs[0].ID, parse.ProvenanceInferred, true
+	}
+	if len(swiftDefs) > 1 {
+		lastSeg := qualifier
+		if i := strings.LastIndexByte(lastSeg, '.'); i >= 0 {
+			lastSeg = lastSeg[i+1:]
+		}
+		// Match the property name to the end of the receiver type, so
+		// `repository.save` picks WeatherRepository.save; ambiguity stays unresolved.
+		lastSeg = strings.ToLower(lastSeg)
+		var byPropName []graph.Node
+		for _, c := range swiftDefs {
+			if lastSeg != "" && strings.HasSuffix(strings.ToLower(methodReceiver(c)), lastSeg) {
+				byPropName = append(byPropName, c)
+			}
+		}
+		if len(byPropName) == 1 {
+			return byPropName[0].ID, parse.ProvenanceInferred, true
+		}
+	}
+	return "", "", false
+}
+
+// methodReceiver returns the receiver type encoded in a method node ID
+// ("method:path#Recv.name" or "method:path#Recv.name(sig)"), or "".
+func methodReceiver(n graph.Node) string {
+	if n.Kind != parse.KindMethod {
+		return ""
+	}
+	if n.Props != nil && n.Props["receiver"] != "" {
+		return n.Props["receiver"]
+	}
+	id := string(n.ID)
+	i := strings.LastIndexByte(id, '#')
+	if i < 0 {
+		return ""
+	}
+	sym := id[i+1:]
+	if j := strings.IndexByte(sym, '('); j >= 0 {
+		sym = sym[:j]
+	}
+	if j := strings.LastIndexByte(sym, '.'); j > 0 {
+		return sym[:j]
+	}
+	return ""
+}
+
+// implicitSelfReceiver returns the caller's receiver type when its language
+// resolves a bare call inside a method against the method's own type first
+// (Swift, Kotlin, Java, C#, C++, Ruby). In Go, Python, JavaScript, TypeScript
+// and PHP a bare call never means self.method, so it returns "".
+func implicitSelfReceiver(caller graph.Node) string {
+	switch strings.ToLower(filepath.Ext(caller.Path)) {
+	case ".swift", ".kt", ".kts", ".java", ".cs", ".rb",
+		".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx":
+		return methodReceiver(caller)
+	default:
+		return ""
+	}
+}
+
+func isSwiftPath(p string) bool {
+	return strings.EqualFold(filepath.Ext(p), ".swift")
+}
+
+func disambiguateCandidates(caller graph.Node, candidates []graph.Node) (graph.NodeID, bool) {
+	if recv := implicitSelfReceiver(caller); recv != "" {
+		var byRecv []graph.Node
+		for _, c := range candidates {
+			if methodReceiver(c) == recv {
+				byRecv = append(byRecv, c)
+			}
+		}
+		if len(byRecv) == 1 {
+			return byRecv[0].ID, true
 		}
 	}
 	var funcs []graph.Node

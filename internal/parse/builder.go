@@ -254,7 +254,11 @@ func precedingComments(b *builder, n *tree_sitter.Node) string {
 			}
 			break
 		}
-		if cleaned := cleanLineComment(raw); cleaned != "" {
+		cleaned := cleanLineComment(raw)
+		if isSectionMarker(cleaned) {
+			break
+		}
+		if cleaned != "" {
 			lines = append([]string{cleaned}, lines...)
 		}
 		nextRow = prev.StartPosition().Row
@@ -281,11 +285,23 @@ func precedingComments(b *builder, n *tree_sitter.Node) string {
 			}
 			break
 		}
-		if cleaned := cleanLineComment(raw); cleaned != "" {
+		cleaned := cleanLineComment(raw)
+		if isSectionMarker(cleaned) {
+			childLines = nil
+			continue
+		}
+		if cleaned != "" {
 			childLines = append(childLines, cleaned)
 		}
 	}
 	return strings.TrimSpace(strings.Join(childLines, "\n"))
+}
+
+// isSectionMarker reports editor section markers such as Swift's
+// "// MARK: - Networking", which label a region of the file rather than
+// document the declaration that follows.
+func isSectionMarker(cleaned string) bool {
+	return strings.HasPrefix(cleaned, "MARK:")
 }
 
 func isDocBlockComment(raw string) bool {

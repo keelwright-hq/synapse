@@ -110,9 +110,14 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 			return errStopWalk
 		}
 		scanned++
+		// Merge commits replay changes already counted on the merged branch's
+		// own commits; counting them too would double co-change support.
+		if c.NumParents() > 1 {
+			return nil
+		}
 		stats, err := c.Stats()
 		if err != nil {
-			// Merge commits / empty trees — skip quietly.
+			// Empty trees / unreadable diffs — skip quietly.
 			return nil
 		}
 		paths := make([]string, 0, len(stats))

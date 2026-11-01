@@ -77,7 +77,8 @@ func qualifierName(b *builder, q *tree_sitter.Node) string {
 	}
 	switch q.Kind() {
 	case "identifier", "property_identifier", "type_identifier", "simple_identifier", "field_identifier",
-		"this", "self", "super", "scoped_identifier", "qualified_identifier", "namespace_name":
+		"this", "self", "super", "self_expression", "super_expression",
+		"scoped_identifier", "qualified_identifier", "namespace_name":
 		return strings.TrimSpace(b.text(q))
 	case "selector_expression", "member_expression", "attribute", "navigation_expression", "field_access", "member_access_expression":
 		return calleeName(b, q)

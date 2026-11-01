@@ -255,3 +255,54 @@ func TestAnalyzeLinkedWorktreeAndEmptyRepo(t *testing.T) {
 		t.Fatal("expected co_committed edges from a linked worktree")
 	}
 }
+
+func TestWalkSkipsMergeCommits(t *testing.T) {
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git CLI not available to create a merge commit")
+	}
+	root := t.TempDir()
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(gitBin, args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	touch := func(files ...string) {
+		t.Helper()
+		for _, f := range files {
+			p := filepath.Join(root, f)
+			b, _ := os.ReadFile(p)
+			if err := os.WriteFile(p, append(b, 'x'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	runGit("init", "-q", "-b", "main")
+	touch("base.go")
+	runGit("add", ".")
+	runGit("commit", "-q", "-m", "base")
+	runGit("checkout", "-q", "-b", "feature")
+	touch("a.go", "b.go")
+	runGit("add", ".")
+	runGit("commit", "-q", "-m", "feature pair")
+	runGit("checkout", "-q", "main")
+	touch("base.go")
+	runGit("commit", "-q", "-am", "diverge")
+	runGit("merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+
+	commits, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the feature commit pairs a.go with b.go; the merge must not count again.
+	if len(commits) != 1 {
+		t.Fatalf("want 1 pair-producing commit (merge skipped), got %+v", commits)
+	}
+}

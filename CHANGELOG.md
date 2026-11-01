@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+### Fixed & Improved
+
+- **Swift cross-file call resolution:** Calls now link across files in a Swift
+  module. Type-qualified calls (`Type.method`, `Type.shared.method`,
+  `self.method`) resolve by receiver type in every language. Swift calls whose
+  name is unique among the repo's Swift declarations resolve as `INFERRED`,
+  and bare `Type(...)` initializers link to the type. Qualifiers rooted at an
+  unknown capitalized name are treated as external types and stay unresolved.
+  Swift `extension` declarations are marked (`props.extension`) and never
+  count as the type's definition.
+- **Bare calls in methods respect language semantics:** A bare call inside a
+  method prefers the caller's own type only in languages with implicit `self`
+  (Swift, Kotlin, Java, C#, C++, Ruby). In Go, Python, JavaScript, TypeScript
+  and PHP, `validate()` now links to the function `validate`, not a same-named
+  method on the caller's type.
+- **Co-change ignores merge commits:** `git.Walk` skips commits with more than
+  one parent. Merges replayed changes already counted on the merged branch, which
+  inflated `co_committed` support (about 2× on branch-heavy histories).
+- **Swift `defer` is not a call:** `defer { ... }` no longer creates a
+  `symbol:defer` call target. Calls inside the block are still recorded.
+- **`// MARK:` is not a doc comment:** Section markers no longer become
+  `props.doc`, and comments above a marker are not attached to the declaration
+  below it.
+
 ## v0.4.1 — P2 Stabilization & Quality
 
 ### Fixed & Improved
