@@ -341,13 +341,21 @@ func TestIndexerFileNodeNameIsRelativeBasenameAndRespectsGitignore(t *testing.T)
 
 func TestIndexerResolvesSwiftCallsAcrossFiles(t *testing.T) {
 	root := t.TempDir()
-	for _, dir := range []string{"App", "Services", "Models"} {
+	for _, dir := range []string{"App", "Services", "Models", "Extensions"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	writeGo(t, filepath.Join(root, "Models", "Temperature.swift"), `struct Temperature {
     let value: Double
+    func summary() -> String {
+        _ = self.rounded()
+        return label()
+    }
+}
+`)
+	writeGo(t, filepath.Join(root, "Models", "Wind.swift"), `struct Wind {
+    func label() -> String { "" }
 }
 `)
 	writeGo(t, filepath.Join(root, "Services", "NotificationService.swift"), `final class NotificationService {
@@ -361,11 +369,17 @@ func TestIndexerResolvesSwiftCallsAcrossFiles(t *testing.T) {
 `)
 	writeGo(t, filepath.Join(root, "App", "ViewModel.swift"), `final class ViewModel {
     let store = Store()
+    func refreshAll() {
+        self.store.refreshAll()
+    }
     func load() {
         let t = Temperature(value: 1)
         NotificationService.shared.reconcile()
-        store.refreshAll()
+        self.store.refreshAll()
         JSONDecoder().decodeThing()
+        self.decodeThing()
+        Temperature.decodeThing()
+        "literal".decodeThing()
         Date()
         _ = Double(2)
     }
@@ -377,8 +391,12 @@ func TestIndexerResolvesSwiftCallsAcrossFiles(t *testing.T) {
 `)
 	// Extensions are not definitions: Temperature keeps one constructible type,
 	// and an extension of an external type does not capture Double(...) calls.
-	writeGo(t, filepath.Join(root, "Models", "Temperature+Format.swift"), `extension Temperature {
+	// Putting Temperature+Format in Extensions/ also verifies that Temperature.summary's
+	// bare label() call resolves to Temperature.label across directories rather than
+	// same-directory Wind.label in Models/.
+	writeGo(t, filepath.Join(root, "Extensions", "Temperature+Format.swift"), `extension Temperature {
     func label() -> String { "" }
+    func rounded() -> Temperature { self }
 }
 extension Double {
     func roundedHalf() -> Double { self }
@@ -403,6 +421,9 @@ extension Double {
 		"method:Services/NotificationService.swift#NotificationService.reconcile",
 		"method:Services/Store.swift#Store.refreshAll",
 		"symbol:JSONDecoder.decodeThing",
+		"symbol:self.decodeThing",
+		"symbol:Temperature.decodeThing",
+		"symbol:_.decodeThing",
 		"symbol:Date",
 		"symbol:Double",
 	} {
@@ -411,6 +432,36 @@ extension Double {
 		}
 	}
 	if got["method:App/Other.swift#Other.decodeThing"] {
-		t.Errorf("call on external type JSONDecoder bound to a repo method")
+		t.Errorf("call on external/unrelated receiver bound to Other.decodeThing")
+	}
+	if got["method:App/ViewModel.swift#ViewModel.refreshAll"] {
+		t.Errorf("self.store.refreshAll() falsely bound to ViewModel.refreshAll instead of Store.refreshAll")
+	}
+
+	wrapperCaller := graph.NodeID("method:App/ViewModel.swift#ViewModel.refreshAll")
+	wrapperOut, err := store.OutEdges(wrapperCaller, "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wrapperOut) != 1 || wrapperOut[0].To != "method:Services/Store.swift#Store.refreshAll" {
+		t.Errorf("expected ViewModel.refreshAll -> Store.refreshAll, got %+v", wrapperOut)
+	}
+
+	tempSummary := graph.NodeID("method:Models/Temperature.swift#Temperature.summary")
+	tempOut, err := store.OutEdges(tempSummary, "calls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tempGot := map[graph.NodeID]bool{}
+	for _, e := range tempOut {
+		tempGot[e.To] = true
+	}
+	for _, want := range []graph.NodeID{
+		"method:Extensions/Temperature+Format.swift#Temperature.label",
+		"method:Extensions/Temperature+Format.swift#Temperature.rounded",
+	} {
+		if !tempGot[want] {
+			t.Errorf("expected Temperature.summary -> %s in extension, got %+v", want, tempOut)
+		}
 	}
 }

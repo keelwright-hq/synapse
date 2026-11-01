@@ -240,6 +240,22 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 			return "", "", false
 		}
 
+		// Tier 1b: Same receiver type across files (e.g. Swift extensions, Go/C# split types).
+		if recv := methodReceiver(caller); recv != "" {
+			var sameRecv []graph.Node
+			for _, c := range candidates {
+				if methodReceiver(c) == recv {
+					sameRecv = append(sameRecv, c)
+				}
+			}
+			if len(sameRecv) == 1 {
+				return sameRecv[0].ID, parse.ProvenanceInferred, true
+			}
+			if len(sameRecv) > 1 {
+				return "", "", false
+			}
+		}
+
 		// Tier 2: Same directory / package.
 		callerDir := filepath.ToSlash(filepath.Dir(caller.Path))
 		var sameDir []graph.Node
@@ -295,18 +311,30 @@ func pickCalleeTarget(caller graph.Node, calleeName string, candidates []graph.N
 }
 
 // pickByQualifierReceiver matches a qualified call to the one candidate method
-// whose receiver type is a segment of the qualifier. "self" and "this" stand
-// for the caller's own receiver.
+// whose receiver type is a segment of the qualifier. Bare "self" and "this"
+// qualifiers stand for the caller's own receiver; chained field accesses like
+// "self.store.refreshAll" do not map "self" to the caller's receiver.
 func pickByQualifierReceiver(caller graph.Node, qualifier string, candidates []graph.Node) (graph.NodeID, bool) {
 	segs := map[string]bool{}
-	for _, seg := range strings.FieldsFunc(qualifier, func(r rune) bool { return r == '.' || r == ':' }) {
-		switch seg {
-		case "self", "this", "Self":
-			if recv := methodReceiver(caller); recv != "" {
-				segs[recv] = true
+	switch qualifier {
+	case "self", "this", "Self":
+		if recv := methodReceiver(caller); recv != "" {
+			segs[recv] = true
+		}
+	default:
+		for i, seg := range strings.FieldsFunc(qualifier, func(r rune) bool { return r == '.' || r == ':' }) {
+			switch seg {
+			case "self", "this":
+				// Property chain on self/this: the method receiver is the property, not caller.
+			case "Self":
+				if i == 0 {
+					if recv := methodReceiver(caller); recv != "" {
+						segs[recv] = true
+					}
+				}
+			default:
+				segs[seg] = true
 			}
-		default:
-			segs[seg] = true
 		}
 	}
 	var match []graph.Node
@@ -358,15 +386,60 @@ func pickSwiftModuleTarget(caller graph.Node, calleeName string, candidates []gr
 		return "", "", false
 	}
 
+	switch qualifier {
+	case "self", "this", "Self", "super":
+		// Direct receiver calls were already checked against caller's receiver by Tier 3b.
+		return "", "", false
+	}
+
 	root := qualifier
 	if i := strings.IndexByte(root, '.'); i >= 0 {
 		root = root[:i]
 	}
-	if root != "" && unicode.IsUpper([]rune(root)[0]) && len(swiftTypesByName[root]) == 0 {
+	if root == "" || root == "_" {
 		return "", "", false
+	}
+	if unicode.IsUpper([]rune(root)[0]) {
+		if len(swiftTypesByName[root]) == 0 {
+			return "", "", false
+		}
+		// A direct Type.method() call was already checked against Type by Tier 3b;
+		// do not fall through to an unrelated type's method of the same name.
+		if !strings.Contains(qualifier, ".") {
+			if member == "init" && len(swiftDefs) == 0 && len(swiftTypesByName[qualifier]) == 1 {
+				return swiftTypesByName[qualifier][0].ID, parse.ProvenanceInferred, true
+			}
+			return "", "", false
+		}
 	}
 	if len(swiftDefs) == 1 {
 		return swiftDefs[0].ID, parse.ProvenanceInferred, true
+	}
+	if len(swiftDefs) > 1 {
+		lastSeg := qualifier
+		if i := strings.LastIndexByte(lastSeg, '.'); i >= 0 {
+			lastSeg = lastSeg[i+1:]
+		}
+		var byPropName []graph.Node
+		for _, c := range swiftDefs {
+			if strings.EqualFold(methodReceiver(c), lastSeg) {
+				byPropName = append(byPropName, c)
+			}
+		}
+		if len(byPropName) == 1 {
+			return byPropName[0].ID, parse.ProvenanceInferred, true
+		}
+		if recv := methodReceiver(caller); recv != "" {
+			var otherRecv []graph.Node
+			for _, c := range swiftDefs {
+				if c.Kind == parse.KindMethod && methodReceiver(c) != recv {
+					otherRecv = append(otherRecv, c)
+				}
+			}
+			if len(otherRecv) == 1 {
+				return otherRecv[0].ID, parse.ProvenanceInferred, true
+			}
+		}
 	}
 	return "", "", false
 }
@@ -400,17 +473,15 @@ func isSwiftPath(p string) bool {
 }
 
 func disambiguateCandidates(caller graph.Node, candidates []graph.Node) (graph.NodeID, bool) {
-	if caller.Props != nil {
-		if recv := caller.Props["receiver"]; recv != "" {
-			var byRecv []graph.Node
-			for _, c := range candidates {
-				if c.Props != nil && c.Props["receiver"] == recv {
-					byRecv = append(byRecv, c)
-				}
+	if recv := methodReceiver(caller); recv != "" {
+		var byRecv []graph.Node
+		for _, c := range candidates {
+			if methodReceiver(c) == recv {
+				byRecv = append(byRecv, c)
 			}
-			if len(byRecv) == 1 {
-				return byRecv[0].ID, true
-			}
+		}
+		if len(byRecv) == 1 {
+			return byRecv[0].ID, true
 		}
 	}
 	var funcs []graph.Node
