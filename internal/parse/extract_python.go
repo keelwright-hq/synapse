@@ -40,6 +40,22 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		}
 		return
 
+	case "decorated_definition":
+		// `@mark(...)` belongs to the function or class it decorates, not to
+		// whatever encloses the definition.
+		def := field(n, "definition")
+		walkPython(b, def, module, current)
+		owner := current
+		if id := pythonDefinitionID(b, def); id != "" && b.nodes[id].ID != "" {
+			owner = id
+		}
+		for i := uint(0); i < n.NamedChildCount(); i++ {
+			if c := n.NamedChild(i); c != nil && c.Kind() == "decorator" {
+				walkPython(b, c, module, owner)
+			}
+		}
+		return
+
 	case "assignment":
 		// `X = ...` / `x: T = ...`: the target is not a use; its hint and value are.
 		for _, part := range []string{"type", "right"} {
@@ -108,6 +124,29 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		walkPython(b, n.NamedChild(i), module, current)
 	}
+}
+
+// pythonDefinitionID is the node ID walkPython gives a function or class
+// definition, or "" for anything else.
+func pythonDefinitionID(b *builder, def *tree_sitter.Node) graph.NodeID {
+	if def == nil {
+		return ""
+	}
+	nameNode := field(def, "name")
+	if nameNode == nil {
+		return ""
+	}
+	name := b.text(nameNode)
+	switch def.Kind() {
+	case "class_definition":
+		return typeID(b.path, name)
+	case "function_definition":
+		if recv := containingPythonClass(b, def); recv != "" {
+			return methodID(b.path, recv, name)
+		}
+		return funcID(b.path, name)
+	}
+	return ""
 }
 
 func containingPythonClass(b *builder, n *tree_sitter.Node) string {

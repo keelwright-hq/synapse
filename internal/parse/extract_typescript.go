@@ -43,7 +43,9 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	case "identifier", "property_identifier", "type_identifier":
 		// Type annotations, generics, `new Foo()`, `Foo.bar()`: a type reference
 		// from the enclosing declaration (the index keeps only names that resolve).
-		if t := b.text(n); n.Kind() == "type_identifier" || looksLikeTypeName(t) {
+		// Built-ins (string, number, void) and single-letter generics don't
+		// look like type names and are skipped.
+		if t := b.text(n); looksLikeTypeName(t) {
 			b.addListProp(ownerOr(current, module), PropTypeRefs, t)
 		}
 		return

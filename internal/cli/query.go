@@ -228,8 +228,12 @@ var queryAffectedCmd = &cobra.Command{
 	Short: "Code that calls, references or inherits from a symbol, grouped by file",
 	Long: `affected walks calls, references, inherits and implements edges backwards
 from a symbol. Every type on the walk includes its members, also those declared
-in Swift extensions in other files, so callers of its methods count. Use
---depth to follow dependents of dependents.`,
+in Swift extensions in other files, so callers of its methods count. A file:
+seed covers everything the file declares.
+
+--depth follows dependents of dependents. A file reached through an import at
+depth 2 or more counts only its imports and top-level code, not everything it
+declares, so deep queries on import-heavy code stay bounded.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runImpactQuery(cmd, args[0], rank.Affected)

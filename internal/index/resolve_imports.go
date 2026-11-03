@@ -105,19 +105,22 @@ func resolveImportPath(importer, spec string, files map[string]bool) (string, bo
 	switch path.Ext(importer) {
 	case ".py":
 		return resolvePythonImport(dir, spec, files)
-	case ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx":
+	case ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts":
 		if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") && spec != "." && spec != ".." {
 			return "", false
 		}
 		base := path.Clean(path.Join(dir, spec))
 		cands := []string{base}
-		// TS ESM imports name the emitted file: ./http.js -> ./http.ts
-		if stem := strings.TrimSuffix(base, path.Ext(base)); stem != base {
-			for _, ext := range []string{".ts", ".tsx", ".js", ".jsx"} {
-				cands = append(cands, stem+ext)
+		// TS ESM imports name the emitted file: ./http.js -> ./http.ts,
+		// ./x.mjs -> ./x.mts, ./x.cjs -> ./x.cts.
+		if ext := path.Ext(base); ext != "" {
+			stem := strings.TrimSuffix(base, ext)
+			emitted := map[string][]string{".js": {".ts", ".tsx"}, ".jsx": {".tsx"}, ".mjs": {".mts"}, ".cjs": {".cts"}}
+			for _, src := range emitted[ext] {
+				cands = append(cands, stem+src)
 			}
 		}
-		for _, ext := range []string{".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs"} {
+		for _, ext := range []string{".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs", ".mts", ".cts"} {
 			cands = append(cands, base+ext)
 		}
 		for _, ext := range []string{".ts", ".tsx", ".js", ".jsx"} {

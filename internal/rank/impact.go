@@ -51,9 +51,11 @@ type ImpactResult struct {
 }
 
 // Affected walks dependency edges backwards from seed: everything that calls,
-// references, inherits from or implements it, up to depth hops. Every type on
-// the walk includes its members (also those declared in Swift extensions in
-// other files), so callers of a type's methods count as affected.
+// references, inherits from, implements or imports it, up to depth hops. Every
+// type on the walk includes its members (also those declared in Swift
+// extensions in other files), so callers of a type's methods count as
+// affected. A file seed includes everything it declares; a module reached
+// later through an import stands only for its own imports and top-level code.
 func Affected(store graph.Store, seed graph.NodeID, depth, limit int) (ImpactResult, error) {
 	return walkDependencies(store, seed, depth, limit, "in")
 }
@@ -91,6 +93,14 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 		var next []graph.Node
 		var sources []graph.Node
 		for _, cur := range frontier {
+			// A file or module reached mid-walk (through an import) stands only
+			// for itself: its imports and module-level code. Expanding it to
+			// everything it declares would fan out across whole importers at
+			// depth >= 2. The seed file was already expanded into own.
+			if d > 1 && (cur.Kind == parse.KindFile || cur.Kind == parse.KindModule) {
+				sources = append(sources, cur)
+				continue
+			}
 			// A type reached mid-walk also stands for its members.
 			expanded, err := mx.withMembers(cur)
 			if err != nil {

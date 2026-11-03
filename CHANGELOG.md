@@ -41,6 +41,13 @@
     unique type declaration only.
   - Classes now `contain` their methods, and class bodies are attributed to
     the class.
+  - Python decorators (`@cached(...)`) are attributed to the function or class
+    they decorate.
+  - `.mts` and `.cts` files are parsed as TypeScript and take part in type
+    edges and import resolution.
+  - Known limitation: a type name declared by two classes in the same language
+    family (two `User`s in one repo) stays unlinked, as in Swift. Resolving
+    through the import path is a possible follow-up.
 - **Calls in anonymous callbacks are kept:** in JS, TS and Python, calls outside
   any named function (Express route handlers, module-level code) are attributed
   to the file's module instead of being dropped.
@@ -51,7 +58,9 @@
   - So do Python relative and repo-local imports, including nested and `src/`
     layouts.
   - `affected` and `dependencies` follow these edges, and a `file:` seed covers
-    everything the file declares.
+    everything the file declares. A file reached through an import at
+    `--depth` 2 or more counts only its imports and top-level code, so deep
+    queries stay bounded.
 - **Faster git co-change walk:** commits are diffed by tree entries instead of
   line stats, so commits touching thousands of files no longer cost seconds
   each. On two benchmark repos indexing went from 17.4s to 4.5s and from 13.1s

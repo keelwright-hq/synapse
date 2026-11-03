@@ -174,3 +174,43 @@ func TestShortestPathEdgeCases(t *testing.T) {
 		t.Fatalf("Leaf -> Top should have no path, err=%v", err)
 	}
 }
+
+func TestAffectedDoesNotExpandModulesReachedThroughImports(t *testing.T) {
+	s := memory.New()
+	for _, n := range []graph.Node{
+		{ID: "file:a.ts", Kind: parse.KindFile, Name: "a.ts", Path: "a.ts"},
+		{ID: "module:a.ts", Kind: parse.KindModule, Name: "a", Path: "a.ts"},
+		{ID: "func:a.ts#helper", Kind: parse.KindFunction, Name: "helper", Path: "a.ts"},
+		{ID: "module:b.ts", Kind: parse.KindModule, Name: "b", Path: "b.ts"},
+		{ID: "func:b.ts#unrelated", Kind: parse.KindFunction, Name: "unrelated", Path: "b.ts"},
+		{ID: "module:c.ts", Kind: parse.KindModule, Name: "c", Path: "c.ts"},
+		{ID: "func:c.ts#caller", Kind: parse.KindFunction, Name: "caller", Path: "c.ts"},
+		{ID: "module:d.ts", Kind: parse.KindModule, Name: "d", Path: "d.ts"},
+	} {
+		if err := s.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, e := range []graph.Edge{
+		{From: "file:a.ts", To: "module:a.ts", Type: parse.EdgeContains},
+		{From: "module:a.ts", To: "func:a.ts#helper", Type: parse.EdgeContains},
+		{From: "module:b.ts", To: "func:b.ts#unrelated", Type: parse.EdgeContains},
+		{From: "module:c.ts", To: "func:c.ts#caller", Type: parse.EdgeContains},
+		{From: "module:b.ts", To: "module:a.ts", Type: parse.EdgeImports},           // b imports a
+		{From: "func:c.ts#caller", To: "func:b.ts#unrelated", Type: parse.EdgeCalls}, // c uses b's other code
+		{From: "module:d.ts", To: "module:b.ts", Type: parse.EdgeImports},           // d imports b
+	} {
+		if err := s.PutEdge(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := rank.Affected(s, "file:a.ts", 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Depth 1: b imports a. Depth 2: d imports b. c only calls an unrelated
+	// function in b, so expanding b to everything it declares would wrongly add it.
+	if got := filePaths(res); got != "b.ts,d.ts" {
+		t.Fatalf("affected by a.ts at depth 2 = %q, want b.ts,d.ts", got)
+	}
+}

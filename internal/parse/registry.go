@@ -118,7 +118,10 @@ func NewRegistry() *Registry {
 		r.Register(ext, jsLang)
 	}
 	r.Register(".jsx", jsxLang)
-	r.Register(".ts", tsLang)
+	// .mts/.cts are Node16+ ESM/CommonJS TypeScript: same grammar as .ts.
+	for _, ext := range []string{".ts", ".mts", ".cts"} {
+		r.Register(ext, tsLang)
+	}
 	r.Register(".tsx", tsxLang)
 	r.Register(".py", pyLang)
 	r.Register(".swift", swiftLang)

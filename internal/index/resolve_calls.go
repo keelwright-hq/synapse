@@ -561,7 +561,7 @@ func languageFamily(p string) string {
 	switch strings.ToLower(filepath.Ext(p)) {
 	case ".swift":
 		return "swift"
-	case ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx":
+	case ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts":
 		return "js"
 	case ".py":
 		return "py"

@@ -587,7 +587,7 @@ router.post('/', async (req, res) => { audit(req); });
 			file: "svc.ts",
 			src: `export class Repo extends Base implements Reader, Writer {
   items: Array<Item> = [];
-  get(id: string): Promise<Item> { return load(id); }
+  get(id: string, n: number): Promise<Item> { return load(id); }
 }
 setup();
 `,
@@ -602,12 +602,13 @@ setup();
 		{
 			file: "app.py",
 			src: `class Service(base.Model, Mixin):
+    @cached(ttl=60)
     def run(self, req: Request) -> Result:
         return Result()
 
 app = create_app(Settings())
 `,
-			calls:    [][2]string{{"module:app.py", "symbol:create_app"}, {"method:app.py#Service.run", "symbol:Result"}},
+			calls:    [][2]string{{"module:app.py", "symbol:create_app"}, {"method:app.py#Service.run", "symbol:Result"}, {"method:app.py#Service.run", "symbol:cached"}},
 			contains: [][2]string{{"type:app.py#Service", "method:app.py#Service.run"}},
 			props: []want{
 				{"type:app.py#Service", "supertypes", "Model,Mixin"},

@@ -18,7 +18,7 @@ import (
 var (
 	headingRe  = regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
 	backtickRe = regexp.MustCompile("`([^`]+)`")
-	pathRe     = regexp.MustCompile(`(?:^|[\s(])([A-Za-z0-9_./-]+\.(?:go|ts|tsx|js|jsx|py|swift|md))`)
+	pathRe     = regexp.MustCompile(`(?:^|[\s(])([A-Za-z0-9_./-]+\.(?:go|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|swift|md))`)
 	adrIDRe    = regexp.MustCompile(`(?i)\bADR[- ]?(\d+)\b`)
 	// bareTypeRe finds capitalized identifiers written without backticks;
 	// isCamelCaseTypeName then keeps the multi-word ones.
