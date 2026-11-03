@@ -28,12 +28,27 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	}
 
 	switch n.Kind() {
-	case "import_statement", "export_statement":
-		if n.Kind() == "import_statement" {
+	case "import_statement":
+		// Imported names are not uses; the import itself is recorded.
+		extractTSImport(b, n, module)
+		return
+
+	case "export_statement":
+		if field(n, "source") != nil {
+			// A re-export is an import, and its names are still uses.
 			extractTSImport(b, n, module)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
 			walkJS(b, n.NamedChild(i), module, current)
+		}
+		return
+
+	case "identifier", "property_identifier":
+		// A capitalized name used in code (`Athlete.findAll`, `models.Athlete`,
+		// `new Store()`) is a type reference; the index keeps only names that
+		// resolve to one repo type.
+		if t := b.text(n); looksLikeTypeName(t) {
+			b.addListProp(ownerOr(current, module), PropTypeRefs, t)
 		}
 		return
 
@@ -54,7 +69,7 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			name := b.text(nameNode)
 			id := methodID(b.path, containingTSClassName(b, n), name)
 			b.putSpan(n, graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path})
-			b.edge(module, id, EdgeContains)
+			b.edge(memberParent(b, n, module), id, EdgeContains)
 			walkJS(b, field(n, "body"), module, id)
 			return
 		}
@@ -66,10 +81,9 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			id := typeID(b.path, name)
 			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
+			current = id
 		}
-		for i := uint(0); i < n.NamedChildCount(); i++ {
-			walkJS(b, n.NamedChild(i), module, current)
-		}
+		walkClassParts(b, n, current, func(c *tree_sitter.Node) { walkJS(b, c, module, current) })
 		return
 
 	case "lexical_declaration", "variable_declaration":
@@ -92,7 +106,8 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				walkJS(b, value, module, id)
 				continue
 			}
-			walkJS(b, decl, module, current)
+			// Only the value is code; the declared name is not a use.
+			walkJS(b, value, module, current)
 		}
 		return
 
@@ -105,13 +120,12 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				b.edge(module, iid, EdgeImports)
 			}
 		}
-		if current != "" {
-			name := calleeName(b, fn)
-			if name != "" && name != "require" && name != "import" {
-				sid := symbolID(name)
-				b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
-				b.edge(current, sid, EdgeCalls)
-			}
+		// Calls outside any named function (route handlers and other anonymous
+		// callbacks) belong to the module rather than being dropped.
+		if name := calleeName(b, fn); name != "" && name != "require" && name != "import" {
+			sid := symbolID(name)
+			b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
+			b.edge(ownerOr(current, module), sid, EdgeCalls)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
 			walkJS(b, n.NamedChild(i), module, current)
@@ -150,4 +164,43 @@ func firstStringArg(b *builder, call *tree_sitter.Node) string {
 		}
 	})
 	return spec
+}
+
+// ownerOr is the declaration code belongs to: the enclosing function, method or
+// class, or the module for top-level and anonymous-callback code.
+func ownerOr(current, module graph.NodeID) graph.NodeID {
+	if current != "" {
+		return current
+	}
+	return module
+}
+
+// memberParent is the class that contains a method in this file, falling back
+// to the module for object-literal methods and anonymous classes.
+func memberParent(b *builder, n *tree_sitter.Node, module graph.NodeID) graph.NodeID {
+	if id := typeID(b.path, containingTSClassName(b, n)); b.nodes[id].ID != "" {
+		return id
+	}
+	return module
+}
+
+// walkClassParts records a JS/TS class's heritage as supertypes of current and
+// walks the rest of the class (not its name) with walk.
+func walkClassParts(b *builder, n *tree_sitter.Node, current graph.NodeID, walk func(*tree_sitter.Node)) {
+	name := field(n, "name")
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		c := n.NamedChild(i)
+		if c == nil || sameNode(c, name) {
+			continue
+		}
+		if c.Kind() == "class_heritage" || c.Kind() == "extends_type_clause" {
+			if current != "" {
+				for _, t := range heritageNames(b, c) {
+					b.addListProp(current, PropSupertypes, t)
+				}
+			}
+			continue
+		}
+		walk(c)
+	}
 }

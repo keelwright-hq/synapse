@@ -32,6 +32,37 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		extractPythonImport(b, n, module)
 		return
 
+	case "identifier":
+		// A capitalized name used in code (`Foo()`, `isinstance(x, Foo)`, a type
+		// hint) is a type reference; the index keeps only names that resolve.
+		if t := b.text(n); looksLikeTypeName(t) {
+			b.addListProp(ownerOr(current, module), PropTypeRefs, t)
+		}
+		return
+
+	case "decorated_definition":
+		// `@mark(...)` belongs to the function or class it decorates, not to
+		// whatever encloses the definition.
+		def := field(n, "definition")
+		walkPython(b, def, module, current)
+		owner := current
+		if id := pythonDefinitionID(b, def); id != "" && b.nodes[id].ID != "" {
+			owner = id
+		}
+		for i := uint(0); i < n.NamedChildCount(); i++ {
+			if c := n.NamedChild(i); c != nil && c.Kind() == "decorator" {
+				walkPython(b, c, module, owner)
+			}
+		}
+		return
+
+	case "assignment":
+		// `X = ...` / `x: T = ...`: the target is not a use; its hint and value are.
+		for _, part := range []string{"type", "right"} {
+			walkPython(b, field(n, part), module, current)
+		}
+		return
+
 	case "function_definition":
 		nameNode := field(n, "name")
 		if nameNode != nil {
@@ -46,8 +77,17 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				id = funcID(b.path, name)
 			}
 			b.putSpan(n, graph.Node{ID: id, Kind: kind, Name: name, Path: b.path})
-			b.edge(module, id, EdgeContains)
-			walkPython(b, field(n, "body"), module, id)
+			parent := module
+			if tid := typeID(b.path, recv); recv != "" && b.nodes[tid].ID != "" {
+				parent = tid // methods hang off their class
+			}
+			b.edge(parent, id, EdgeContains)
+			// Parameters (with type hints), return type, decorators and body.
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				if c := n.NamedChild(i); c != nil && !sameNode(c, nameNode) {
+					walkPython(b, c, module, id)
+				}
+			}
 			return
 		}
 
@@ -58,21 +98,22 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			id := typeID(b.path, name)
 			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
+			for _, t := range heritageNames(b, field(n, "superclasses")) {
+				b.addListProp(id, PropSupertypes, t)
+			}
+			current = id
 		}
-		for i := uint(0); i < n.NamedChildCount(); i++ {
-			walkPython(b, n.NamedChild(i), module, current)
-		}
+		// The class body (attributes, nested code) belongs to the class.
+		walkPython(b, field(n, "body"), module, current)
 		return
 
 	case "call":
-		if current != "" {
-			fn := field(n, "function")
-			name := calleeName(b, fn)
-			if name != "" {
-				sid := symbolID(name)
-				b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
-				b.edge(current, sid, EdgeCalls)
-			}
+		// Calls outside any function (module level, lambdas at module level)
+		// belong to the module.
+		if name := calleeName(b, field(n, "function")); name != "" {
+			sid := symbolID(name)
+			b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
+			b.edge(ownerOr(current, module), sid, EdgeCalls)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
 			walkPython(b, n.NamedChild(i), module, current)
@@ -83,6 +124,29 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		walkPython(b, n.NamedChild(i), module, current)
 	}
+}
+
+// pythonDefinitionID is the node ID walkPython gives a function or class
+// definition, or "" for anything else.
+func pythonDefinitionID(b *builder, def *tree_sitter.Node) graph.NodeID {
+	if def == nil {
+		return ""
+	}
+	nameNode := field(def, "name")
+	if nameNode == nil {
+		return ""
+	}
+	name := b.text(nameNode)
+	switch def.Kind() {
+	case "class_definition":
+		return typeID(b.path, name)
+	case "function_definition":
+		if recv := containingPythonClass(b, def); recv != "" {
+			return methodID(b.path, recv, name)
+		}
+		return funcID(b.path, name)
+	}
+	return ""
 }
 
 func containingPythonClass(b *builder, n *tree_sitter.Node) string {

@@ -15,7 +15,8 @@
       "path": "tsx/sample/app.tsx",
       "props": {
         "end_line": "11",
-        "start_line": "9"
+        "start_line": "9",
+        "type_refs": "Badge"
       }
     },
     {
@@ -25,7 +26,8 @@
       "path": "tsx/sample/app.tsx",
       "props": {
         "end_line": "7",
-        "start_line": "5"
+        "start_line": "5",
+        "type_refs": "Props"
       }
     },
     {

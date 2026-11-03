@@ -693,3 +693,99 @@ func TestIndexerSwiftTypeEdgesAndImpactQueries(t *testing.T) {
 		t.Fatalf("stale inherits edge after deleting the protocol: %+v", out)
 	}
 }
+
+func TestIndexerNonSwiftTypeEdgesAndImports(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"web/lib", "web/models", "svc/src/app/models"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// TypeScript (ESM .js specifiers, an index file) and JavaScript in one family.
+	writeGo(t, filepath.Join(root, "web/models/base.ts"), "export class Base {}\n")
+	writeGo(t, filepath.Join(root, "web/models/index.ts"), "export { Base } from './base.js';\n")
+	writeGo(t, filepath.Join(root, "web/lib/repo.ts"), `import { Base } from '../models/index.js';
+export class Repo extends Base {
+  load(): Base { return new Base(); }
+}
+`)
+	writeGo(t, filepath.Join(root, "web/app.js"), `const { Repo } = require('./lib/repo');
+router.get('/', (req, res) => { Repo.prototype.load(); });
+`)
+	// Python with a src/ layout and a relative import.
+	writeGo(t, filepath.Join(root, "svc/src/app/models/base.py"), "class Model:\n    pass\n")
+	writeGo(t, filepath.Join(root, "svc/src/app/models/user.py"), "from .base import Model\n\nclass User(Model):\n    pass\n")
+	writeGo(t, filepath.Join(root, "svc/src/app/service.py"), "from app.models.user import User\n\ndef find() -> User:\n    return User()\n")
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	has := func(from, to graph.NodeID, typ graph.EdgeType) bool {
+		out, err := store.OutEdges(from, typ)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range out {
+			if e.To == to {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range []struct {
+		from, to graph.NodeID
+		typ      graph.EdgeType
+	}{
+		{"type:web/lib/repo.ts#Repo", "type:web/models/base.ts#Base", parse.EdgeInherits},
+		{"method:web/lib/repo.ts#Repo.load", "type:web/models/base.ts#Base", parse.EdgeReferences},
+		{"module:web/app.js", "type:web/lib/repo.ts#Repo", parse.EdgeReferences},
+		{"module:web/lib/repo.ts", "module:web/models/index.ts", parse.EdgeImports},
+		{"module:web/models/index.ts", "module:web/models/base.ts", parse.EdgeImports},
+		// A barrel re-export is both an import and a use of the type.
+		{"module:web/models/index.ts", "type:web/models/base.ts#Base", parse.EdgeReferences},
+		{"module:web/app.js", "module:web/lib/repo.ts", parse.EdgeImports},
+		{"type:svc/src/app/models/user.py#User", "type:svc/src/app/models/base.py#Model", parse.EdgeInherits},
+		{"func:svc/src/app/service.py#find", "type:svc/src/app/models/user.py#User", parse.EdgeReferences},
+		{"module:svc/src/app/models/user.py", "module:svc/src/app/models/base.py", parse.EdgeImports},
+		{"module:svc/src/app/service.py", "module:svc/src/app/models/user.py", parse.EdgeImports},
+	} {
+		if !has(c.from, c.to, c.typ) {
+			t.Errorf("missing %s edge %s -> %s", c.typ, c.from, c.to)
+		}
+	}
+	// Type names don't cross language families: Python's User never binds to TS.
+	if has("module:web/app.js", "type:svc/src/app/models/user.py#User", parse.EdgeReferences) {
+		t.Error("JS module resolved a Python type")
+	}
+
+	deps, err := rank.Dependencies(store, "file:web/lib/repo.ts", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var depPaths []string
+	for _, f := range deps.Files {
+		depPaths = append(depPaths, f.Path)
+	}
+	if strings.Join(depPaths, ",") != "web/models/base.ts,web/models/index.ts" {
+		t.Fatalf("dependencies of repo.ts = %v", depPaths)
+	}
+	aff, err := rank.Affected(store, "file:web/lib/repo.ts", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aff.Files) != 1 || aff.Files[0].Path != "web/app.js" {
+		t.Fatalf("affected by repo.ts = %+v", aff.Files)
+	}
+
+	// Deleting an imported file prunes the resolved import on re-index.
+	if err := os.Remove(filepath.Join(root, "svc/src/app/models/base.py")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if has("module:svc/src/app/models/user.py", "module:svc/src/app/models/base.py", parse.EdgeImports) {
+		t.Fatal("stale import edge after deleting the imported file")
+	}
+}

@@ -172,7 +172,7 @@ func languageFromPath(path string) string {
 		return "go"
 	case ".js", ".mjs", ".cjs", ".jsx":
 		return "javascript"
-	case ".ts", ".tsx":
+	case ".ts", ".tsx", ".mts", ".cts":
 		return "typescript"
 	case ".py":
 		return "python"

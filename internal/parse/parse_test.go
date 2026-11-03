@@ -557,6 +557,100 @@ extension Temperature: Codable {}
 	}
 }
 
+func TestNonSwiftCallbacksTypesAndMembers(t *testing.T) {
+	root := t.TempDir()
+	type want struct {
+		node, prop, value string
+	}
+	cases := []struct {
+		file, src string
+		calls     [][2]string // from, to
+		contains  [][2]string
+		props     []want
+	}{
+		{
+			file: "routes.js",
+			src: `const { Athlete } = require('./models');
+class Store extends models.Base {
+  save() { return Athlete.find(); }
+}
+router.post('/', async (req, res) => { audit(req); });
+`,
+			calls:    [][2]string{{"module:routes.js", "symbol:audit"}},
+			contains: [][2]string{{"type:routes.js#Store", "method:routes.js#Store.save"}},
+			props: []want{
+				{"type:routes.js#Store", "supertypes", "Base"},
+				{"method:routes.js#Store.save", "type_refs", "Athlete"},
+			},
+		},
+		{
+			file: "svc.ts",
+			src: `export class Repo extends Base implements Reader, Writer {
+  items: Array<Item> = [];
+  get(id: string, n: number): Promise<Item> { return load(id); }
+}
+setup();
+`,
+			calls:    [][2]string{{"module:svc.ts", "symbol:setup"}, {"method:svc.ts#Repo.get", "symbol:load"}},
+			contains: [][2]string{{"type:svc.ts#Repo", "method:svc.ts#Repo.get"}},
+			props: []want{
+				{"type:svc.ts#Repo", "supertypes", "Base,Reader,Writer"},
+				{"type:svc.ts#Repo", "type_refs", "Array,Item"},
+				{"method:svc.ts#Repo.get", "type_refs", "Promise,Item"},
+			},
+		},
+		{
+			file: "app.py",
+			src: `class Service(base.Model, Mixin):
+    @cached(ttl=60)
+    def run(self, req: Request) -> Result:
+        return Result()
+
+app = create_app(Settings())
+`,
+			calls:    [][2]string{{"module:app.py", "symbol:create_app"}, {"method:app.py#Service.run", "symbol:Result"}, {"method:app.py#Service.run", "symbol:cached"}},
+			contains: [][2]string{{"type:app.py#Service", "method:app.py#Service.run"}},
+			props: []want{
+				{"type:app.py#Service", "supertypes", "Model,Mixin"},
+				{"method:app.py#Service.run", "type_refs", "Request,Result"},
+				{"module:app.py", "type_refs", "Settings"},
+			},
+		},
+	}
+	for _, c := range cases {
+		path := filepath.Join(root, c.file)
+		mustWrite(t, path, c.src)
+		res, err := parse.ParseFile(parse.NewRegistry(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fix := func(id string) graph.NodeID { return graph.NodeID(strings.Replace(id, c.file, path, 1)) }
+		edges := map[[3]graph.NodeID]bool{}
+		for _, e := range res.Edges {
+			edges[[3]graph.NodeID{e.From, e.To, graph.NodeID(e.Type)}] = true
+		}
+		for _, cl := range c.calls {
+			if !edges[[3]graph.NodeID{fix(cl[0]), graph.NodeID(cl[1]), graph.NodeID(parse.EdgeCalls)}] {
+				t.Errorf("%s: missing call %s -> %s", c.file, cl[0], cl[1])
+			}
+		}
+		for _, ct := range c.contains {
+			if !edges[[3]graph.NodeID{fix(ct[0]), fix(ct[1]), graph.NodeID(parse.EdgeContains)}] {
+				t.Errorf("%s: missing contains %s -> %s", c.file, ct[0], ct[1])
+			}
+		}
+		props := map[graph.NodeID]map[string]string{}
+		for _, n := range res.Nodes {
+			props[n.ID] = n.Props
+		}
+		for _, w := range c.props {
+			if got := props[fix(w.node)][w.prop]; got != w.value {
+				t.Errorf("%s: %s %s = %q, want %q", c.file, w.node, w.prop, got, w.value)
+			}
+		}
+	}
+}
+
 func TestSwiftDeferIsNotACall(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "deferred.swift")

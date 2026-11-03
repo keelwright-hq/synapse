@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -304,5 +305,57 @@ func TestWalkSkipsMergeCommits(t *testing.T) {
 	// Only the feature commit pairs a.go with b.go; the merge must not count again.
 	if len(commits) != 1 {
 		t.Fatalf("want 1 pair-producing commit (merge skipped), got %+v", commits)
+	}
+}
+
+func TestWalkListsDeletedAndModifiedPaths(t *testing.T) {
+	root := t.TempDir()
+	r, err := git.PlainInit(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := func(msg string) {
+		t.Helper()
+		if _, err := w.Commit(msg, &git.CommitOptions{Author: &object.Signature{Name: "t", Email: "t@t", When: time.Now()}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{"a.go", "b.go"} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte("package x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Add(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commit("root pair")
+	if _, err := w.Remove("a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "b.go"), []byte("package x\n\n// changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Add("b.go"); err != nil {
+		t.Fatal(err)
+	}
+	commit("delete a, change b")
+
+	commits, err := synapsegit.Walk(root, synapsegit.Options{MaxCommits: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both commits pair a.go with b.go: the root commit adds both, the second
+	// deletes one and modifies the other.
+	if len(commits) != 2 {
+		t.Fatalf("want 2 commits, got %+v", commits)
+	}
+	for _, c := range commits {
+		if strings.Join(c.Paths, ",") != "a.go,b.go" {
+			t.Fatalf("commit %s paths = %v", c.Hash[:7], c.Paths)
+		}
 	}
 }

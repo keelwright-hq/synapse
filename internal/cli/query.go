@@ -228,8 +228,12 @@ var queryAffectedCmd = &cobra.Command{
 	Short: "Code that calls, references or inherits from a symbol, grouped by file",
 	Long: `affected walks calls, references, inherits and implements edges backwards
 from a symbol. Every type on the walk includes its members, also those declared
-in Swift extensions in other files, so callers of its methods count. Use
---depth to follow dependents of dependents.`,
+in Swift extensions in other files, so callers of its methods count. A file:
+seed covers everything the file declares.
+
+--depth follows dependents of dependents. A file reached through an import at
+depth 2 or more counts only its imports and top-level code, not everything it
+declares, so deep queries on import-heavy code stay bounded.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runImpactQuery(cmd, args[0], rank.Affected)
@@ -318,7 +322,11 @@ func runImpactQuery(cmd *cobra.Command, symbol string, query func(graph.Store, g
 				parts = append(parts, fmt.Sprintf("+%d more", len(g.Symbols)-perFile))
 				break
 			}
-			parts = append(parts, fmt.Sprintf("%s [%s] L%d", sym.Name, sym.Edge, sym.Line))
+			if sym.Line > 0 {
+				parts = append(parts, fmt.Sprintf("%s [%s] L%d", sym.Name, sym.Edge, sym.Line))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s [%s]", sym.Name, sym.Edge)) // module-level code
+			}
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", g.Path, strings.Join(parts, ", "))
 	}

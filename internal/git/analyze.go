@@ -115,15 +115,15 @@ func Walk(repoRoot string, opts Options) ([]CommitFiles, error) {
 		if c.NumParents() > 1 {
 			return nil
 		}
-		stats, err := c.Stats()
+		names, err := changedPaths(c)
 		if err != nil {
 			// Empty trees / unreadable diffs — skip quietly.
 			return nil
 		}
-		paths := make([]string, 0, len(stats))
+		paths := make([]string, 0, len(names))
 		seen := map[string]struct{}{}
-		for _, s := range stats {
-			p := filepath.ToSlash(s.Name)
+		for _, name := range names {
+			p := filepath.ToSlash(name)
 			if p == "" {
 				continue
 			}
@@ -324,4 +324,38 @@ func TopCoChanges(store graph.Store, pathOrID string, limit int) ([]graph.Edge, 
 		all = all[:limit]
 	}
 	return all, nil
+}
+
+// changedPaths lists the files a commit touched by diffing its tree against its
+// parent's (or the empty tree for a root commit). It compares tree entries only;
+// unlike Commit.Stats it never computes line-level patches, which made commits
+// touching thousands of files cost seconds each before the size cap applied.
+func changedPaths(c *object.Commit) ([]string, error) {
+	tree, err := c.Tree()
+	if err != nil {
+		return nil, err
+	}
+	var parentTree *object.Tree
+	if c.NumParents() > 0 {
+		parent, err := c.Parent(0)
+		if err != nil {
+			return nil, err
+		}
+		if parentTree, err = parent.Tree(); err != nil {
+			return nil, err
+		}
+	}
+	changes, err := object.DiffTree(parentTree, tree)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(changes))
+	for _, ch := range changes {
+		name := ch.To.Name
+		if name == "" {
+			name = ch.From.Name // deletion
+		}
+		out = append(out, name)
+	}
+	return out, nil
 }

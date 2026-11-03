@@ -32,6 +32,24 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		extractTSImport(b, n, module)
 		return
 
+	case "export_statement":
+		// `export { X } from './x'` re-exports another module: an import.
+		// The re-exported names are still uses (renaming the type breaks it),
+		// so the clause is walked as well.
+		if field(n, "source") != nil {
+			extractTSImport(b, n, module)
+		}
+
+	case "identifier", "property_identifier", "type_identifier":
+		// Type annotations, generics, `new Foo()`, `Foo.bar()`: a type reference
+		// from the enclosing declaration (the index keeps only names that resolve).
+		// Built-ins (string, number, void) and single-letter generics don't
+		// look like type names and are skipped.
+		if t := b.text(n); looksLikeTypeName(t) {
+			b.addListProp(ownerOr(current, module), PropTypeRefs, t)
+		}
+		return
+
 	case "function_declaration":
 		nameNode := field(n, "name")
 		if nameNode != nil {
@@ -43,7 +61,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			}
 			b.putSpan(n, node)
 			b.edge(module, id, EdgeContains)
-			walkTS(b, field(n, "body"), module, id)
+			walkTSFunction(b, n, module, id)
 			return
 		}
 
@@ -57,8 +75,8 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				node.Props = map[string]string{PropDoc: doc}
 			}
 			b.putSpan(n, node)
-			b.edge(module, id, EdgeContains)
-			walkTS(b, field(n, "body"), module, id)
+			b.edge(memberParent(b, n, module), id, EdgeContains)
+			walkTSFunction(b, n, module, id)
 			return
 		}
 
@@ -69,10 +87,9 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			id := typeID(b.path, name)
 			b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
+			current = id
 		}
-		for i := uint(0); i < n.NamedChildCount(); i++ {
-			walkTS(b, n.NamedChild(i), module, current)
-		}
+		walkClassParts(b, n, current, func(c *tree_sitter.Node) { walkTS(b, c, module, current) })
 		return
 
 	case "lexical_declaration", "variable_declaration":
@@ -90,22 +107,22 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				id := funcID(b.path, name)
 				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 				b.edge(module, id, EdgeContains)
-				walkTS(b, field(value, "body"), module, id)
+				walkTSFunction(b, value, module, id)
 				continue
 			}
-			walkTS(b, decl, module, current)
+			// The declared name is not a use; its type annotation and value are.
+			for _, part := range []string{"type", "value"} {
+				walkTS(b, field(decl, part), module, current)
+			}
 		}
 		return
 
 	case "call_expression":
-		if current != "" {
-			fn := field(n, "function")
-			name := calleeName(b, fn)
-			if name != "" {
-				sid := symbolID(name)
-				b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
-				b.edge(current, sid, EdgeCalls)
-			}
+		// Calls outside any named function belong to the module.
+		if name := calleeName(b, field(n, "function")); name != "" {
+			sid := symbolID(name)
+			b.put(graph.Node{ID: sid, Kind: KindSymbol, Name: name})
+			b.edge(ownerOr(current, module), sid, EdgeCalls)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
 			walkTS(b, n.NamedChild(i), module, current)
@@ -146,6 +163,17 @@ func precedingTSDoc(b *builder, n *tree_sitter.Node) string {
 		prev = prev.PrevSibling()
 	}
 	return ""
+}
+
+// walkTSFunction walks a function's parameters, return type and body as code
+// owned by id; only its name is skipped.
+func walkTSFunction(b *builder, n *tree_sitter.Node, module, id graph.NodeID) {
+	name := field(n, "name")
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		if c := n.NamedChild(i); c != nil && !sameNode(c, name) {
+			walkTS(b, c, module, id)
+		}
+	}
 }
 
 func containingTSClassName(b *builder, n *tree_sitter.Node) string {

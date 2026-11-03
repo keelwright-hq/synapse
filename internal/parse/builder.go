@@ -13,6 +13,8 @@ type builder struct {
 	src   []byte
 	nodes map[graph.NodeID]graph.Node
 	edges []graph.Edge
+	// lists dedups values added with addListProp, per node and prop key.
+	lists map[graph.NodeID]map[string]map[string]struct{}
 }
 
 func newBuilder(path string, src []byte) *builder {
@@ -20,7 +22,98 @@ func newBuilder(path string, src []byte) *builder {
 		path:  path,
 		src:   src,
 		nodes: make(map[graph.NodeID]graph.Node),
+		lists: make(map[graph.NodeID]map[string]map[string]struct{}),
 	}
+}
+
+// addListProp appends value to a comma-separated, deduplicated prop on an
+// existing node (type_refs, supertypes). Unknown nodes are ignored.
+func (b *builder) addListProp(id graph.NodeID, key, value string) {
+	node, ok := b.nodes[id]
+	if !ok || value == "" {
+		return
+	}
+	byKey := b.lists[id]
+	if byKey == nil {
+		byKey = map[string]map[string]struct{}{}
+		b.lists[id] = byKey
+	}
+	seen := byKey[key]
+	if seen == nil {
+		seen = map[string]struct{}{}
+		byKey[key] = seen
+		// Values already on the node (e.g. from putSpan) count as seen.
+		if node.Props != nil {
+			for _, v := range strings.Split(node.Props[key], ",") {
+				if v != "" {
+					seen[v] = struct{}{}
+				}
+			}
+		}
+	}
+	if _, dup := seen[value]; dup {
+		return
+	}
+	seen[value] = struct{}{}
+	if node.Props == nil {
+		node.Props = map[string]string{}
+	}
+	if node.Props[key] == "" {
+		node.Props[key] = value
+	} else {
+		node.Props[key] += "," + value
+	}
+	b.nodes[id] = node
+}
+
+// looksLikeTypeName reports a capitalized identifier with a lowercase letter
+// (Athlete, URLSession), the shape of a class or type name. All-caps constants
+// and lowercase names are skipped; the index keeps only names that resolve to
+// exactly one type declaration, so this filter only limits noise.
+func looksLikeTypeName(name string) bool {
+	if len(name) < 2 || name[0] < 'A' || name[0] > 'Z' {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		if name[i] >= 'a' && name[i] <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+// heritageNames returns the capitalized type names in a class heritage or
+// Python superclass list: `extends models.Base implements Foo` -> Base, Foo.
+func heritageNames(b *builder, n *tree_sitter.Node) []string {
+	var out []string
+	var walk func(*tree_sitter.Node)
+	walk = func(c *tree_sitter.Node) {
+		if c == nil {
+			return
+		}
+		switch c.Kind() {
+		case "identifier", "type_identifier":
+			if t := b.text(c); looksLikeTypeName(t) {
+				out = append(out, t)
+			}
+			return
+		case "member_expression", "attribute", "nested_type_identifier":
+			// Only the last segment names the type: models.Base -> Base.
+			if last := c.NamedChild(c.NamedChildCount() - 1); last != nil {
+				if t := b.text(last); looksLikeTypeName(t) {
+					out = append(out, t)
+				}
+			}
+			return
+		case "keyword_argument", "type_arguments":
+			return // metaclass=..., Base<T>'s T
+		}
+		for i := uint(0); i < c.NamedChildCount(); i++ {
+			walk(c.NamedChild(i))
+		}
+	}
+	walk(n)
+	return out
 }
 
 func (b *builder) text(n *tree_sitter.Node) string {
