@@ -34,9 +34,10 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 
 	case "export_statement":
 		// `export { X } from './x'` re-exports another module: an import.
+		// The re-exported names are still uses (renaming the type breaks it),
+		// so the clause is walked as well.
 		if field(n, "source") != nil {
 			extractTSImport(b, n, module)
-			return
 		}
 
 	case "identifier", "property_identifier", "type_identifier":

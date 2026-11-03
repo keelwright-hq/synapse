@@ -35,8 +35,8 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 
 	case "export_statement":
 		if field(n, "source") != nil {
-			extractTSImport(b, n, module) // re-export from another module
-			return
+			// A re-export is an import, and its names are still uses.
+			extractTSImport(b, n, module)
 		}
 		for i := uint(0); i < n.NamedChildCount(); i++ {
 			walkJS(b, n.NamedChild(i), module, current)

@@ -742,6 +742,8 @@ router.get('/', (req, res) => { Repo.prototype.load(); });
 		{"module:web/app.js", "type:web/lib/repo.ts#Repo", parse.EdgeReferences},
 		{"module:web/lib/repo.ts", "module:web/models/index.ts", parse.EdgeImports},
 		{"module:web/models/index.ts", "module:web/models/base.ts", parse.EdgeImports},
+		// A barrel re-export is both an import and a use of the type.
+		{"module:web/models/index.ts", "type:web/models/base.ts#Base", parse.EdgeReferences},
 		{"module:web/app.js", "module:web/lib/repo.ts", parse.EdgeImports},
 		{"type:svc/src/app/models/user.py#User", "type:svc/src/app/models/base.py#Model", parse.EdgeInherits},
 		{"func:svc/src/app/service.py#find", "type:svc/src/app/models/user.py#User", parse.EdgeReferences},
