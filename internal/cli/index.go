@@ -83,11 +83,14 @@ Workspace mode keeps the --data-dir / CWD default unchanged.
 		if err != nil {
 			return err
 		}
+		var httpStats bind.HTTPStats
 		if err := bind.Bind(bind.Options{
-			Members: []bind.Member{{Name: repo, Root: path, Store: store}},
+			Members:   []bind.Member{{Name: repo, Root: path, Store: store}},
+			HTTPStats: &httpStats,
 		}); err != nil {
 			return fmt.Errorf("index bind: %w", err)
 		}
+		logHTTPStats(logger, httpStats)
 		// Phase 3 post-index pipeline (member shard only — never overlay):
 		// index.Run → bind.Bind → docs.Link → git.Analyze
 		if _, err := docs.Link(docs.LinkOptions{Root: path, Store: store, Repo: repo}); err != nil {
@@ -212,11 +215,15 @@ func runWorkspaceIndex(cmd *cobra.Command) error {
 		if stats.Errors > 0 {
 			failed++
 		}
-		members = append(members, bind.Member{
+		bm := bind.Member{
 			Name:  member.Name,
 			Root:  member.Path,
 			Store: store,
-		})
+		}
+		if member.HTTP != nil {
+			bm.HTTP = &bind.HTTPConfig{BaseEnv: member.HTTP.BaseEnv, GatewayPrefix: member.HTTP.GatewayPrefix}
+		}
+		members = append(members, bm)
 	}
 
 	overlay, err := badger.OpenOverlay(dataDir)
@@ -225,9 +232,11 @@ func runWorkspaceIndex(cmd *cobra.Command) error {
 	}
 	defer overlay.Close()
 
-	if err := bind.Bind(bind.Options{Members: members, Overlay: overlay}); err != nil {
+	var httpStats bind.HTTPStats
+	if err := bind.Bind(bind.Options{Members: members, Overlay: overlay, HTTPStats: &httpStats}); err != nil {
 		return fmt.Errorf("index workspace bind: %w", err)
 	}
+	logHTTPStats(logger, httpStats)
 
 	for _, m := range members {
 		if _, err := docs.Link(docs.LinkOptions{Root: m.Root, Store: m.Store, Repo: m.Name}); err != nil {
@@ -247,4 +256,15 @@ func runWorkspaceIndex(cmd *cobra.Command) error {
 		return fmt.Errorf("workspace index finished with %d error(s) across %d repo(s)", total.Errors, failed)
 	}
 	return nil
+}
+
+func logHTTPStats(logger *slog.Logger, st bind.HTTPStats) {
+	if st.Routes == 0 && st.Clients == 0 {
+		return
+	}
+	logger.Info("http bind",
+		"routes", st.Routes, "client_calls", st.Clients,
+		"declared", st.Declared, "inferred", st.Inferred,
+		"ambiguous", st.Ambiguous, "unmatched", st.Unmatched,
+		"service_edges", st.ServiceEdges)
 }

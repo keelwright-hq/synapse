@@ -4,6 +4,32 @@
 
 ### Added
 
+- **HTTP route and client linking across workspace members**
+  ([docs/http-linking.md](docs/http-linking.md)):
+  - **Routes found in code become `operation` nodes** (`source=code`) at their
+    full path, and their handler `implements` them.
+    - Covers Express, Hono, FastAPI, Flask and Next.js.
+    - Router prefixes and mounts are composed across files, including through
+      package re-exports and same-file mount helpers.
+  - **Client calls are recorded on their function:**
+    - `fetch`, axios, got, ky, httpx and requests calls, and calls through
+      wrapper functions, up to five levels deep.
+    - Each call is read as base URL + path.
+  - **Calls link to routes when a member's declared base-URL variable picks
+    the target.**
+    - The variable is declared in `synapse.yaml` as `http.base_env`, with an
+      optional `http.gateway_prefix` that is stripped.
+    - Otherwise a call links only when exactly one other member has a unique
+      match. Those links are marked `INFERRED`.
+    - Ambiguous matches are left unlinked.
+  - **`synapse query services`** (`--consumers-of`, `--calls-from`, `--depth`,
+    `--sites`) lists HTTP dependencies between members, with call sites.
+  - **`affected` and `dependencies` cross API contracts:**
+    - `affected` goes from a handler to its clients; `dependencies` goes from
+      a client to the handler.
+    - In workspace mode they open every member, use `--repo` only to place the
+      seed, and print results as `repo:path`.
+
 - **Impact, dependency and path queries:**
   - `synapse query affected <symbol>` lists code that calls, references,
     inherits from or implements a symbol, grouped by file. Every type on the

@@ -1,11 +1,13 @@
 package rank
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // dependencyEdges are the static and runtime edges that mean "uses": a change
@@ -25,6 +27,7 @@ var dependencyEdges = []graph.EdgeType{
 
 // FileGroup lists the symbols in one file reached by an impact or dependency query.
 type FileGroup struct {
+	Repo    string      `json:"repo,omitempty"` // workspace member, in a federated query
 	Path    string      `json:"path"`
 	Depth   int         `json:"depth"`
 	Symbols []SymbolRef `json:"symbols"`
@@ -33,6 +36,7 @@ type FileGroup struct {
 // SymbolRef is one symbol and the edge that connected it.
 type SymbolRef struct {
 	ID    graph.NodeID `json:"id"`
+	Repo  string       `json:"repo,omitempty"`
 	Name  string       `json:"name"`
 	Kind  string       `json:"kind"`
 	Edge  string       `json:"edge"`
@@ -50,72 +54,187 @@ type ImpactResult struct {
 	Truncated  bool         `json:"truncated,omitempty"`
 }
 
+// Edge labels for hops across an API contract (code route or spec
+// operation): a client reached from the handler it calls, and the handler
+// reached from a client.
+const (
+	EdgeCallsAPI  = "calls_api"
+	EdgeHandledBy = "handled_by"
+)
+
 // Affected walks dependency edges backwards from seed: everything that calls,
 // references, inherits from, implements or imports it, up to depth hops. Every
 // type on the walk includes its members (also those declared in Swift
 // extensions in other files), so callers of a type's methods count as
 // affected. A file seed includes everything it declares; a module reached
 // later through an import stands only for its own imports and top-level code.
+// A route handler's clients count too: code that consumes an API operation the
+// handler implements, in this repo or (in a workspace) another one.
 func Affected(store graph.Store, seed graph.NodeID, depth, limit int) (ImpactResult, error) {
 	return walkDependencies(store, seed, depth, limit, "in")
 }
 
 // Dependencies walks dependency edges forwards from seed (and a type's
-// members): everything it calls, references, inherits from or implements.
+// members): everything it calls, references, inherits from or implements,
+// including the handlers of the API operations it consumes.
 func Dependencies(store graph.Store, seed graph.NodeID, depth, limit int) (ImpactResult, error) {
 	return walkDependencies(store, seed, depth, limit, "out")
+}
+
+// view reads a store per repo: in a federated workspace store node IDs repeat
+// across members, so every read names the member it is in.
+type view struct {
+	store graph.Store
+	rs    repoScopedStore
+}
+
+func newView(store graph.Store) view {
+	v := view{store: store}
+	v.rs, _ = store.(repoScopedStore)
+	return v
+}
+
+func (v view) node(repo string, id graph.NodeID) (graph.Node, error) {
+	if v.rs != nil && repo != "" {
+		return v.rs.GetNodeInRepo(repo, id)
+	}
+	return v.store.GetNode(id)
+}
+
+func (v view) edges(repo string, id graph.NodeID, et graph.EdgeType, dir string) ([]graph.Edge, error) {
+	if v.rs != nil && repo != "" {
+		if dir == "in" {
+			return v.rs.InEdgesInRepo(repo, id, et)
+		}
+		return v.rs.OutEdgesInRepo(repo, id, et)
+	}
+	if dir == "in" {
+		return v.store.InEdges(id, et)
+	}
+	return v.store.OutEdges(id, et)
+}
+
+// otherRepo is the member at the far end of e, read from the federated
+// store's stamps (empty for a single store).
+func otherRepo(e graph.Edge, dir, cur string) string {
+	key := "to_repo"
+	if dir == "in" {
+		key = "from_repo"
+	}
+	if r := e.Props[key]; r != "" {
+		return r
+	}
+	return cur
+}
+
+// repoOf is the member a node belongs to, from its repo:// URI.
+func repoOf(n graph.Node) string {
+	if raw := n.Props[uri.PropKey]; raw != "" {
+		if u, err := uri.Parse(raw); err == nil {
+			return u.Repo
+		}
+	}
+	return ""
+}
+
+type nodeKey struct {
+	repo string
+	id   graph.NodeID
+}
+
+type repoNode struct {
+	repo string
+	node graph.Node
 }
 
 func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, dir string) (ImpactResult, error) {
 	if depth <= 0 {
 		depth = 1
 	}
+	v := newView(store)
 	seedNode, err := store.GetNode(seed)
 	if err != nil {
 		return ImpactResult{}, err
+	}
+	seedRepo := ""
+	if v.rs != nil {
+		if seedRepo = v.rs.PinnedRepo(seed); seedRepo == "" {
+			seedRepo = repoOf(seedNode)
+		}
 	}
 	mx, err := newMemberIndex(store)
 	if err != nil {
 		return ImpactResult{}, err
 	}
-	own, err := mx.withMembers(seedNode)
+	own, err := mx.withMembers(seedRepo, seedNode)
 	if err != nil {
 		return ImpactResult{}, err
 	}
-	isOwn := map[graph.NodeID]bool{}
+	isOwn := map[nodeKey]bool{}
+	var frontier []repoNode
 	for _, n := range own {
-		isOwn[n.ID] = true
+		isOwn[nodeKey{seedRepo, n.ID}] = true
+		frontier = append(frontier, repoNode{seedRepo, n})
 	}
 
-	reached := map[graph.NodeID]SymbolRef{}
-	frontier := own
+	reached := map[nodeKey]SymbolRef{}
+	reachedNodes := map[nodeKey]graph.Node{}
+	// reach records other (in repo) as reached through label at depth d.
+	reach := func(repo string, id graph.NodeID, label string, d int, next *[]repoNode) error {
+		k := nodeKey{repo, id}
+		if isOwn[k] {
+			return nil
+		}
+		if _, seen := reached[k]; seen {
+			return nil
+		}
+		n, err := v.node(repo, id)
+		if err != nil {
+			if errors.Is(err, graph.ErrNotFound) {
+				return nil
+			}
+			return err
+		}
+		// Unresolved placeholders and member stand-ins have no file to report.
+		if n.Kind == parse.KindSymbol || n.Kind == parse.KindImport || n.Path == "" || n.Props[propHTTPService] == "1" {
+			return nil
+		}
+		ref := SymbolRef{
+			ID: n.ID, Name: symbolLabel(n), Kind: n.Kind, Edge: label,
+			Line: propInt(n.Props, "start_line"), Depth: d,
+		}
+		if v.rs != nil {
+			ref.Repo = repo
+		}
+		reached[k] = ref
+		reachedNodes[k] = n
+		*next = append(*next, repoNode{repo, n})
+		return nil
+	}
 	for d := 1; d <= depth && len(frontier) > 0; d++ {
-		var next []graph.Node
-		var sources []graph.Node
+		var next []repoNode
+		var sources []repoNode
 		for _, cur := range frontier {
 			// A file or module reached mid-walk (through an import) stands only
 			// for itself: its imports and module-level code. Expanding it to
 			// everything it declares would fan out across whole importers at
 			// depth >= 2. The seed file was already expanded into own.
-			if d > 1 && (cur.Kind == parse.KindFile || cur.Kind == parse.KindModule) {
+			if d > 1 && (cur.node.Kind == parse.KindFile || cur.node.Kind == parse.KindModule) {
 				sources = append(sources, cur)
 				continue
 			}
 			// A type reached mid-walk also stands for its members.
-			expanded, err := mx.withMembers(cur)
+			expanded, err := mx.withMembers(cur.repo, cur.node)
 			if err != nil {
 				return ImpactResult{}, err
 			}
-			sources = append(sources, expanded...)
+			for _, n := range expanded {
+				sources = append(sources, repoNode{cur.repo, n})
+			}
 		}
 		for _, cur := range sources {
 			for _, et := range dependencyEdges {
-				var edges []graph.Edge
-				if dir == "in" {
-					edges, err = store.InEdges(cur.ID, et)
-				} else {
-					edges, err = store.OutEdges(cur.ID, et)
-				}
+				edges, err := v.edges(cur.repo, cur.node.ID, et, dir)
 				if err != nil {
 					return ImpactResult{}, err
 				}
@@ -124,41 +243,49 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 					if dir == "out" {
 						other = e.To
 					}
-					if isOwn[other] {
-						continue
-					}
-					if _, seen := reached[other]; seen {
-						continue
-					}
-					n, err := store.GetNode(other)
-					if err != nil {
-						if err == graph.ErrNotFound {
-							continue
-						}
+					if err := reach(otherRepo(e, dir, cur.repo), other, string(et), d, &next); err != nil {
 						return ImpactResult{}, err
 					}
-					// Unresolved placeholders have no file to report.
-					if n.Kind == parse.KindSymbol || n.Kind == parse.KindImport || n.Path == "" {
+				}
+			}
+			// Across an API contract: from a handler to the clients of what it
+			// implements, or from a client to the handlers of what it consumes.
+			first, second, label := parse.EdgeImplements, parse.EdgeConsumes, EdgeCallsAPI
+			if dir == "out" {
+				first, second, label = parse.EdgeConsumes, parse.EdgeImplements, EdgeHandledBy
+			}
+			ops, err := v.edges(cur.repo, cur.node.ID, first, "out")
+			if err != nil {
+				return ImpactResult{}, err
+			}
+			for _, oe := range ops {
+				opRepo := otherRepo(oe, "out", cur.repo)
+				ends, err := v.edges(opRepo, oe.To, second, "in")
+				if err != nil {
+					if errors.Is(err, graph.ErrNotFound) {
 						continue
 					}
-					reached[other] = SymbolRef{
-						ID: n.ID, Name: symbolLabel(n), Kind: n.Kind, Edge: string(et),
-						Line: propInt(n.Props, "start_line"), Depth: d,
+					return ImpactResult{}, err
+				}
+				for _, e := range ends {
+					if err := reach(otherRepo(e, "in", opRepo), e.From, label, d, &next); err != nil {
+						return ImpactResult{}, err
 					}
-					next = append(next, n)
 				}
 			}
 		}
 		frontier = next
 	}
 
-	byPath := map[string]*FileGroup{}
-	for _, ref := range reached {
-		n, _ := store.GetNode(ref.ID)
-		g := byPath[n.Path]
+	type groupKey struct{ repo, path string }
+	byPath := map[groupKey]*FileGroup{}
+	for k, ref := range reached {
+		n := reachedNodes[k]
+		gk := groupKey{ref.Repo, n.Path}
+		g := byPath[gk]
 		if g == nil {
-			g = &FileGroup{Path: n.Path, Depth: ref.Depth}
-			byPath[n.Path] = g
+			g = &FileGroup{Repo: ref.Repo, Path: n.Path, Depth: ref.Depth}
+			byPath[gk] = g
 		}
 		if ref.Depth < g.Depth {
 			g.Depth = ref.Depth
@@ -179,6 +306,9 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 		if res.Files[i].Depth != res.Files[j].Depth {
 			return res.Files[i].Depth < res.Files[j].Depth
 		}
+		if res.Files[i].Repo != res.Files[j].Repo {
+			return res.Files[i].Repo < res.Files[j].Repo
+		}
 		return res.Files[i].Path < res.Files[j].Path
 	})
 	res.TotalFiles = len(res.Files)
@@ -192,25 +322,36 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 	return res, nil
 }
 
+// propHTTPService marks a workspace member's stand-in node (bind.ServiceNodeID).
+const propHTTPService = "http_service"
+
 // memberIndex finds a type's members: what it contains, plus, when the name
-// has exactly one declaration, the Swift extensions of that name and what
-// they contain (extension methods hang off the extension file's type node).
+// has exactly one declaration in its repo, the Swift extensions of that name
+// and what they contain (extension methods hang off the extension file's type
+// node).
 type memberIndex struct {
-	store      graph.Store
+	view       view
 	decls      map[string][]graph.NodeID
 	extensions map[string][]graph.NodeID
 }
 
+func memberKey(repo, name string) string { return repo + "\x00" + name }
+
 func newMemberIndex(store graph.Store) (*memberIndex, error) {
-	mx := &memberIndex{store: store, decls: map[string][]graph.NodeID{}, extensions: map[string][]graph.NodeID{}}
+	mx := &memberIndex{view: newView(store), decls: map[string][]graph.NodeID{}, extensions: map[string][]graph.NodeID{}}
 	err := store.ForEachNode(func(n graph.Node) bool {
 		if n.Kind != parse.KindType || n.Name == "" {
 			return true
 		}
+		repo := ""
+		if mx.view.rs != nil {
+			repo = repoOf(n)
+		}
+		k := memberKey(repo, n.Name)
 		if n.Props[parse.PropExtension] != "" {
-			mx.extensions[n.Name] = append(mx.extensions[n.Name], n.ID)
+			mx.extensions[k] = append(mx.extensions[k], n.ID)
 		} else {
-			mx.decls[n.Name] = append(mx.decls[n.Name], n.ID)
+			mx.decls[k] = append(mx.decls[k], n.ID)
 		}
 		return true
 	})
@@ -219,33 +360,37 @@ func newMemberIndex(store graph.Store) (*memberIndex, error) {
 
 // withMembers returns n plus, for a type, its members and its extensions;
 // for a file or module, everything it declares (and those types' members).
-func (mx *memberIndex) withMembers(n graph.Node) ([]graph.Node, error) {
+func (mx *memberIndex) withMembers(repo string, n graph.Node) ([]graph.Node, error) {
 	if n.Kind == parse.KindFile || n.Kind == parse.KindModule {
-		return mx.containedClosure(n)
+		return mx.containedClosure(repo, n)
 	}
 	out := []graph.Node{n}
 	if n.Kind != parse.KindType {
 		return out, nil
 	}
 	containers := []graph.NodeID{n.ID}
-	if len(mx.decls[n.Name]) == 1 {
-		for _, id := range append(append([]graph.NodeID{}, mx.decls[n.Name]...), mx.extensions[n.Name]...) {
+	k := memberKey(repo, n.Name)
+	if mx.view.rs == nil {
+		k = memberKey("", n.Name)
+	}
+	if len(mx.decls[k]) == 1 {
+		for _, id := range append(append([]graph.NodeID{}, mx.decls[k]...), mx.extensions[k]...) {
 			if id == n.ID {
 				continue
 			}
-			if m, err := mx.store.GetNode(id); err == nil {
+			if m, err := mx.view.node(repo, id); err == nil {
 				out = append(out, m)
 				containers = append(containers, id)
 			}
 		}
 	}
 	for _, c := range containers {
-		edges, err := mx.store.OutEdges(c, parse.EdgeContains)
+		edges, err := mx.view.edges(repo, c, parse.EdgeContains, "out")
 		if err != nil {
 			return nil, err
 		}
 		for _, e := range edges {
-			if m, err := mx.store.GetNode(e.To); err == nil {
+			if m, err := mx.view.node(repo, e.To); err == nil {
 				out = append(out, m)
 			}
 		}
@@ -255,11 +400,11 @@ func (mx *memberIndex) withMembers(n graph.Node) ([]graph.Node, error) {
 
 // containedClosure walks contains edges from a file or module down to its
 // declarations and their members.
-func (mx *memberIndex) containedClosure(root graph.Node) ([]graph.Node, error) {
+func (mx *memberIndex) containedClosure(repo string, root graph.Node) ([]graph.Node, error) {
 	out := []graph.Node{root}
 	seen := map[graph.NodeID]bool{root.ID: true}
 	for i := 0; i < len(out); i++ {
-		edges, err := mx.store.OutEdges(out[i].ID, parse.EdgeContains)
+		edges, err := mx.view.edges(repo, out[i].ID, parse.EdgeContains, "out")
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +413,7 @@ func (mx *memberIndex) containedClosure(root graph.Node) ([]graph.Node, error) {
 				continue
 			}
 			seen[e.To] = true
-			if m, err := mx.store.GetNode(e.To); err == nil {
+			if m, err := mx.view.node(repo, e.To); err == nil {
 				out = append(out, m)
 			}
 		}
@@ -315,7 +460,7 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 		return PathResult{}, err
 	}
 	goal := map[graph.NodeID]bool{to: true}
-	members, err := mx.withMembers(target)
+	members, err := mx.withMembers("", target)
 	if err != nil {
 		return PathResult{}, err
 	}
@@ -351,7 +496,7 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 			}
 			if n.Kind == parse.KindType {
 				// Step into members, including those declared in extensions.
-				members, err := mx.withMembers(n)
+				members, err := mx.withMembers("", n)
 				if err != nil {
 					return PathResult{}, err
 				}

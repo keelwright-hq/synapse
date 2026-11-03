@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/keelwright-hq/synapse/internal/uri"
 	"gopkg.in/yaml.v3"
@@ -31,6 +32,17 @@ type Workspace struct {
 type Repo struct {
 	Name string `yaml:"name"`
 	Path string `yaml:"path"` // absolute after Load
+	// HTTP declares how other members reach this one over HTTP (optional).
+	HTTP *HTTP `yaml:"http,omitempty"`
+}
+
+// HTTP tells the binder which client calls target a member: a call whose base
+// URL reads one of BaseEnv belongs to this member, and its path is matched
+// against this member's routes after GatewayPrefix (a path prefix a gateway
+// strips before the request reaches the service) is removed.
+type HTTP struct {
+	BaseEnv       []string `yaml:"base_env"`
+	GatewayPrefix string   `yaml:"gateway_prefix,omitempty"`
 }
 
 // Load reads a synapse.yaml file or a directory containing one.
@@ -104,6 +116,22 @@ func (ws *Workspace) validate() error {
 			return fmt.Errorf("config: repos[%d] (%s) path %q is not a directory", i, name, resolved)
 		}
 		r.Path = resolved
+
+		if r.HTTP != nil {
+			for j, env := range r.HTTP.BaseEnv {
+				env = strings.TrimSpace(env)
+				if env == "" {
+					return fmt.Errorf("config: repos[%d] (%s) http.base_env[%d] is empty", i, name, j)
+				}
+				r.HTTP.BaseEnv[j] = env
+			}
+			if p := r.HTTP.GatewayPrefix; p != "" {
+				if !strings.HasPrefix(p, "/") {
+					return fmt.Errorf("config: repos[%d] (%s) http.gateway_prefix %q must start with /", i, name, p)
+				}
+				r.HTTP.GatewayPrefix = strings.TrimRight(p, "/")
+			}
+		}
 	}
 	return nil
 }

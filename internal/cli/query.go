@@ -296,12 +296,24 @@ of each step is printed.`,
 }
 
 func runImpactQuery(cmd *cobra.Command, symbol string, query func(graph.Store, graph.NodeID, int, int) (rank.ImpactResult, error)) error {
-	store, cleanup, err := openMemberQueryStore(cmd)
-	if err != nil {
+	var (
+		store   graph.Store
+		cleanup func()
+		err     error
+	)
+	if workspacePath != "" {
+		// The whole workspace, so the walk can cross API contracts into other
+		// members; --repo only says which member the seed is in.
+		opened, oerr := openWorkspaceStore(workspacePath, dataDir, "")
+		if oerr != nil {
+			return oerr
+		}
+		store, cleanup = opened.Store, func() { _ = opened.Closer.Close() }
+	} else if store, cleanup, err = openMemberQueryStore(cmd); err != nil {
 		return err
 	}
 	defer cleanup()
-	seed, err := rank.ResolveSeed(store, symbol)
+	seed, err := rank.ResolveSeedInRepo(store, repoName, symbol)
 	if err != nil {
 		return err
 	}
@@ -328,7 +340,11 @@ func runImpactQuery(cmd *cobra.Command, symbol string, query func(graph.Store, g
 				parts = append(parts, fmt.Sprintf("%s [%s]", sym.Name, sym.Edge)) // module-level code
 			}
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", g.Path, strings.Join(parts, ", "))
+		where := g.Path
+		if g.Repo != "" {
+			where = g.Repo + ":" + g.Path
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", where, strings.Join(parts, ", "))
 	}
 	return nil
 }

@@ -17,6 +17,18 @@ repos:
     path: ./worker
 ```
 
+A member can also declare how other members reach it over HTTP, so client
+calls link to its routes without a spec file (see
+[http-linking.md](http-linking.md)):
+
+```yaml
+  - name: api
+    path: ./api
+    http:
+      base_env: [API_URL]       # env vars other members read to reach api
+      gateway_prefix: /api-svc  # optional: stripped from client paths
+```
+
 Rules:
 
 - `version` must be `1`
@@ -40,8 +52,9 @@ This writes:
 ```
 
 After each member is indexed, Synapse runs a contract binder. Same-repo edges
-land in the member graph; cross-repo OpenAPI links go in the overlay (see
-[openapi.md](openapi.md)).
+land in the member graph; cross-repo links go in the overlay. Spec operations
+bind as described in [openapi.md](openapi.md); routes and HTTP clients found in
+code bind as described in [http-linking.md](http-linking.md).
 
 Each member is its own Badger database. Federated queries wrap those stores in a
 **per-query** `federated.Store` (isolated Phase-1 ID pins); do not share one
@@ -75,6 +88,15 @@ Scope to one member with `--repo`:
 
 Bare symbol names that match in more than one repo are rejected — use `--repo`
 or a `repo://` URI.
+
+`affected` and `dependencies` always open the whole workspace, so their walk
+can cross from a route handler to its clients in other members; there `--repo`
+only picks the member the seed is in. `query services` lists HTTP
+dependencies between members:
+
+```bash
+./synapse query services --workspace path/to/synapse.yaml --consumers-of api --sites 5
+```
 
 ## See also
 

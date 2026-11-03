@@ -512,6 +512,15 @@ func (s *Store) ForEachNode(fn func(graph.Node) bool) error {
 	return nil
 }
 
+// ForEachNodeInRepo iterates the nodes of one member.
+func (s *Store) ForEachNodeInRepo(repo string, fn func(graph.Node) bool) error {
+	idx, ok := s.memberIndexByName(repo)
+	if !ok {
+		return fmt.Errorf("%w: repo %q is not a federated member", graph.ErrNotFound, repo)
+	}
+	return s.members[idx].Store.ForEachNode(fn)
+}
+
 // MemberNames returns logical repo names in member order.
 func (s *Store) MemberNames() []string {
 	out := make([]string, len(s.members))

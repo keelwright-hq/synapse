@@ -21,6 +21,8 @@ type Member struct {
 	Name  string
 	Root  string // filesystem root for re-reading sources
 	Store graph.Store
+	// HTTP is the member's declared HTTP identity, if any (synapse.yaml http:).
+	HTTP *HTTPConfig
 }
 
 // Options configure Bind.
@@ -29,7 +31,13 @@ type Options struct {
 	// Overlay holds cross-repo implements/consumes edges (IDs = repo:// URIs).
 	// Nil is fine for single-repo same-store binding only.
 	Overlay graph.Store
+	// HTTPStats, when set, receives the HTTP route/client binding counts.
+	HTTPStats *HTTPStats
 }
+
+// edgeWriter writes a contract edge: into the member store when both ends are
+// in one repo, else into the overlay between repo:// URI stubs.
+type edgeWriter func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType, props map[string]string) error
 
 type operationRef struct {
 	node    graph.Node
@@ -75,10 +83,16 @@ func Bind(opts Options) error {
 
 	var ops []operationRef
 	var syms []symbolRef
+	codeRoutes := map[string][]graph.Node{}
 	for _, m := range opts.Members {
 		err := m.Store.ForEachNode(func(n graph.Node) bool {
 			switch n.Kind {
 			case parse.KindOperation:
+				if n.Props["source"] == "code" {
+					// Routes found in code (index resolve_http) bind by HTTP rules.
+					codeRoutes[m.Name] = append(codeRoutes[m.Name], n)
+					return true
+				}
 				op := operationRef{
 					node:    n,
 					repo:    m.Name,
@@ -111,9 +125,6 @@ func Bind(opts Options) error {
 			return err
 		}
 	}
-	if len(ops) == 0 {
-		return nil
-	}
 	for i := range syms {
 		syms[i].fold = foldName(symbolMatchName(syms[i].node))
 	}
@@ -125,18 +136,12 @@ func Bind(opts Options) error {
 	}
 	seen := map[edgeKey]struct{}{}
 
-	put := func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType, match string) error {
+	write := func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType, edgeProps map[string]string) error {
 		key := edgeKey{fromRepo: fromRepo, toRepo: toRepo, from: from.ID, to: to.ID, typ: typ}
 		if _, ok := seen[key]; ok {
 			return nil
 		}
 		seen[key] = struct{}{}
-
-		// Heuristic binder matches are inferred, never extracted AST facts.
-		edgeProps := map[string]string{"provenance": "INFERRED"}
-		if match != "" {
-			edgeProps["match"] = match
-		}
 
 		if fromRepo == toRepo {
 			return fromStore.PutEdge(graph.Edge{From: from.ID, To: to.ID, Type: typ, Props: edgeProps})
@@ -173,6 +178,25 @@ func Bind(opts Options) error {
 			Type:  typ,
 			Props: edgeProps,
 		})
+	}
+	put := func(fromRepo string, fromStore graph.Store, from graph.Node, toRepo string, to graph.Node, typ graph.EdgeType, match string) error {
+		// Heuristic binder matches are inferred, never extracted AST facts.
+		edgeProps := map[string]string{"provenance": "INFERRED"}
+		if match != "" {
+			edgeProps["match"] = match
+		}
+		return write(fromRepo, fromStore, from, toRepo, to, typ, edgeProps)
+	}
+
+	httpStats, err := bindHTTP(opts, codeRoutes, write)
+	if err != nil {
+		return err
+	}
+	if opts.HTTPStats != nil {
+		*opts.HTTPStats = httpStats
+	}
+	if len(ops) == 0 {
+		return nil
 	}
 
 	// 1) operationId ↔ symbol name (plus GraphQL resolver name variants):
