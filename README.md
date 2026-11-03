@@ -271,6 +271,7 @@ Details: [docs/federation.md](docs/federation.md).
 | [docs/reviewer-workflows.md](docs/reviewer-workflows.md) | Reviewer workflows (co-changes, hot paths, docs) |
 | [docs/otel.md](docs/otel.md) | OpenTelemetry ingest |
 | [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
+| [docs/benchmarks-graphify.md](docs/benchmarks-graphify.md) | Preliminary results vs Graphify and grep (tokens, accuracy, graph quality) |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
 ## License

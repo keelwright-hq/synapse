@@ -54,3 +54,7 @@ Measured on a benchmark fixture (50 files, 300 functions; depth=3, max_nodes=32)
 | `BenchmarkNeighborhoodSemanticFusionExplain` | ~402 µs/op | ~143.9 KB/op | 1151 allocs/op | ~2.5k req/sec |
 
 Because the fused semantic graph connects nodes across runtime calls, git co-commits, and documentation links, the BFS traverses a significantly richer candidate neighborhood prior to scoring and truncation. Fused ranking remains well within sub-millisecond territory (~0.37 ms), and capturing the per-family attribution breakdown (`Explain: true`) adds ~29 µs overhead.
+
+## Comparison with Graphify
+
+Token cost, answer accuracy and graph quality against Graphify and plain grep on a Swift app: [benchmarks-graphify.md](benchmarks-graphify.md).

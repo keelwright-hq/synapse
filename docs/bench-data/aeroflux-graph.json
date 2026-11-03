@@ -1,0 +1,90 @@
+{
+ "repo": "aeroflux",
+ "repo_commit": "3c04fb4",
+ "synapse_before": "c2ae902",
+ "synapse_after": "7438375",
+ "graphify_version": "0.9.45",
+ "machine": "Apple M5 Pro, 24 GB, macOS 27.2, Go 1.27.1",
+ "build_time_median_of_5": {
+  "graphify --code-only": {
+   "median_s": 1.23,
+   "runs_s": [
+    2.55,
+    1.22,
+    1.31,
+    1.23,
+    1.21
+   ]
+  },
+  "graphify cluster-only --no-label": {
+   "median_s": 0.62,
+   "runs_s": [
+    0.58,
+    0.62,
+    0.63,
+    0.62,
+    0.57
+   ]
+  },
+  "synapse index --report": {
+   "median_s": 2.12,
+   "runs_s": [
+    2.21,
+    2.02,
+    2.12,
+    2.07,
+    2.48
+   ]
+  }
+ },
+ "synapse_graph": {
+  "before_c2ae902": {
+   "nodes": 2803,
+   "edges": 8817,
+   "calls": 2977,
+   "resolved": 282,
+   "crossfile": 0,
+   "agree": 0,
+   "defer": 30,
+   "mark": 2,
+   "cochange": 4217,
+   "pair": [
+    "46"
+   ],
+   "documents": 49,
+   "docprops": 178
+  },
+  "after_7438375": {
+   "nodes": 2502,
+   "edges": 5502,
+   "calls": 2926,
+   "resolved": 1149,
+   "crossfile": 683,
+   "agree": 568,
+   "defer": 0,
+   "mark": 0,
+   "cochange": 953,
+   "pair": [
+    "21"
+   ],
+   "documents": 49,
+   "docprops": 177
+  }
+ },
+ "graphify_graph": {
+  "nodes": 2122,
+  "links": 4954,
+  "calls": 1326,
+  "cross_file_calls": 782,
+  "inferred_call_pct": 26.8,
+  "implements": 244,
+  "inherits": 37,
+  "references": 1703,
+  "communities": 95,
+  "id_collision_warnings": 242,
+  "id_collision_modules": 18,
+  "method_nodes": 875,
+  "method_nodes_with_shared_label": 282,
+  "shared_method_labels": 69
+ }
+}

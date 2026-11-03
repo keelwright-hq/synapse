@@ -1,0 +1,323 @@
+{
+  "repo": "aeroflux",
+  "repo_commit": "3c04fb4",
+  "notes": "Expected answers were written by hand from the aeroflux source and git history at repo_commit. Each expected item is satisfied when any of its aliases appears in an approach's combined output. Commands run with the target repo as the working directory. Placeholders: {graph} = Graphify graph.json, {syn} = synapse binary plus its --repo/--data-dir flags, {root} = target repo path.",
+  "tasks": [
+    {
+      "id": "callers",
+      "question": "What calls WeatherViewModel.refresh?",
+      "expected": [
+        [
+          "refreshAndConsiderReview"
+        ],
+        [
+          "refreshAndMaybeRequestReview"
+        ],
+        [
+          "forcedRefreshPreservesChosenEngineAndReachesProvider"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "grep -rn -C 30 '\\.refresh(' --include='*.swift' ."
+        ],
+        "graphify": [
+          "graphify affected 'WeatherViewModel.refresh' --depth 1 --graph {graph}",
+          "graphify affected '.refresh()' --depth 1 --graph {graph}",
+          "grep -o '\"id\": \"[^\"]*weatherviewmodel[^\"]*refresh\"' {graph}",
+          "graphify affected 'aeroflux_viewmodels_weatherviewmodel_weatherviewmodel_refresh' --depth 1 --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query neighborhood refresh --root {root}",
+          "{syn} query neighborhood 'repo://aeroflux/aeroflux/ViewModels/WeatherViewModel.swift#method:WeatherViewModel.refresh' --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "impact",
+      "question": "Which non-test files are affected if the Temperature type changes?",
+      "expected": [
+        [
+          "AeroFluxLiveActivityAttributes"
+        ],
+        [
+          "WidgetOpenMeteoFetcher"
+        ],
+        [
+          "aerofluxwidget.swift",
+          "AeroFluxWidget/aerofluxwidget"
+        ],
+        [
+          "UserPreferences"
+        ],
+        [
+          "WeatherCondition.swift",
+          "Models/WeatherCondition"
+        ],
+        [
+          "WidgetWeatherPayload"
+        ],
+        [
+          "DailyForecastView"
+        ],
+        [
+          "HourlyForecastView"
+        ],
+        [
+          "LiquidHeaderView"
+        ],
+        [
+          "NowDashboardView"
+        ],
+        [
+          "FullScreenRadarView"
+        ],
+        [
+          "WeatherMapStackView"
+        ],
+        [
+          "DWDClient"
+        ],
+        [
+          "ECCCClient"
+        ],
+        [
+          "ECMWFBackendClient"
+        ],
+        [
+          "JWAClient"
+        ],
+        [
+          "NWSClient"
+        ],
+        [
+          "HourlyForecastWindow"
+        ],
+        [
+          "NormalizedWeatherModels"
+        ],
+        [
+          "CombinedWeatherProvider"
+        ],
+        [
+          "DWDProvider"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "grep -rlw Temperature --include='*.swift' . | grep -v Tests"
+        ],
+        "graphify": [
+          "graphify affected 'Temperature' --graph {graph}",
+          "grep -o '\"id\": \"[^\"]*temperature_temperature\"' {graph}",
+          "graphify affected 'aeroflux_models_temperature_temperature' --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query neighborhood Temperature --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "dependencies",
+      "question": "Which other files does NOAAProvider depend on?",
+      "expected": [
+        [
+          "WeatherCondition"
+        ],
+        [
+          "HourlyForecastWindow"
+        ],
+        [
+          "NWSMapping"
+        ],
+        [
+          "PrecipitationChance"
+        ],
+        [
+          "WeatherNetworkError"
+        ],
+        [
+          "WeatherProviderProtocol"
+        ],
+        [
+          "WeatherSession",
+          "throwIfRateLimitOrUnavailable"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "cat aeroflux/Weather/Providers/NOAAProvider.swift",
+          "grep -rnE '(class|struct|enum|protocol) (WeatherCondition|HourlyForecast|DailyForecast|WindInfo|SunMoonInfo|HourlyForecastWindow|NWSMapping|PrecipitationChance|WeatherNetworkError|WeatherProviderProtocol|WeatherSession)\\b' --include='*.swift' ."
+        ],
+        "graphify": [
+          "graphify explain 'NOAAProvider' --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query neighborhood NOAAProvider --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "path",
+      "question": "What call chain takes ContentView.refreshAndConsiderReview to the fetch in WeatherRepository?",
+      "expected": [
+        [
+          "WeatherViewModel.refresh",
+          "viewModel.refresh",
+          "refresh()"
+        ],
+        [
+          "currentWeather"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "grep -n -A 12 'func refreshAndConsiderReview' aeroflux/ContentView.swift",
+          "grep -n 'repository\\.' aeroflux/ViewModels/WeatherViewModel.swift"
+        ],
+        "graphify": [
+          "graphify path '.refreshAndConsiderReview()' 'WeatherRepository' --graph {graph}",
+          "graphify path '.refreshAndConsiderReview()' 'WeatherRepository' --undirected --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query neighborhood refreshAndConsiderReview --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "co-change",
+      "question": "Which files usually change together with WeatherViewModel.swift?",
+      "expected": [
+        [
+          "NowDashboardView.swift"
+        ],
+        [
+          "aerofluxApp.swift"
+        ],
+        [
+          "ContentView.swift"
+        ],
+        [
+          "README.md"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "git log --no-merges --full-diff --name-only --format= -- aeroflux/ViewModels/WeatherViewModel.swift | grep -v '^$' | sort | uniq -c | sort -rn | head -10"
+        ],
+        "graphify": [
+          "graphify explain 'WeatherViewModel.swift' --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query co-changes aeroflux/ViewModels/WeatherViewModel.swift --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "docs",
+      "question": "Which docs describe NotificationService?",
+      "expected": [
+        [
+          "README.md"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "git ls-files '*.md' | xargs grep -ln NotificationService"
+        ],
+        "graphify": [
+          "graphify explain 'NotificationService' --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query docs NotificationService --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "conformance",
+      "question": "Which types conform to WeatherProviderProtocol?",
+      "expected": [
+        [
+          "AirNowProvider"
+        ],
+        [
+          "OpenMeteoProvider"
+        ],
+        [
+          "JWAProvider"
+        ],
+        [
+          "CombinedWeatherProvider"
+        ],
+        [
+          "WeatherKitProvider"
+        ],
+        [
+          "NOAAProvider"
+        ],
+        [
+          "ECCCProvider"
+        ],
+        [
+          "DWDProvider"
+        ],
+        [
+          "TomorrowProvider"
+        ],
+        [
+          "MeteoblueProvider"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "grep -rn ': WeatherProviderProtocol' --include='*.swift' ."
+        ],
+        "graphify": [
+          "graphify affected 'WeatherProviderProtocol' --depth 1 --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query neighborhood WeatherProviderProtocol --root {root}"
+        ]
+      }
+    },
+    {
+      "id": "explain",
+      "question": "What does BackgroundRefreshService.runRefresh do, and who calls it?",
+      "expected": [
+        [
+          "aerofluxApp"
+        ],
+        [
+          "WidgetDiagnosticsProviding"
+        ],
+        [
+          "resolveRefreshTarget"
+        ],
+        [
+          "loadContextFromSwiftData"
+        ],
+        [
+          "saveWeatherPayload"
+        ],
+        [
+          "recordBGFailure"
+        ],
+        [
+          "fetchWeather"
+        ]
+      ],
+      "approaches": {
+        "grep": [
+          "grep -rn 'runRefresh' --include='*.swift' .",
+          "sed -n '56,172p' aeroflux/Services/BackgroundRefreshService.swift"
+        ],
+        "graphify": [
+          "graphify explain '.runRefresh()' --graph {graph}"
+        ],
+        "synapse": [
+          "{syn} query neighborhood runRefresh --root {root}"
+        ]
+      }
+    }
+  ]
+}

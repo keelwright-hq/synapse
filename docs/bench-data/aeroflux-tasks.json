@@ -1,0 +1,680 @@
+{
+ "repo": "aeroflux",
+ "repo_commit": "3c04fb4",
+ "token_estimate": "ceil(characters / 4); command text + full stdout/stderr",
+ "tasks": [
+  {
+   "id": "callers",
+   "question": "What calls WeatherViewModel.refresh?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "grep -rn -C 30 '\\.refresh(' --include='*.swift' .",
+       "exit": 0,
+       "output_bytes": 22802,
+       "output_lines": 274
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 22850,
+     "est_tokens": 5713,
+     "found": 3,
+     "expected": 3,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 5713,
+     "tool_calls_to_answer": 1
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify affected 'WeatherViewModel.refresh' --depth 1 --graph {graph}",
+       "exit": 0,
+       "output_bytes": 50,
+       "output_lines": 1
+      },
+      {
+       "command": "graphify affected '.refresh()' --depth 1 --graph {graph}",
+       "exit": 0,
+       "output_bytes": 36,
+       "output_lines": 1
+      },
+      {
+       "command": "grep -o '\"id\": \"[^\"]*weatherviewmodel[^\"]*refresh\"' {graph}",
+       "exit": 0,
+       "output_bytes": 70,
+       "output_lines": 1
+      },
+      {
+       "command": "graphify affected 'aeroflux_viewmodels_weatherviewmodel_weatherviewmodel_refresh' --depth 1 --graph {graph}",
+       "exit": 0,
+       "output_bytes": 474,
+       "output_lines": 6
+      }
+     ],
+     "tool_calls": 4,
+     "chars_read": 926,
+     "est_tokens": 232,
+     "found": 3,
+     "expected": 3,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 232,
+     "tool_calls_to_answer": 4
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query neighborhood refresh --root {root}",
+       "exit": 1,
+       "output_bytes": 265,
+       "output_lines": 1
+      },
+      {
+       "command": "{syn} query neighborhood 'repo://aeroflux/aeroflux/ViewModels/WeatherViewModel.swift#method:WeatherViewModel.refresh' --root {root}",
+       "exit": 0,
+       "output_bytes": 6505,
+       "output_lines": 60
+      }
+     ],
+     "tool_calls": 2,
+     "chars_read": 6897,
+     "est_tokens": 1725,
+     "found": 3,
+     "expected": 3,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 1725,
+     "tool_calls_to_answer": 2
+    }
+   }
+  },
+  {
+   "id": "impact",
+   "question": "Which non-test files are affected if the Temperature type changes?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "grep -rlw Temperature --include='*.swift' . | grep -v Tests",
+       "exit": 0,
+       "output_bytes": 1077,
+       "output_lines": 22
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 1137,
+     "est_tokens": 285,
+     "found": 21,
+     "expected": 21,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 285,
+     "tool_calls_to_answer": 1
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify affected 'Temperature' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 37,
+       "output_lines": 1
+      },
+      {
+       "command": "grep -o '\"id\": \"[^\"]*temperature_temperature\"' {graph}",
+       "exit": 0,
+       "output_bytes": 48,
+       "output_lines": 1
+      },
+      {
+       "command": "graphify affected 'aeroflux_models_temperature_temperature' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 19881,
+       "output_lines": 225
+      }
+     ],
+     "tool_calls": 3,
+     "chars_read": 20145,
+     "est_tokens": 5037,
+     "found": 20,
+     "expected": 21,
+     "missing": [
+      "UserPreferences"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 5322,
+     "tool_calls_to_answer": 4
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query neighborhood Temperature --root {root}",
+       "exit": 0,
+       "output_bytes": 8111,
+       "output_lines": 65
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 8098,
+     "est_tokens": 2025,
+     "found": 8,
+     "expected": 21,
+     "missing": [
+      "AeroFluxLiveActivityAttributes",
+      "aerofluxwidget.swift",
+      "UserPreferences",
+      "WidgetWeatherPayload",
+      "DailyForecastView",
+      "HourlyForecastView",
+      "LiquidHeaderView",
+      "NowDashboardView",
+      "FullScreenRadarView",
+      "WeatherMapStackView",
+      "HourlyForecastWindow",
+      "NormalizedWeatherModels",
+      "DWDProvider"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 2310,
+     "tool_calls_to_answer": 2
+    }
+   }
+  },
+  {
+   "id": "dependencies",
+   "question": "Which other files does NOAAProvider depend on?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "cat aeroflux/Weather/Providers/NOAAProvider.swift",
+       "exit": 0,
+       "output_bytes": 17804,
+       "output_lines": 403
+      },
+      {
+       "command": "grep -rnE '(class|struct|enum|protocol) (WeatherCondition|HourlyForecast|DailyForecast|WindInfo|SunMoonInfo|HourlyForecastWindow|NWSMapping|PrecipitationChance|WeatherNetworkError|WeatherProviderProtocol|WeatherSession)\\b' --include='*.swift' .",
+       "exit": 0,
+       "output_bytes": 927,
+       "output_lines": 11
+      }
+     ],
+     "tool_calls": 2,
+     "chars_read": 19003,
+     "est_tokens": 4751,
+     "found": 7,
+     "expected": 7,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 4751,
+     "tool_calls_to_answer": 2
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify explain 'NOAAProvider' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 2432,
+       "output_lines": 31
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 2480,
+     "est_tokens": 620,
+     "found": 2,
+     "expected": 7,
+     "missing": [
+      "HourlyForecastWindow",
+      "NWSMapping",
+      "PrecipitationChance",
+      "WeatherNetworkError",
+      "WeatherSession"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 5371,
+     "tool_calls_to_answer": 3
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query neighborhood NOAAProvider --root {root}",
+       "exit": 0,
+       "output_bytes": 7237,
+       "output_lines": 63
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 7233,
+     "est_tokens": 1809,
+     "found": 2,
+     "expected": 7,
+     "missing": [
+      "WeatherCondition",
+      "HourlyForecastWindow",
+      "PrecipitationChance",
+      "WeatherNetworkError",
+      "WeatherSession"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 6560,
+     "tool_calls_to_answer": 3
+    }
+   }
+  },
+  {
+   "id": "path",
+   "question": "What call chain takes ContentView.refreshAndConsiderReview to the fetch in WeatherRepository?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "grep -n -A 12 'func refreshAndConsiderReview' aeroflux/ContentView.swift",
+       "exit": 0,
+       "output_bytes": 530,
+       "output_lines": 13
+      },
+      {
+       "command": "grep -n 'repository\\.' aeroflux/ViewModels/WeatherViewModel.swift",
+       "exit": 0,
+       "output_bytes": 252,
+       "output_lines": 3
+      }
+     ],
+     "tool_calls": 2,
+     "chars_read": 921,
+     "est_tokens": 231,
+     "found": 2,
+     "expected": 2,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 231,
+     "tool_calls_to_answer": 2
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify path '.refreshAndConsiderReview()' 'WeatherRepository' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 146,
+       "output_lines": 1
+      },
+      {
+       "command": "graphify path '.refreshAndConsiderReview()' 'WeatherRepository' --undirected --graph {graph}",
+       "exit": 0,
+       "output_bytes": 130,
+       "output_lines": 2
+      }
+     ],
+     "tool_calls": 2,
+     "chars_read": 449,
+     "est_tokens": 113,
+     "found": 0,
+     "expected": 2,
+     "missing": [
+      "WeatherViewModel.refresh",
+      "currentWeather"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 344,
+     "tool_calls_to_answer": 4
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query neighborhood refreshAndConsiderReview --root {root}",
+       "exit": 0,
+       "output_bytes": 6219,
+       "output_lines": 58
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 6235,
+     "est_tokens": 1559,
+     "found": 2,
+     "expected": 2,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 1559,
+     "tool_calls_to_answer": 1
+    }
+   }
+  },
+  {
+   "id": "co-change",
+   "question": "Which files usually change together with WeatherViewModel.swift?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "git log --no-merges --full-diff --name-only --format= -- aeroflux/ViewModels/WeatherViewModel.swift | grep -v '^$' | sort | uniq -c | sort -rn | head -10",
+       "exit": 0,
+       "output_bytes": 395,
+       "output_lines": 10
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 549,
+     "est_tokens": 138,
+     "found": 4,
+     "expected": 4,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 138,
+     "tool_calls_to_answer": 1
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify explain 'WeatherViewModel.swift' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 998,
+       "output_lines": 17
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 1056,
+     "est_tokens": 264,
+     "found": 0,
+     "expected": 4,
+     "missing": [
+      "NowDashboardView.swift",
+      "aerofluxApp.swift",
+      "ContentView.swift",
+      "README.md"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 402,
+     "tool_calls_to_answer": 2
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query co-changes aeroflux/ViewModels/WeatherViewModel.swift --root {root}",
+       "exit": 0,
+       "output_bytes": 2114,
+       "output_lines": 20
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 2194,
+     "est_tokens": 549,
+     "found": 4,
+     "expected": 4,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 549,
+     "tool_calls_to_answer": 1
+    }
+   }
+  },
+  {
+   "id": "docs",
+   "question": "Which docs describe NotificationService?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "git ls-files '*.md' | xargs grep -ln NotificationService",
+       "exit": 0,
+       "output_bytes": 10,
+       "output_lines": 1
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 67,
+     "est_tokens": 17,
+     "found": 1,
+     "expected": 1,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 17,
+     "tool_calls_to_answer": 1
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify explain 'NotificationService' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 2633,
+       "output_lines": 31
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 2688,
+     "est_tokens": 672,
+     "found": 0,
+     "expected": 1,
+     "missing": [
+      "README.md"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 689,
+     "tool_calls_to_answer": 2
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query docs NotificationService --root {root}",
+       "exit": 1,
+       "output_bytes": 50,
+       "output_lines": 1
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 101,
+     "est_tokens": 26,
+     "found": 0,
+     "expected": 1,
+     "missing": [
+      "README.md"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 43,
+     "tool_calls_to_answer": 2
+    }
+   }
+  },
+  {
+   "id": "conformance",
+   "question": "Which types conform to WeatherProviderProtocol?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "grep -rn ': WeatherProviderProtocol' --include='*.swift' .",
+       "exit": 0,
+       "output_bytes": 1648,
+       "output_lines": 15
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 1707,
+     "est_tokens": 427,
+     "found": 10,
+     "expected": 10,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 427,
+     "tool_calls_to_answer": 1
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify affected 'WeatherProviderProtocol' --depth 1 --graph {graph}",
+       "exit": 0,
+       "output_bytes": 1570,
+       "output_lines": 20
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 1640,
+     "est_tokens": 410,
+     "found": 10,
+     "expected": 10,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 410,
+     "tool_calls_to_answer": 1
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query neighborhood WeatherProviderProtocol --root {root}",
+       "exit": 0,
+       "output_bytes": 981,
+       "output_lines": 11
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 1042,
+     "est_tokens": 261,
+     "found": 0,
+     "expected": 10,
+     "missing": [
+      "AirNowProvider",
+      "OpenMeteoProvider",
+      "JWAProvider",
+      "CombinedWeatherProvider",
+      "WeatherKitProvider",
+      "NOAAProvider",
+      "ECCCProvider",
+      "DWDProvider",
+      "TomorrowProvider",
+      "MeteoblueProvider"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 688,
+     "tool_calls_to_answer": 2
+    }
+   }
+  },
+  {
+   "id": "explain",
+   "question": "What does BackgroundRefreshService.runRefresh do, and who calls it?",
+   "approaches": {
+    "grep": {
+     "steps": [
+      {
+       "command": "grep -rn 'runRefresh' --include='*.swift' .",
+       "exit": 0,
+       "output_bytes": 1052,
+       "output_lines": 10
+      },
+      {
+       "command": "sed -n '56,172p' aeroflux/Services/BackgroundRefreshService.swift",
+       "exit": 0,
+       "output_bytes": 5088,
+       "output_lines": 117
+      }
+     ],
+     "tool_calls": 2,
+     "chars_read": 6250,
+     "est_tokens": 1563,
+     "found": 7,
+     "expected": 7,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 1563,
+     "tool_calls_to_answer": 2
+    },
+    "graphify": {
+     "steps": [
+      {
+       "command": "graphify explain '.runRefresh()' --graph {graph}",
+       "exit": 0,
+       "output_bytes": 2653,
+       "output_lines": 33
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 2702,
+     "est_tokens": 676,
+     "found": 4,
+     "expected": 7,
+     "missing": [
+      "resolveRefreshTarget",
+      "saveWeatherPayload",
+      "recordBGFailure"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 2239,
+     "tool_calls_to_answer": 3
+    },
+    "synapse": {
+     "steps": [
+      {
+       "command": "{syn} query neighborhood runRefresh --root {root}",
+       "exit": 0,
+       "output_bytes": 5952,
+       "output_lines": 56
+      }
+     ],
+     "tool_calls": 1,
+     "chars_read": 5956,
+     "est_tokens": 1489,
+     "found": 4,
+     "expected": 7,
+     "missing": [
+      "saveWeatherPayload",
+      "recordBGFailure",
+      "fetchWeather"
+     ],
+     "complete": false,
+     "fallback_to_grep": true,
+     "est_tokens_to_answer": 3052,
+     "tool_calls_to_answer": 3
+    }
+   }
+  }
+ ],
+ "totals": {
+  "grep": {
+   "est_tokens": 13125,
+   "est_tokens_to_answer": 13125,
+   "tool_calls_to_answer": 11,
+   "tasks_complete": 8,
+   "items_found": 55,
+   "items_expected": 55
+  },
+  "graphify": {
+   "est_tokens": 8024,
+   "est_tokens_to_answer": 15009,
+   "tool_calls_to_answer": 23,
+   "tasks_complete": 2,
+   "items_found": 39,
+   "items_expected": 55
+  },
+  "synapse": {
+   "est_tokens": 9443,
+   "est_tokens_to_answer": 16486,
+   "tool_calls_to_answer": 16,
+   "tasks_complete": 3,
+   "items_found": 23,
+   "items_expected": 55
+  }
+ }
+}
