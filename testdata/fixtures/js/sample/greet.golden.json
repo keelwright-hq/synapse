@@ -143,17 +143,17 @@
     },
     {
       "from": "module:js/sample/greet.js",
-      "to": "method:js/sample/greet.js#Greeter.say",
-      "type": "contains"
-    },
-    {
-      "from": "module:js/sample/greet.js",
       "to": "type:js/sample/greet.js#Greeter",
       "type": "contains"
     },
     {
       "from": "module:js/sample/greet.js",
       "to": "type:js/sample/greet.js#User",
+      "type": "contains"
+    },
+    {
+      "from": "type:js/sample/greet.js#Greeter",
+      "to": "method:js/sample/greet.js#Greeter.say",
       "type": "contains"
     }
   ]

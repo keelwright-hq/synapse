@@ -66,7 +66,7 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 	defer idx.mu.Unlock()
 
 	defsByName := make(map[string][]graph.Node)
-	swiftTypesByName := make(map[string][]graph.Node)
+	typesByFamily := map[string]map[string][]graph.Node{}
 	importsByFile := make(map[string][]string)
 	var callers, typeUsers []graph.Node
 	existingSymbols := make(map[graph.NodeID]bool)
@@ -78,8 +78,11 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 				defsByName[n.Name] = append(defsByName[n.Name], n)
 			}
 		case parse.KindType:
-			if n.Name != "" && isSwiftPath(n.Path) && n.Props[parse.PropExtension] == "" {
-				swiftTypesByName[n.Name] = append(swiftTypesByName[n.Name], n)
+			if fam := languageFamily(n.Path); n.Name != "" && fam != "" && n.Props[parse.PropExtension] == "" {
+				if typesByFamily[fam] == nil {
+					typesByFamily[fam] = map[string][]graph.Node{}
+				}
+				typesByFamily[fam][n.Name] = append(typesByFamily[fam][n.Name], n)
 			}
 		case parse.KindImport:
 			if n.Path != "" && n.Name != "" {
@@ -100,7 +103,12 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		return err
 	}
 
-	for _, byName := range []map[string][]graph.Node{defsByName, swiftTypesByName} {
+	swiftTypesByName := typesByFamily["swift"]
+	byNames := []map[string][]graph.Node{defsByName}
+	for _, m := range typesByFamily {
+		byNames = append(byNames, m)
+	}
+	for _, byName := range byNames {
 		for name, defs := range byName {
 			sort.Slice(defs, func(i, j int) bool { return defs[i].ID < defs[j].ID })
 			byName[name] = defs
@@ -181,7 +189,7 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 
 	sort.Slice(typeUsers, func(i, j int) bool { return typeUsers[i].ID < typeUsers[j].ID })
 	for _, user := range typeUsers {
-		if err := idx.resolveTypeEdges(user, swiftTypesByName); err != nil {
+		if err := idx.resolveTypeEdges(user, typesByFamily[languageFamily(user.Path)]); err != nil {
 			return err
 		}
 	}
@@ -216,9 +224,10 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 
 // resolveTypeEdges links a declaration's recorded type names to type nodes:
 // type_refs become references edges and supertypes become inherits edges.
-// Names that do not resolve to exactly one repo type (String, Codable, ...)
-// produce no edge and no placeholder node.
-func (idx *Indexer) resolveTypeEdges(user graph.Node, swiftTypesByName map[string][]graph.Node) error {
+// Names resolve within the declaration's language family (typesByName), and
+// only when exactly one repo type declares them (String, Codable, Promise
+// produce no edge and no placeholder node).
+func (idx *Indexer) resolveTypeEdges(user graph.Node, typesByName map[string][]graph.Node) error {
 	for _, spec := range []struct {
 		prop string
 		typ  graph.EdgeType
@@ -229,11 +238,15 @@ func (idx *Indexer) resolveTypeEdges(user graph.Node, swiftTypesByName map[strin
 		desired := map[graph.NodeID]string{}
 		for _, name := range strings.Split(user.Props[spec.prop], ",") {
 			name = strings.TrimSpace(name)
-			if name == "" || !isSwiftPath(user.Path) {
+			if name == "" {
 				continue
 			}
-			types := swiftTypesByName[name]
+			types := typesByName[name]
 			if len(types) != 1 || types[0].ID == user.ID {
+				continue
+			}
+			// A module using a type it declares itself says nothing about impact.
+			if user.Kind == parse.KindModule && types[0].Path == user.Path {
 				continue
 			}
 			prov := parse.ProvenanceInferred
@@ -540,6 +553,20 @@ func implicitSelfReceiver(caller graph.Node) string {
 	default:
 		return ""
 	}
+}
+
+// languageFamily groups files whose type names resolve against each other:
+// Swift; JavaScript and TypeScript; Python. Other languages have no type edges.
+func languageFamily(p string) string {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".swift":
+		return "swift"
+	case ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx":
+		return "js"
+	case ".py":
+		return "py"
+	}
+	return ""
 }
 
 func isSwiftPath(p string) bool {

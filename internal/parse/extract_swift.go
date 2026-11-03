@@ -91,7 +91,7 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			if c.Kind() == "inheritance_specifier" {
 				if current != "" {
 					for _, t := range swiftUserTypeNames(b, c) {
-						addSwiftListProp(b, current, PropSupertypes, t)
+						b.addListProp(current, PropSupertypes, t)
 					}
 				}
 				continue
@@ -106,7 +106,7 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 		// a type used through a static member or enum case.
 		if t := field(n, "target"); current != "" && t != nil && t.Kind() == "simple_identifier" {
 			if name := b.text(t); name != "" && name[0] >= 'A' && name[0] <= 'Z' {
-				addSwiftListProp(b, current, PropTypeRefs, name)
+				b.addListProp(current, PropTypeRefs, name)
 			}
 		}
 
@@ -147,7 +147,7 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 // names to type nodes; names that do not resolve never become nodes.
 func collectSwiftTypeRefs(b *builder, n *tree_sitter.Node, owner graph.NodeID) {
 	for _, t := range swiftUserTypeNames(b, n) {
-		addSwiftListProp(b, owner, PropTypeRefs, t)
+		b.addListProp(owner, PropTypeRefs, t)
 	}
 }
 
@@ -173,28 +173,6 @@ func swiftUserTypeNames(b *builder, n *tree_sitter.Node) []string {
 	}
 	walk(n)
 	return out
-}
-
-// addSwiftListProp appends value to a comma-separated, deduplicated prop.
-func addSwiftListProp(b *builder, id graph.NodeID, key, value string) {
-	node, ok := b.nodes[id]
-	if !ok || value == "" {
-		return
-	}
-	if node.Props == nil {
-		node.Props = map[string]string{}
-	}
-	for _, v := range strings.Split(node.Props[key], ",") {
-		if v == value {
-			return
-		}
-	}
-	if node.Props[key] == "" {
-		node.Props[key] = value
-	} else {
-		node.Props[key] += "," + value
-	}
-	b.nodes[id] = node
 }
 
 func sameNode(a, b *tree_sitter.Node) bool {

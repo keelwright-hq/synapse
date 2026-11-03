@@ -68,6 +68,13 @@ func BuildDependencyView(nodes []graph.Node, edges []graph.Edge) DependencyView 
 	for _, e := range edges {
 		switch e.Type {
 		case parse.EdgeImports:
+			// Module -> module edges are imports the index already resolved.
+			if to, ok := byID[e.To]; ok && to.Kind == parse.KindModule {
+				if src, dst := analysisEndpoint(byID, owner, e.From), analysisEndpoint(byID, owner, e.To); src != "" && dst != "" {
+					addEdge(src, dst, parse.EdgeImports)
+				}
+				continue
+			}
 			cov.ImportEdgesTotal++
 			to, ok := byID[e.To]
 			if !ok || to.Kind != parse.KindImport {

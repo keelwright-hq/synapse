@@ -31,7 +31,8 @@
       "path": "jsx/sample/app.jsx",
       "props": {
         "end_line": "10",
-        "start_line": "8"
+        "start_line": "8",
+        "type_refs": "Badge"
       }
     },
     {
@@ -69,12 +70,12 @@
     },
     {
       "from": "module:jsx/sample/app.jsx",
-      "to": "method:jsx/sample/app.jsx#App.render",
+      "to": "type:jsx/sample/app.jsx#App",
       "type": "contains"
     },
     {
-      "from": "module:jsx/sample/app.jsx",
-      "to": "type:jsx/sample/app.jsx#App",
+      "from": "type:jsx/sample/app.jsx#App",
+      "to": "method:jsx/sample/app.jsx#App.render",
       "type": "contains"
     }
   ]

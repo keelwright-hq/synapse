@@ -25,7 +25,8 @@
       "path": "ts/sample/greet.ts",
       "props": {
         "end_line": "11",
-        "start_line": "8"
+        "start_line": "8",
+        "type_refs": "User"
       }
     },
     {
@@ -132,17 +133,17 @@
     },
     {
       "from": "module:ts/sample/greet.ts",
-      "to": "method:ts/sample/greet.ts#Greeter.say",
-      "type": "contains"
-    },
-    {
-      "from": "module:ts/sample/greet.ts",
       "to": "type:ts/sample/greet.ts#Greeter",
       "type": "contains"
     },
     {
       "from": "module:ts/sample/greet.ts",
       "to": "type:ts/sample/greet.ts#User",
+      "type": "contains"
+    },
+    {
+      "from": "type:ts/sample/greet.ts#Greeter",
+      "to": "method:ts/sample/greet.ts#Greeter.say",
       "type": "contains"
     }
   ]

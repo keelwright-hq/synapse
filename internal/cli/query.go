@@ -318,7 +318,11 @@ func runImpactQuery(cmd *cobra.Command, symbol string, query func(graph.Store, g
 				parts = append(parts, fmt.Sprintf("+%d more", len(g.Symbols)-perFile))
 				break
 			}
-			parts = append(parts, fmt.Sprintf("%s [%s] L%d", sym.Name, sym.Edge, sym.Line))
+			if sym.Line > 0 {
+				parts = append(parts, fmt.Sprintf("%s [%s] L%d", sym.Name, sym.Edge, sym.Line))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s [%s]", sym.Name, sym.Edge)) // module-level code
+			}
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", g.Path, strings.Join(parts, ", "))
 	}

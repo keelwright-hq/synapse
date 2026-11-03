@@ -10,13 +10,17 @@ import (
 
 // dependencyEdges are the static and runtime edges that mean "uses": a change
 // to the target can affect the source.
+// Ordered strongest first: when a symbol is reached by two relations, the
+// result labels it with the first (a subclass that also mentions its base is
+// shown as inherits, not references).
 var dependencyEdges = []graph.EdgeType{
-	parse.EdgeCalls,
-	parse.EdgeReferences,
 	parse.EdgeInherits,
 	parse.EdgeImplements,
 	parse.EdgeConsumes,
+	parse.EdgeCalls,
 	parse.EdgeObservedCalls,
+	parse.EdgeReferences,
+	parse.EdgeImports, // module -> module, resolved at index time
 }
 
 // FileGroup lists the symbols in one file reached by an impact or dependency query.
@@ -203,8 +207,12 @@ func newMemberIndex(store graph.Store) (*memberIndex, error) {
 	return mx, err
 }
 
-// withMembers returns n plus, for a type, its members and its extensions.
+// withMembers returns n plus, for a type, its members and its extensions;
+// for a file or module, everything it declares (and those types' members).
 func (mx *memberIndex) withMembers(n graph.Node) ([]graph.Node, error) {
+	if n.Kind == parse.KindFile || n.Kind == parse.KindModule {
+		return mx.containedClosure(n)
+	}
 	out := []graph.Node{n}
 	if n.Kind != parse.KindType {
 		return out, nil
@@ -227,6 +235,29 @@ func (mx *memberIndex) withMembers(n graph.Node) ([]graph.Node, error) {
 			return nil, err
 		}
 		for _, e := range edges {
+			if m, err := mx.store.GetNode(e.To); err == nil {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
+// containedClosure walks contains edges from a file or module down to its
+// declarations and their members.
+func (mx *memberIndex) containedClosure(root graph.Node) ([]graph.Node, error) {
+	out := []graph.Node{root}
+	seen := map[graph.NodeID]bool{root.ID: true}
+	for i := 0; i < len(out); i++ {
+		edges, err := mx.store.OutEdges(out[i].ID, parse.EdgeContains)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range edges {
+			if seen[e.To] {
+				continue
+			}
+			seen[e.To] = true
 			if m, err := mx.store.GetNode(e.To); err == nil {
 				out = append(out, m)
 			}

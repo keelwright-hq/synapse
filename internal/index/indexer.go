@@ -308,6 +308,11 @@ func (idx *Indexer) Run(root string, opts Options) (Stats, error) {
 			stats.Errors++
 			log.Error("index resolve calls failed", "err", err)
 		}
+		if err := idx.resolveImports(log); err != nil {
+			errs = append(errs, fmt.Errorf("resolve imports: %w", err))
+			stats.Errors++
+			log.Error("index resolve imports failed", "err", err)
+		}
 	}
 
 	log.Info("index complete",

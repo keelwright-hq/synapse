@@ -31,6 +31,32 @@
 
 ### Fixed & Improved
 
+- **JS/TS and Python type relationships:**
+  - Class heritage (`extends`, `implements`, Python base classes) becomes
+    `inherits` edges.
+  - TS type annotations and capitalized names used in code (`new Store()`,
+    `Athlete.findAll`, `isinstance(x, Foo)`, type hints) become `references`
+    edges.
+  - Names resolve within their language family (Swift; JS/TS; Python) to a
+    unique type declaration only.
+  - Classes now `contain` their methods, and class bodies are attributed to
+    the class.
+- **Calls in anonymous callbacks are kept:** in JS, TS and Python, calls outside
+  any named function (Express route handlers, module-level code) are attributed
+  to the file's module instead of being dropped.
+- **File imports resolve into the graph:**
+  - Relative JS/TS imports (including `./x.js` for `x.ts`, directory `index`
+    files and `export … from` re-exports) become module → module `imports`
+    edges.
+  - So do Python relative and repo-local imports, including nested and `src/`
+    layouts.
+  - `affected` and `dependencies` follow these edges, and a `file:` seed covers
+    everything the file declares.
+- **Faster git co-change walk:** commits are diffed by tree entries instead of
+  line stats, so commits touching thousands of files no longer cost seconds
+  each. On two benchmark repos indexing went from 17.4s to 4.5s and from 13.1s
+  to 2.7s.
+
 - **Swift extensions don't make a type name ambiguous:** Name lookups prefer
   a type's single declaration over its Swift extensions and over the module
   named after its file (`Foo.swift`).

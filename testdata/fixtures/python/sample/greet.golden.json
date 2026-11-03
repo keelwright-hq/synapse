@@ -15,7 +15,8 @@
       "path": "python/sample/greet.py",
       "props": {
         "end_line": "10",
-        "start_line": "8"
+        "start_line": "8",
+        "type_refs": "Greeter"
       }
     },
     {
@@ -113,12 +114,12 @@
     },
     {
       "from": "module:python/sample/greet.py",
-      "to": "method:python/sample/greet.py#Greeter.greet",
+      "to": "type:python/sample/greet.py#Greeter",
       "type": "contains"
     },
     {
-      "from": "module:python/sample/greet.py",
-      "to": "type:python/sample/greet.py#Greeter",
+      "from": "type:python/sample/greet.py#Greeter",
+      "to": "method:python/sample/greet.py#Greeter.greet",
       "type": "contains"
     }
   ]
