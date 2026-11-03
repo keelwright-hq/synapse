@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
 
 	"github.com/keelwright-hq/synapse/internal/config"
 	"github.com/keelwright-hq/synapse/internal/contract/bind"
@@ -267,4 +268,8 @@ func logHTTPStats(logger *slog.Logger, st bind.HTTPStats) {
 		"declared", st.Declared, "inferred", st.Inferred,
 		"ambiguous", st.Ambiguous, "unmatched", st.Unmatched,
 		"service_edges", st.ServiceEdges)
+	if len(st.EnvClashes) > 0 {
+		logger.Warn("http bind: base_env declared by more than one member; calls reading it are matched by path only",
+			"count", len(st.EnvClashes), "names", strings.Join(st.EnvClashes, ","))
+	}
 }

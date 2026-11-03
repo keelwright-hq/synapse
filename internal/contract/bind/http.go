@@ -39,6 +39,9 @@ func ServiceNodeID(member string) graph.NodeID {
 // HTTPStats counts the HTTP binding outcome.
 type HTTPStats struct {
 	Routes, Clients, Declared, Inferred, Ambiguous, Unmatched, ServiceEdges int
+	// EnvClashes are base_env names declared by more than one member; calls
+	// reading them are not treated as declared.
+	EnvClashes []string
 }
 
 type httpRoute struct {
@@ -130,7 +133,9 @@ func bindHTTP(opts Options, routes map[string][]graph.Node, write edgeWriter) (H
 	}
 	for env := range envClash {
 		delete(envOwner, env)
+		st.EnvClashes = append(st.EnvClashes, env)
 	}
+	sort.Strings(st.EnvClashes)
 
 	// Handlers implement their routes.
 	for _, hm := range members {
@@ -173,7 +178,7 @@ func bindHTTP(opts Options, routes map[string][]graph.Node, write edgeWriter) (H
 				case 1:
 					for name, env := range targets {
 						t := byName[name]
-						hits = matchRoutes(t.routes, t.common, method, pathSegments(stripGateway(t.m.HTTP, tail)), 1)
+						hits = matchRoutes(t.routes, nil, method, pathSegments(stripGateway(t.m.HTTP, tail)), 1)
 						extra["env"] = env
 					}
 					match, provenance = MatchDeclaredEnv, parse.ProvenanceExtracted
@@ -203,7 +208,7 @@ func bindHTTP(opts Options, routes map[string][]graph.Node, write edgeWriter) (H
 	// Service-level dependencies: a member reading another's base env var.
 	for _, hm := range members {
 		for _, mod := range hm.modules {
-			for _, env := range strings.Split(mod.Props[parse.PropEnvReads], ",") {
+			for _, env := range expandAliases(strings.Split(mod.Props[parse.PropEnvReads], ","), hm.aliases) {
 				owner, ok := envOwner[strings.ToUpper(env)]
 				if !ok || owner == hm.m.Name {
 					continue
@@ -285,24 +290,26 @@ func inferRoutes(members []*httpMember, self, method string, tail []string) []ht
 }
 
 // matchRoutes returns the routes whose path ends with tail (segment by
-// segment, {} matching anything) with the most literal segments in common.
-// The part of the route before the tail must be one of the member's common
-// prefixes, the part a base URL supplies: /athletes matches /api/v1/athletes
-// but not /api/v1/teams/{}/athletes. Ties are kept only when every tied route
-// is one declared route mounted at several prefixes; otherwise the call is
-// ambiguous and nothing is returned.
+// segment, {} matching anything) with the most literal segments in common,
+// then the fewest segments before the tail (the part a base URL supplies).
+// With common set (inference, any member), the part before the tail must
+// also be one of the member's common prefixes, so /athletes matches
+// /api/v1/athletes but not /api/v1/teams/{}/athletes; with common nil (the
+// declared member) any prefix may be the base's. Ties are kept only when
+// every tied route is one declared route mounted at several prefixes;
+// otherwise the call is ambiguous and nothing is returned.
 func matchRoutes(routes []httpRoute, common map[string]bool, method string, tail []string, minLiteral int) []httpRoute {
 	if len(tail) == 0 {
 		return nil
 	}
-	best := -1
+	bestLit, bestOff := -1, 0
 	var hits []httpRoute
 	for _, r := range routes {
 		if !methodsAgree(method, r.method) || len(tail) > len(r.segs) {
 			continue
 		}
 		off := len(r.segs) - len(tail)
-		if off > 0 && !common[strings.Join(r.segs[:off], "/")] {
+		if common != nil && off > 0 && !common[strings.Join(r.segs[:off], "/")] {
 			continue
 		}
 		lit, specific := 0, 0
@@ -324,14 +331,10 @@ func matchRoutes(routes []httpRoute, common map[string]bool, method string, tail
 		if !ok || specific < minLiteral {
 			continue
 		}
-		score := lit * 2
-		if off == 0 {
-			score++ // the whole route path, not just its end
-		}
 		switch {
-		case score > best:
-			best, hits = score, []httpRoute{r}
-		case score == best:
+		case lit > bestLit || lit == bestLit && off < bestOff:
+			bestLit, bestOff, hits = lit, off, []httpRoute{r}
+		case lit == bestLit && off == bestOff:
 			hits = append(hits, r)
 		}
 	}
@@ -382,24 +385,29 @@ func deleteServiceNodes(s graph.Store) error {
 	return nil
 }
 
-// commonPrefixes are the route prefixes (up to three segments) that at least
-// a fifth of a member's routes start with (and two, once it has ten routes;
-// a small service's every prefix counts).
+// commonPrefixes are the route prefixes (up to three segments) a base URL
+// may supply: prefixes of only generic segments (/api, /api/v1), and any
+// prefix that at least two routes and a fifth of the member's routes share.
 func commonPrefixes(routes []httpRoute) map[string]bool {
 	count := map[string]int{}
+	out := map[string]bool{}
 	for _, r := range routes {
 		for k := 1; k <= 3 && k < len(r.segs); k++ {
-			count[strings.Join(r.segs[:k], "/")]++
+			p := strings.Join(r.segs[:k], "/")
+			count[p]++
+			generic := true
+			for _, s := range r.segs[:k] {
+				generic = generic && genericSegment(s)
+			}
+			if generic {
+				out[p] = true
+			}
 		}
 	}
 	min := len(routes) / 5
-	if min < 1 {
-		min = 1
-	}
-	if len(routes) >= 10 && min < 2 {
+	if min < 2 {
 		min = 2
 	}
-	out := map[string]bool{}
 	for p, c := range count {
 		if c >= min {
 			out[p] = true
@@ -408,9 +416,6 @@ func commonPrefixes(routes []httpRoute) map[string]bool {
 	return out
 }
 
-// genericSegment reports path segments too common to identify a route on
-// their own (/api, /v1, /health): they do not count toward the literal
-// segments a match needs.
 func genericSegment(s string) bool {
 	switch s {
 	case "api", "health", "healthz", "docs", "status", "openapi.json", "metrics", "ready", "live":

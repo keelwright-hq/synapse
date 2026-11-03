@@ -104,6 +104,30 @@ export async function jobs() {
 			},
 		},
 		{
+			file: "loaders.js",
+			src: `async function fetchUser(path) {
+  return fetch(` + "`${process.env.API_URL}${path}`" + `);
+}
+export async function load() {
+  await fetchUser('/v1/users');
+  await got(` + "`${process.env.GOT_URL}/v1/items`" + `, { method: 'POST' });
+}
+`,
+			props: []want{
+				// A same-file fetchUser is a wrapper, not an injected fetch.
+				{"func:loaders.js#fetchUser", parse.PropHTTPWrapper, "0|GET|API_URL"},
+				{"func:loaders.js#load", parse.PropHTTPCalls, "wrapper|fetchUser|0|*||/v1/users||5,direct|||POST|GOT_URL|/v1/items||6"},
+			},
+		},
+		{
+			file: "pages/api/whitepaper.js",
+			src: `export default function handler(req, res) { res.status(200).json({}); }
+`,
+			props: []want{
+				{"module:pages/api/whitepaper.js", parse.PropNextRoute, "default"},
+			},
+		},
+		{
 			file: "app/api/users/[id]/route.ts",
 			src: `export async function GET(req: Request) { return Response.json({}); }
 export const DELETE = async () => new Response(null);
@@ -144,6 +168,11 @@ app.include_router(scores_router, prefix="/api/v1")
 
 class Settings(BaseSettings):
     engine_url: str = Field(validation_alias=AliasChoices("AI_ENGINE_URL", "ENGINE_URL"))
+    database_url: str = "postgres://"
+
+
+def engine():
+    return settings.engine_url
 `,
 			props: []want{
 				{"module:service.py", parse.PropHTTPRouters, "router|/scores||router"},
@@ -153,6 +182,8 @@ class Settings(BaseSettings):
 				{"method:service.py#Backend.get", parse.PropHTTPWrapper, "0|GET|BACKEND_URL;SETTINGS"},
 				{"method:service.py#Backend.vocab", parse.PropHTTPCalls, "direct|||GET|BACKEND_URL;SETTINGS|/api/v1/vocab||23"},
 				{"module:service.py", parse.PropEnvAliases, "ENGINE_URL=AI_ENGINE_URL"},
+				// Fields are read where used, not where declared: no DATABASE_URL.
+				{"module:service.py", parse.PropEnvReads, "BACKEND_URL,ENGINE_URL"},
 			},
 		},
 	}

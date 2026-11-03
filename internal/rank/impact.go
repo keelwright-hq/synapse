@@ -337,6 +337,15 @@ type memberIndex struct {
 
 func memberKey(repo, name string) string { return repo + "\x00" + name }
 
+// repoOf is the member a node is in on a federated store ("" otherwise),
+// the key its type's declarations are indexed under.
+func (mx *memberIndex) repoOf(n graph.Node) string {
+	if mx.view.rs == nil {
+		return ""
+	}
+	return repoOf(n)
+}
+
 func newMemberIndex(store graph.Store) (*memberIndex, error) {
 	mx := &memberIndex{view: newView(store), decls: map[string][]graph.NodeID{}, extensions: map[string][]graph.NodeID{}}
 	err := store.ForEachNode(func(n graph.Node) bool {
@@ -460,7 +469,7 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 		return PathResult{}, err
 	}
 	goal := map[graph.NodeID]bool{to: true}
-	members, err := mx.withMembers("", target)
+	members, err := mx.withMembers(mx.repoOf(target), target)
 	if err != nil {
 		return PathResult{}, err
 	}
@@ -496,7 +505,7 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 			}
 			if n.Kind == parse.KindType {
 				// Step into members, including those declared in extensions.
-				members, err := mx.withMembers("", n)
+				members, err := mx.withMembers(mx.repoOf(n), n)
 				if err != nil {
 					return PathResult{}, err
 				}

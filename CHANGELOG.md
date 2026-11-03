@@ -29,6 +29,10 @@
       a client to the handler.
     - In workspace mode they open every member, use `--repo` only to place the
       seed, and print results as `repo:path`.
+    - **Behavior change for workspace users:** `affected` / `dependencies`
+      with `--workspace --repo X` used to open only member X and skip the
+      overlay. They now walk every member, so existing OpenAPI, GraphQL and
+      protobuf links in the overlay also show up in a `--repo` query.
 
 - **Impact, dependency and path queries:**
   - `synapse query affected <symbol>` lists code that calls, references,

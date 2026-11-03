@@ -24,6 +24,7 @@ func extractHTTPJS(b *builder, root *tree_sitter.Node, module graph.NodeID) {
 		instances: map[string][]string{},
 		helpers:   map[string]*mountHelper{},
 		funcEnv:   map[string][]string{},
+		defined:   map[string]bool{},
 	}
 	x.prepass(root)
 	x.walk(root, nil)
@@ -54,6 +55,8 @@ type jsHTTP struct {
 	helpers map[string]*mountHelper
 	// funcEnv are the env vars a same-file function reads (URL normalizers).
 	funcEnv map[string][]string
+	// defined are the functions declared in this file.
+	defined map[string]bool
 }
 
 type mountHelper struct {
@@ -335,6 +338,7 @@ func (x *jsHTTP) function(name string, fn *tree_sitter.Node) {
 		}
 	})
 	x.funcEnv[name] = env
+	x.defined[name] = true
 	if len(h.mounts) > 0 {
 		x.helpers[name] = h
 	}
@@ -461,12 +465,13 @@ func (x *jsHTTP) call(n *tree_sitter.Node, scope *jsScope) {
 	case "identifier":
 		name := x.b.text(fn)
 		switch {
-		case name == "fetch" || x.funcEnv[name] == nil && strings.Contains(strings.ToLower(name), "fetch") && !strings.HasPrefix(name, "use"):
+		case name == "fetch" || !x.defined[name] && isInjectedFetch(name):
 			// fetch, or an injected fetch (fetchImpl, fetchFn) not defined here.
 			if len(args) > 0 {
 				x.rec.direct(jsMethodOption(x.b, args, 1, "GET"), x.eval(args[0], scope, 0), nil, line, scope.node())
 			}
-		case name == "axios":
+		case name == "axios" || (name == "got" || name == "ky" || name == "request") && !x.defined[name]:
+			// axios(url | {url, method}), got(url, {method}), ky(url), request({url})
 			x.axiosConfigCall(args, scope, line)
 		case x.helpers[name] != nil:
 			x.expandHelper(x.helpers[name], args, scope)
@@ -872,11 +877,14 @@ func (x *jsHTTP) recordNextRoute(root *tree_sitter.Node) {
 		if c == nil || c.Kind() != "export_statement" {
 			continue
 		}
+		if strings.HasPrefix(x.b.text(c), "export default") {
+			// export default function handler / export default handler:
+			// a Pages API route serving every method.
+			x.b.addListProp(x.rec.module, PropNextRoute, "default")
+			continue
+		}
 		d := field(c, "declaration")
 		if d == nil {
-			if c.NamedChildCount() > 0 && strings.Contains(x.b.text(c), "export default") {
-				x.b.addListProp(x.rec.module, PropNextRoute, "default")
-			}
 			continue
 		}
 		var names []string
@@ -902,4 +910,19 @@ func (x *jsHTTP) recordNextRoute(root *tree_sitter.Node) {
 // (BACKEND_URL), the shape of an environment variable.
 func isEnvStyleName(s string) bool {
 	return strings.Contains(s, "_") && isTokenWord(s) && s == strings.ToUpper(s)
+}
+
+// isInjectedFetch reports a fetch passed in or imported (fetchImpl,
+// fetchFn, customFetch), not a same-named data loader (fetchUser, prefetch,
+// refetchQueries, which take a resource, not a URL).
+func isInjectedFetch(name string) bool {
+	l := strings.ToLower(name)
+	if !strings.HasPrefix(l, "fetch") && !strings.HasSuffix(l, "fetch") {
+		return false
+	}
+	switch strings.TrimSuffix(strings.TrimPrefix(l, "fetch"), "fetch") {
+	case "", "impl", "fn", "func", "function", "custom", "global", "native", "node", "cross", "wrapped", "patched", "with", "safe":
+		return true
+	}
+	return false
 }

@@ -285,7 +285,17 @@ func (idx *Indexer) putRoute(repo string, r routeDef, modules map[string]graph.N
 		props["start_line"] = strconv.Itoa(r.line)
 		props["end_line"] = strconv.Itoa(r.line)
 	}
-	if h := routeHandler(r, modules, byName); h != "" {
+	imports, err := idx.store.OutEdges(graph.NodeID("module:"+r.module), parse.EdgeImports)
+	if err != nil {
+		return err
+	}
+	imported := map[string]bool{}
+	for _, e := range imports {
+		if p, ok := strings.CutPrefix(string(e.To), "module:"); ok {
+			imported[p] = true
+		}
+	}
+	if h := routeHandler(r, modules, byName, imported); h != "" {
 		props[PropOpHandler] = string(h)
 	}
 	if canonical, ok, err := uri.Assign(repo, r.module, parse.KindOperation, name, string(id)); err == nil && ok {
@@ -301,21 +311,25 @@ func (idx *Indexer) putRoute(repo string, r routeDef, modules map[string]graph.N
 }
 
 // routeHandler is the function serving a route: a function or method of
-// that name in the route's file, else the repo's only declaration of that
-// name, else the route file's module (an inline callback).
-func routeHandler(r routeDef, modules map[string]graph.Node, byName map[string][]graph.Node) graph.NodeID {
+// that name in the route's file, else the only declaration of that name in
+// a file the route's file imports, else the route file's module (an inline
+// callback, or a handler that cannot be placed).
+func routeHandler(r routeDef, modules map[string]graph.Node, byName map[string][]graph.Node, imported map[string]bool) graph.NodeID {
 	if r.handler != "" {
-		var local []graph.Node
+		var local, viaImport []graph.Node
 		for _, n := range byName[r.handler] {
-			if n.Path == r.module {
+			switch {
+			case n.Path == r.module:
 				local = append(local, n)
+			case imported[n.Path]:
+				viaImport = append(viaImport, n)
 			}
 		}
 		if len(local) == 1 {
 			return local[0].ID
 		}
-		if len(local) == 0 && len(byName[r.handler]) == 1 {
-			return byName[r.handler][0].ID
+		if len(local) == 0 && len(viaImport) == 1 {
+			return viaImport[0].ID
 		}
 	}
 	if m, ok := modules[r.module]; ok {
@@ -335,44 +349,79 @@ type httpWrapper struct {
 // and method. Wrappers of wrappers (get(path) -> request('GET', path) ->
 // fetch) are found by a bounded fixed point.
 func (idx *Indexer) resolveClients(callers []graph.Node, byName map[string][]graph.Node) (int, error) {
-	// A token naming a function (GETBACKENDURL from getBackendUrl()) stands
-	// for the env vars that function reads.
-	// A function that only calls such a helper (requireBase() -> getBase())
-	// inherits its env vars, two calls deep.
-	fnEnv := map[string][]string{}
-	for name, list := range byName {
+	byID := map[graph.NodeID]graph.Node{}
+	for _, list := range byName {
 		for _, n := range list {
-			if env := n.Props[parse.PropEnvReads]; env != "" {
-				key := strings.ToUpper(name)
-				fnEnv[key] = unionTokens(fnEnv[key], strings.Split(env, ","))
-			}
+			byID[n.ID] = n
 		}
 	}
-	for hop := 0; hop < 2; hop++ {
-		next := map[string][]string{}
-		for name, list := range byName {
-			key := strings.ToUpper(name)
-			for _, n := range list {
-				for _, callee := range strings.Split(n.Props[propCallees], ",") {
-					if i := strings.LastIndex(callee, "."); i >= 0 {
-						callee = callee[i+1:]
+	callEdges := map[graph.NodeID][]graph.Edge{}
+	callsOf := func(id graph.NodeID) ([]graph.Edge, error) {
+		if edges, ok := callEdges[id]; ok {
+			return edges, nil
+		}
+		edges, err := idx.store.OutEdges(id, parse.EdgeCalls)
+		if err != nil {
+			return nil, err
+		}
+		callEdges[id] = edges
+		return edges, nil
+	}
+	// helperEnv is the env vars a function reads, or the functions it calls
+	// read, two calls deep (requireBase() -> getBase() -> process.env.X).
+	var helperEnv func(id graph.NodeID, depth int) ([]string, error)
+	helperEnv = func(id graph.NodeID, depth int) ([]string, error) {
+		n, ok := byID[id]
+		if !ok {
+			return nil, nil
+		}
+		var out []string
+		if env := n.Props[parse.PropEnvReads]; env != "" {
+			out = strings.Split(env, ",")
+		}
+		if depth == 0 {
+			return out, nil
+		}
+		edges, err := callsOf(id)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range edges {
+			env, err := helperEnv(e.To, depth-1)
+			if err != nil {
+				return nil, err
+			}
+			out = unionTokens(out, env)
+		}
+		return out, nil
+	}
+	// expand adds, for a token naming a function the declaration calls
+	// (GETBACKENDURL from getBackendUrl()), the env vars that function reads.
+	// Calls are followed by edge, from the declaration and from its file's
+	// module (a client created at module level), so two same-named helpers
+	// in different files never mix.
+	expand := func(owner graph.NodeID, path string, tokens []string) ([]string, error) {
+		out := tokens
+		for _, from := range []graph.NodeID{owner, graph.NodeID("module:" + path)} {
+			edges, err := callsOf(from)
+			if err != nil {
+				return nil, err
+			}
+			for _, e := range edges {
+				name := strings.ToUpper(memberName(e.To))
+				for _, t := range tokens {
+					if t != name {
+						continue
 					}
-					if env := fnEnv[strings.ToUpper(callee)]; len(env) > 0 {
-						next[key] = unionTokens(next[key], env)
+					env, err := helperEnv(e.To, 2)
+					if err != nil {
+						return nil, err
 					}
+					out = unionTokens(out, env)
 				}
 			}
 		}
-		for k, v := range next {
-			fnEnv[k] = unionTokens(fnEnv[k], v)
-		}
-	}
-	expand := func(tokens []string) []string {
-		out := tokens
-		for _, t := range tokens {
-			out = unionTokens(out, fnEnv[t])
-		}
-		return out
+		return out, nil
 	}
 
 	wrappers := map[graph.NodeID]httpWrapper{}
@@ -387,7 +436,11 @@ func (idx *Indexer) resolveClients(callers []graph.Node, byName map[string][]gra
 					continue
 				}
 				if _, ok := wrappers[n.ID]; !ok {
-					wrappers[n.ID] = httpWrapper{arg: arg, method: rec[1], tokens: expand(parse.SplitTokens(rec[2]))}
+					tokens, err := expand(n.ID, n.Path, parse.SplitTokens(rec[2]))
+					if err != nil {
+						return 0, err
+					}
+					wrappers[n.ID] = httpWrapper{arg: arg, method: rec[1], tokens: tokens}
 				}
 			}
 		}
@@ -430,7 +483,11 @@ func (idx *Indexer) resolveClients(callers []graph.Node, byName map[string][]gra
 			if len(f) < 8 {
 				continue
 			}
-			r := callRec{kind: f[0], callee: f[1], method: f[3], tokens: expand(parse.SplitTokens(f[4])), tail: f[5], param: -1}
+			tokens, err := expand(c.ID, c.Path, parse.SplitTokens(f[4]))
+			if err != nil {
+				return 0, err
+			}
+			r := callRec{kind: f[0], callee: f[1], method: f[3], tokens: tokens, tail: f[5], param: -1}
 			r.arg, _ = strconv.Atoi(f[2])
 			if f[6] != "" {
 				r.param, _ = strconv.Atoi(f[6])

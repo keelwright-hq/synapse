@@ -168,8 +168,10 @@ func isPyStringish(v *tree_sitter.Node) bool {
 	return false
 }
 
-// settingsClass records a pydantic BaseSettings subclass: each field loads
-// from the env var of the same name (upper-cased), or from its aliases.
+// settingsClass records the aliases of a pydantic BaseSettings subclass's
+// fields (a field loads from the env var of its name, upper-cased, or from
+// its aliases). Declaring a field is not reading it: the env read is
+// recorded where code uses `settings.field`.
 func (x *pyHTTP) settingsClass(n *tree_sitter.Node) {
 	if !strings.Contains(x.b.text(field(n, "superclasses")), "BaseSettings") {
 		return
@@ -192,7 +194,6 @@ func (x *pyHTTP) settingsClass(n *tree_sitter.Node) {
 			continue
 		}
 		fieldName := strings.ToUpper(x.b.text(left))
-		x.rec.envRead(fieldName, nil, 0)
 		right := field(as, "right")
 		if right == nil {
 			continue
@@ -206,7 +207,6 @@ func (x *pyHTTP) settingsClass(n *tree_sitter.Node) {
 				walkNamed(field(c, "value"), func(s *tree_sitter.Node) {
 					if s.Kind() == "string" {
 						alias := strings.ToUpper(pyStringText(x.b, s))
-						x.rec.envRead(alias, nil, 0)
 						if alias != fieldName {
 							x.b.addListProp(x.rec.module, PropEnvAliases, fieldName+"="+alias)
 						}
@@ -330,6 +330,12 @@ func (x *pyHTTP) walk(n *tree_sitter.Node, scope *pyScope) {
 			if left, right := field(n, "left"), field(n, "right"); left != nil && right != nil && left.Kind() == "identifier" {
 				scope.consts[x.b.text(left)] = right
 			}
+		}
+	case "attribute":
+		// settings.backend_url / config.API_URL: a settings field read.
+		obj := strings.ToLower(x.b.text(field(n, "object")))
+		if strings.HasSuffix(obj, "settings") || strings.HasSuffix(obj, "config") {
+			x.rec.envRead(x.b.text(field(n, "attribute")), scope.node(), lineOf(n))
 		}
 	case "subscript", "call":
 		if v := pyEnvName(x.b, n); v != "" {

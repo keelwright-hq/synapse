@@ -40,6 +40,7 @@ func TestMatchRoutes(t *testing.T) {
 		"GET /api/v1/reports reports#GET/",
 		"GET /api/v1/reports/{} reports#GET/{}",
 		"GET /api/v1/audit audit#GET/",
+		"GET /api/v1/notes notes#GET/",
 	)
 	common := commonPrefixes(routes)
 	for _, c := range []struct {
@@ -65,6 +66,24 @@ func TestMatchRoutes(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s: matchRoutes(%s %s) = %q, want %q", c.name, c.method, c.tail, got, c.want)
 		}
+	}
+
+	// The filter does not depend on how many routes a member has: with four,
+	// /api/v1/admin is still not a prefix a base URL supplies.
+	small := testRoutes("GET /api/v1/orders/{} orders#1", "GET /api/v1/admin/orders/{} admin#1", "GET /api/v1/a a#1", "GET /api/v1/b b#1")
+	if got := names(matchRoutes(small, commonPrefixes(small), "GET", pathSegments("/orders/{}"), 1)); got != "GET /api/v1/orders/{}" {
+		t.Errorf("small member /orders/{} = %q", got)
+	}
+
+	// The declared member (no common filter) takes the unique best route,
+	// however deep its prefix, and prefers the shortest prefix on a tie in
+	// literals.
+	deep := testRoutes("GET /api/v1/internal/svc/users u#1", "GET /api/v1/teams/{}/svc/users t#1")
+	if got := names(matchRoutes(deep, nil, "GET", pathSegments("/users"), 1)); got != "GET /api/v1/internal/svc/users" {
+		t.Errorf("declared deep prefix = %q", got)
+	}
+	if got := names(matchRoutes(routes, nil, "GET", pathSegments("/users"), 1)); got != "GET /ui/users" {
+		t.Errorf("declared shortest prefix = %q", got)
 	}
 
 	// One router mounted under two common prefixes: both mounts are linked.
