@@ -8,6 +8,8 @@ import (
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/index"
+	"github.com/keelwright-hq/synapse/internal/parse"
+	"github.com/keelwright-hq/synapse/internal/rank"
 	"github.com/keelwright-hq/synapse/internal/store/badger"
 	"github.com/keelwright-hq/synapse/internal/store/memory"
 )
@@ -554,5 +556,140 @@ struct SystemNotificationClient: NotificationClient {
 	}
 	if len(vm) != 1 || vm[0].To != "method:WeatherRepository.swift#WeatherRepository.setProvider" {
 		t.Fatalf("repository.setProvider: want WeatherRepository.setProvider, got %+v", vm)
+	}
+}
+
+func TestIndexerSwiftTypeEdgesAndImpactQueries(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"Models", "Weather", "App"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeGo(t, filepath.Join(root, "Weather", "Protocol.swift"), "protocol WeatherProviding {\n    func fetch() async throws -> Forecast\n}\n")
+	writeGo(t, filepath.Join(root, "Models", "Forecast.swift"), "struct Forecast {\n    let high: Double\n}\n")
+	writeGo(t, filepath.Join(root, "Weather", "Errors.swift"), "enum WeatherError: Error {\n    case offline\n}\n")
+	writeGo(t, filepath.Join(root, "Weather", "Provider.swift"), `final class Provider: WeatherProviding {
+    func fetch() async throws -> Forecast {
+        throw WeatherError.offline
+    }
+}
+`)
+	writeGo(t, filepath.Join(root, "Weather", "Repository.swift"), `final class Repository {
+    let provider: WeatherProviding
+    init(provider: WeatherProviding) { self.provider = provider }
+    func current() async throws -> Forecast { try await provider.fetch() }
+}
+`)
+	writeGo(t, filepath.Join(root, "App", "ViewModel.swift"), `final class ViewModel {
+    let repository: Repository
+    init(repository: Repository) { self.repository = repository }
+    func refresh() async { _ = try? await repository.current() }
+}
+`)
+	writeGo(t, filepath.Join(root, "App", "Screen.swift"), `struct Screen {
+    let model: ViewModel
+    func onAppear() async { await model.refresh() }
+}
+`)
+
+	// An extension in another file: its method belongs to Provider for queries.
+	writeGo(t, filepath.Join(root, "Weather", "Provider+Cache.swift"), `extension Provider {
+    func cached() -> WeatherError? { nil }
+}
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The bare name resolves to the declaration despite the module named after
+	// Provider.swift and the extension in Provider+Cache.swift.
+	seed, err := rank.ResolveSeed(store, "Provider")
+	if err != nil || seed != "type:Weather/Provider.swift#Provider" {
+		t.Fatalf("ResolveSeed(Provider) = %s, %v", seed, err)
+	}
+
+	// inherits: conformance resolves to the protocol; Error stays unresolved.
+	in, err := store.InEdges("type:Weather/Protocol.swift#WeatherProviding", parse.EdgeInherits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in) != 1 || in[0].From != "type:Weather/Provider.swift#Provider" {
+		t.Fatalf("inherits edges into WeatherProviding = %+v", in)
+	}
+	if _, err := store.GetNode("symbol:Error"); err != graph.ErrNotFound {
+		t.Fatalf("unresolved supertype became a node: %v", err)
+	}
+
+	// affected: everything that uses Forecast, by signature or by type.
+	aff, err := rank.Affected(store, "type:Models/Forecast.swift#Forecast", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var affPaths []string
+	for _, f := range aff.Files {
+		affPaths = append(affPaths, f.Path)
+	}
+	if strings.Join(affPaths, ",") != "Weather/Protocol.swift,Weather/Provider.swift,Weather/Repository.swift" {
+		t.Fatalf("affected by Forecast = %v", affPaths)
+	}
+
+	// dependencies: what Provider's type and members use, grouped by file.
+	deps, err := rank.Dependencies(store, "type:Weather/Provider.swift#Provider", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var depPaths []string
+	for _, f := range deps.Files {
+		depPaths = append(depPaths, f.Path)
+	}
+	if strings.Join(depPaths, ",") != "Models/Forecast.swift,Weather/Errors.swift,Weather/Protocol.swift" {
+		t.Fatalf("Provider dependencies = %v", depPaths)
+	}
+	// The extension's cached() uses WeatherError, so its file is affected.
+	errAff, err := rank.Affected(store, "type:Weather/Errors.swift#WeatherError", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errAffPaths []string
+	for _, f := range errAff.Files {
+		errAffPaths = append(errAffPaths, f.Path)
+	}
+	if strings.Join(errAffPaths, ",") != "Weather/Provider+Cache.swift,Weather/Provider.swift" {
+		t.Fatalf("affected by WeatherError = %v", errAffPaths)
+	}
+	cachedDeps, err := rank.Dependencies(store, "method:Weather/Provider+Cache.swift#Provider.cached", 1, 0)
+	if err != nil || len(cachedDeps.Files) != 1 || cachedDeps.Files[0].Path != "Weather/Errors.swift" {
+		t.Fatalf("extension method dependencies = %+v, %v", cachedDeps.Files, err)
+	}
+
+	// path: Screen.onAppear -> ViewModel.refresh -> Repository.current (a member of the target).
+	p, err := rank.ShortestPath(store, "method:App/Screen.swift#Screen.onAppear", "type:Weather/Repository.swift#Repository", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps []string
+	for _, st := range p.Steps {
+		steps = append(steps, st.Name)
+	}
+	if strings.Join(steps, " -> ") != "Screen.onAppear -> ViewModel.refresh -> Repository.current" {
+		t.Fatalf("path = %v", steps)
+	}
+
+	// Re-indexing after removing the protocol prunes the stale inherits edge.
+	if err := os.Remove(filepath.Join(root, "Weather", "Protocol.swift")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := store.OutEdges("type:Weather/Provider.swift#Provider", parse.EdgeInherits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("stale inherits edge after deleting the protocol: %+v", out)
 	}
 }

@@ -278,7 +278,7 @@ func renderMarkdown(man manifest, nodes []graph.Node, edges []graph.Edge) string
 		"File nodes ranked by imports/calls rolled up from modules/functions (contains excluded).",
 		ImportantFiles(nodes, edges, 10))
 	writeHubSection(&b, "Important symbols",
-		"Resolved functions/methods/types/contracts by calls/implements/consumes degree. Unresolved `symbol` hubs are excluded.",
+		"Resolved functions/methods/types/contracts by calls/implements/consumes/inherits/references degree. Unresolved `symbol` hubs are excluded.",
 		ImportantSymbols(nodes, edges, 10))
 	writeHubSection(&b, "Top imports",
 		"Most-used dependencies (import specs grouped across files; relative paths resolved).",

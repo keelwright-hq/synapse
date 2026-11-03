@@ -68,7 +68,7 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 	defsByName := make(map[string][]graph.Node)
 	swiftTypesByName := make(map[string][]graph.Node)
 	importsByFile := make(map[string][]string)
-	var callers []graph.Node
+	var callers, typeUsers []graph.Node
 	existingSymbols := make(map[graph.NodeID]bool)
 
 	err := idx.store.ForEachNode(func(n graph.Node) bool {
@@ -90,6 +90,9 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		}
 		if n.Props != nil && n.Props[propCallees] != "" {
 			callers = append(callers, n)
+		}
+		if n.Props != nil && (n.Props[parse.PropTypeRefs] != "" || n.Props[parse.PropSupertypes] != "") {
+			typeUsers = append(typeUsers, n)
 		}
 		return true
 	})
@@ -176,6 +179,13 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		}
 	}
 
+	sort.Slice(typeUsers, func(i, j int) bool { return typeUsers[i].ID < typeUsers[j].ID })
+	for _, user := range typeUsers {
+		if err := idx.resolveTypeEdges(user, swiftTypesByName); err != nil {
+			return err
+		}
+	}
+
 	// Prune orphan symbol:<Name> nodes that no longer have any incident edges.
 	symIDs := make([]graph.NodeID, 0, len(existingSymbols))
 	for id := range existingSymbols {
@@ -199,6 +209,64 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		}
 		if err := idx.store.DeleteNode(symID); err != nil && err != graph.ErrNotFound {
 			return err
+		}
+	}
+	return nil
+}
+
+// resolveTypeEdges links a declaration's recorded type names to type nodes:
+// type_refs become references edges and supertypes become inherits edges.
+// Names that do not resolve to exactly one repo type (String, Codable, ...)
+// produce no edge and no placeholder node.
+func (idx *Indexer) resolveTypeEdges(user graph.Node, swiftTypesByName map[string][]graph.Node) error {
+	for _, spec := range []struct {
+		prop string
+		typ  graph.EdgeType
+	}{
+		{parse.PropTypeRefs, parse.EdgeReferences},
+		{parse.PropSupertypes, parse.EdgeInherits},
+	} {
+		desired := map[graph.NodeID]string{}
+		for _, name := range strings.Split(user.Props[spec.prop], ",") {
+			name = strings.TrimSpace(name)
+			if name == "" || !isSwiftPath(user.Path) {
+				continue
+			}
+			types := swiftTypesByName[name]
+			if len(types) != 1 || types[0].ID == user.ID {
+				continue
+			}
+			prov := parse.ProvenanceInferred
+			if types[0].Path == user.Path {
+				prov = parse.ProvenanceExtracted
+			}
+			desired[types[0].ID] = prov
+		}
+		existing, err := idx.store.OutEdges(user.ID, spec.typ)
+		if err != nil {
+			return err
+		}
+		for _, e := range existing {
+			if _, keep := desired[e.To]; !keep {
+				if err := idx.store.DeleteEdge(e.From, e.To, e.Type); err != nil && err != graph.ErrNotFound {
+					return err
+				}
+			}
+		}
+		targets := make([]graph.NodeID, 0, len(desired))
+		for id := range desired {
+			targets = append(targets, id)
+		}
+		sort.Slice(targets, func(i, j int) bool { return targets[i] < targets[j] })
+		for _, to := range targets {
+			if err := idx.store.PutEdge(graph.Edge{
+				From:  user.ID,
+				To:    to,
+				Type:  spec.typ,
+				Props: map[string]string{parse.PropProvenance: desired[to]},
+			}); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -242,6 +242,76 @@ func registerTools(s *server.MCPServer, opts Options) {
 		return jsonResult(map[string]any{"symbol": sym, "docs": hits, "warnings": mergeWarnings(openWarnings, takeFedWarnings(store))})
 	})
 
+	for _, tool := range []struct {
+		name, desc string
+		query      func(graph.Store, graph.NodeID, int, int) (rank.ImpactResult, error)
+	}{
+		{"affected", "Code that calls, references, inherits from or implements a symbol, grouped by file; every type on the walk includes its members, also those in Swift extensions", rank.Affected},
+		{"dependencies", "Code a symbol (and a type's members) calls, references, inherits from or implements, grouped by file", rank.Dependencies},
+	} {
+		query := tool.query
+		s.AddTool(mcp.NewTool(tool.name,
+			mcp.WithDescription(tool.desc),
+			mcp.WithString("symbol", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
+			mcp.WithNumber("depth", mcp.Description("Hops to follow (default 1)")),
+			mcp.WithNumber("limit", mcp.Description("Max files (default 100)")),
+		), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			sym, err := req.RequireString("symbol")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			store, openWarnings, closeFn, err := opts.acquireSession()
+			if err != nil {
+				return toolErr(err), nil
+			}
+			defer closeFn()
+			seed, err := rank.ResolveSeed(store, sym)
+			if err != nil {
+				return toolErr(err), nil
+			}
+			res, err := query(store, seed, intArg(req, "depth", 1), intArg(req, "limit", 100))
+			if err != nil {
+				return toolErr(err), nil
+			}
+			return jsonResult(map[string]any{"symbol": sym, "result": res, "warnings": mergeWarnings(openWarnings, takeFedWarnings(store))})
+		})
+	}
+
+	shortestPath := mcp.NewTool("shortest_path",
+		mcp.WithDescription("Fewest-hop calls/references/inherits chain from one symbol to another; a type target is reached at any of its members. Hops include contains steps from a type into its methods; each step carries its edge type"),
+		mcp.WithString("from", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
+		mcp.WithString("to", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
+		mcp.WithNumber("max_hops", mcp.Description("Longest path to search (default 8)")),
+	)
+	s.AddTool(shortestPath, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		fromArg, err := req.RequireString("from")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		toArg, err := req.RequireString("to")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		store, openWarnings, closeFn, err := opts.acquireSession()
+		if err != nil {
+			return toolErr(err), nil
+		}
+		defer closeFn()
+		from, err := rank.ResolveSeed(store, fromArg)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		to, err := rank.ResolveSeed(store, toArg)
+		if err != nil {
+			return toolErr(err), nil
+		}
+		res, err := rank.ShortestPath(store, from, to, intArg(req, "max_hops", 8))
+		if err != nil {
+			return toolErr(err), nil
+		}
+		return jsonResult(map[string]any{"path": res, "warnings": mergeWarnings(openWarnings, takeFedWarnings(store))})
+	})
+
 	searchGraph := mcp.NewTool("search_graph",
 		mcp.WithDescription("Search graph nodes by id/name substring"),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Substring to match")),

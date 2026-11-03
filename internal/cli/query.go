@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/rank"
@@ -19,6 +20,10 @@ var (
 	queryJSON     bool
 	queryExplain  bool
 	queryLimit    int
+
+	queryImpactDepth int
+	queryImpactLimit int
+	queryPathHops    int
 )
 
 var queryCmd = &cobra.Command{
@@ -218,6 +223,108 @@ func runWorkspaceNeighborhood(cmd *cobra.Command, symbol string) error {
 	return writeNeighborhood(cmd, res)
 }
 
+var queryAffectedCmd = &cobra.Command{
+	Use:   "affected <symbol>",
+	Short: "Code that calls, references or inherits from a symbol, grouped by file",
+	Long: `affected walks calls, references, inherits and implements edges backwards
+from a symbol. Every type on the walk includes its members, also those declared
+in Swift extensions in other files, so callers of its methods count. Use
+--depth to follow dependents of dependents.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runImpactQuery(cmd, args[0], rank.Affected)
+	},
+}
+
+var queryDependenciesCmd = &cobra.Command{
+	Use:   "dependencies <symbol>",
+	Short: "Code a symbol calls, references or inherits from, grouped by file",
+	Long: `dependencies walks calls, references, inherits and implements edges forwards
+from a symbol (and a type's members).`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runImpactQuery(cmd, args[0], rank.Dependencies)
+	},
+}
+
+var queryPathCmd = &cobra.Command{
+	Use:   "path <from> <to>",
+	Short: "Shortest call/reference path between two symbols",
+	Long: `path finds the fewest-hop chain from one symbol to another along calls,
+references, inherits and implements edges in their own direction. A type target
+is reached when the chain reaches any of its members.
+
+Hops count every edge on the chain, including a "contains" step from a type
+into one of its methods, so "3 hops" is not always three calls; the edge type
+of each step is printed.`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, cleanup, err := openMemberQueryStore(cmd)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		from, err := rank.ResolveSeed(store, args[0])
+		if err != nil {
+			return err
+		}
+		to, err := rank.ResolveSeed(store, args[1])
+		if err != nil {
+			return err
+		}
+		res, err := rank.ShortestPath(store, from, to, queryPathHops)
+		if err != nil {
+			return err
+		}
+		if queryJSON {
+			return writeJSON(cmd, res)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "path %s -> %s (%d hops, edge type per step)\n", from, to, len(res.Steps)-1)
+		for _, st := range res.Steps {
+			edge := "start"
+			if st.Edge != "" {
+				edge = st.Edge
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "  %-10s %s %s:%d\n", edge, st.Name, st.Path, st.Line)
+		}
+		return nil
+	},
+}
+
+func runImpactQuery(cmd *cobra.Command, symbol string, query func(graph.Store, graph.NodeID, int, int) (rank.ImpactResult, error)) error {
+	store, cleanup, err := openMemberQueryStore(cmd)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	seed, err := rank.ResolveSeed(store, symbol)
+	if err != nil {
+		return err
+	}
+	res, err := query(store, seed, queryImpactDepth, queryImpactLimit)
+	if err != nil {
+		return err
+	}
+	if queryJSON {
+		return writeJSON(cmd, res)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "seed=%s files=%d symbols=%d truncated=%v\n", res.Seed, len(res.Files), res.Symbols, res.Truncated)
+	// One line per file keeps the answer small; --json has every symbol.
+	const perFile = 8
+	for _, g := range res.Files {
+		var parts []string
+		for i, sym := range g.Symbols {
+			if i == perFile {
+				parts = append(parts, fmt.Sprintf("+%d more", len(g.Symbols)-perFile))
+				break
+			}
+			parts = append(parts, fmt.Sprintf("%s [%s] L%d", sym.Name, sym.Edge, sym.Line))
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "  %s: %s\n", g.Path, strings.Join(parts, ", "))
+	}
+	return nil
+}
+
 func writeNeighborhood(cmd *cobra.Command, res rank.Result) error {
 	if queryJSON {
 		enc := json.NewEncoder(cmd.OutOrStdout())
@@ -267,7 +374,19 @@ func init() {
 		c.Flags().IntVar(&queryLimit, "limit", 20, "Max results")
 	}
 
-	queryCmd.AddCommand(queryNeighborhoodCmd, queryCoChangesCmd, queryHotPathsCmd, queryDocsCmd)
+	for _, c := range []*cobra.Command{queryAffectedCmd, queryDependenciesCmd, queryPathCmd} {
+		c.Flags().StringVar(&queryRoot, "root", ".", "Repo root")
+		c.Flags().BoolVar(&queryJSON, "json", false, "Emit JSON")
+	}
+	queryAffectedCmd.Flags().IntVar(&queryImpactDepth, "depth", 1, "Hops to follow (1 = direct dependents)")
+	queryDependenciesCmd.Flags().IntVar(&queryImpactDepth, "depth", 1, "Hops to follow (1 = direct dependencies)")
+	queryPathCmd.Flags().IntVar(&queryPathHops, "max-hops", 8, "Longest path to search")
+	for _, c := range []*cobra.Command{queryAffectedCmd, queryDependenciesCmd} {
+		c.Flags().IntVar(&queryImpactLimit, "limit", 100, "Max files")
+	}
+
+	queryCmd.AddCommand(queryNeighborhoodCmd, queryCoChangesCmd, queryHotPathsCmd, queryDocsCmd,
+		queryAffectedCmd, queryDependenciesCmd, queryPathCmd)
 
 	// Keep a helpful default when `synapse query` is invoked alone.
 	queryCmd.RunE = func(cmd *cobra.Command, args []string) error {

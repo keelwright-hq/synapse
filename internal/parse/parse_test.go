@@ -511,6 +511,52 @@ class Greeter {
 	}
 }
 
+func TestSwiftTypeRelationshipsRecorded(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "provider.swift")
+	mustWrite(t, path, `
+final class NOAAProvider: WeatherProviderProtocol, Sendable {
+    private let session: WeatherSession
+    func fetch(lat: Double) async throws -> WeatherCondition {
+        let items: [HourlyForecast] = []
+        throw WeatherNetworkError.serverError
+    }
+}
+extension Temperature: Codable {}
+`)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	props := map[graph.NodeID]map[string]string{}
+	for _, n := range res.Nodes {
+		props[n.ID] = n.Props
+	}
+	typ := graph.NodeID("type:" + path + "#NOAAProvider")
+	method := graph.NodeID("method:" + path + "#NOAAProvider.fetch")
+	if got := props[typ][parse.PropSupertypes]; got != "WeatherProviderProtocol,Sendable" {
+		t.Errorf("supertypes = %q", got)
+	}
+	if got := props[typ][parse.PropTypeRefs]; got != "WeatherSession" {
+		t.Errorf("type refs on type = %q", got)
+	}
+	if got := props[method][parse.PropTypeRefs]; got != "Double,WeatherCondition,HourlyForecast,WeatherNetworkError" {
+		t.Errorf("type refs on method = %q", got)
+	}
+	if got := props[graph.NodeID("type:"+path+"#Temperature")][parse.PropSupertypes]; got != "Codable" {
+		t.Errorf("extension supertypes = %q", got)
+	}
+	var typeContainsMethod bool
+	for _, e := range res.Edges {
+		if e.From == typ && e.To == method && e.Type == parse.EdgeContains {
+			typeContainsMethod = true
+		}
+	}
+	if !typeContainsMethod {
+		t.Errorf("type does not contain its method: %+v", res.Edges)
+	}
+}
+
 func TestSwiftDeferIsNotACall(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "deferred.swift")

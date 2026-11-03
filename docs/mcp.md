@@ -87,13 +87,16 @@ For cross-repo, use the same `--workspace` / `--data-dir` args as the Cursor wor
 | `co_changes` | Top git `co_committed` neighbors for a file/symbol (Phase 3) |
 | `hot_paths` | Runtime `observed_calls` hot paths (Phase 3) |
 | `docs_for_symbol` | Doc edges + `props.doc` snippets for a symbol (Phase 3) |
+| `affected` | Code that calls, references, inherits from or implements a symbol, grouped by file (a type includes its members) |
+| `dependencies` | Code a symbol calls, references, inherits from or implements, grouped by file |
+| `shortest_path` | Fewest-hop dependency chain from one symbol to another |
 
 ### Reviewer workflow (Phase 3)
 
 1. `synapse index .` (recomputes co-change + docs links after bind).
 2. Optionally `synapse otel ingest traces.json` for runtime edges.
 3. In IDE chat: `co_changes`, `hot_paths`, `docs_for_symbol`, or neighborhood with `explain=true`.
-4. Offline CLI mirrors: `synapse query co-changes|hot-paths|docs`.
+4. Offline CLI mirrors: `synapse query co-changes|hot-paths|docs|affected|dependencies|path`.
 
 See [phase3.md](phase3.md) and [otel.md](otel.md).
 

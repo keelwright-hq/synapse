@@ -20,6 +20,8 @@ var DefaultEdgeWeights = map[graph.EdgeType]float64{
 	parse.EdgeContains:      0.65,
 	parse.EdgeCalls:         0.8,
 	parse.EdgeImplements:    0.9,
+	parse.EdgeInherits:      0.85,
+	parse.EdgeReferences:    0.6,
 	parse.EdgeConsumes:      0.9,
 	parse.EdgeImports:       0.5,
 	parse.EdgeCoCommitted:   0.7,  // HISTORICAL co-change
@@ -473,6 +475,13 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if len(matches) > 1 && len(codeMatches) == 1 {
 		matches = codeMatches
 	}
+	if len(matches) > 1 {
+		// A Swift type shares its name with its extensions and with the module
+		// named after its file (Foo.swift). One type declaration wins over those.
+		if decl, ok := uniqueTypeDeclaration(matches); ok {
+			matches = []graph.Node{decl}
+		}
+	}
 	if len(matches) == 0 {
 		matches = symMatches
 	}
@@ -576,4 +585,23 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// uniqueTypeDeclaration returns the single type declaration in matches when
+// every other match is an extension of it or a file/module/package container.
+// Any other definition (a function, a second declaration) keeps it ambiguous.
+func uniqueTypeDeclaration(matches []graph.Node) (graph.Node, bool) {
+	var decl graph.Node
+	found := 0
+	for _, m := range matches {
+		switch {
+		case m.Kind == parse.KindType && m.Props[parse.PropExtension] == "":
+			decl = m
+			found++
+		case m.Kind == parse.KindType, m.Kind == parse.KindModule, m.Kind == parse.KindFile, m.Kind == parse.KindPackage:
+		default:
+			return graph.Node{}, false
+		}
+	}
+	return decl, found == 1
 }

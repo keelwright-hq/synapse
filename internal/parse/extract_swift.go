@@ -48,8 +48,20 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				id = funcID(b.path, name)
 			}
 			b.putSpan(n, graph.Node{ID: id, Kind: kind, Name: name, Path: b.path})
-			b.edge(module, id, EdgeContains)
-			walkSwift(b, field(n, "body"), module, id)
+			if recv != "" {
+				// Members hang off their type so a type's neighborhood reaches them.
+				b.edge(typeID(b.path, recv), id, EdgeContains)
+			} else {
+				b.edge(module, id, EdgeContains)
+			}
+			body := field(n, "body")
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				if c := n.NamedChild(i); c != nil && !sameNode(c, body) {
+					// Parameter and return types are references from the declaration.
+					collectSwiftTypeRefs(b, c, id)
+				}
+			}
+			walkSwift(b, body, module, id)
 			return
 		}
 
@@ -68,9 +80,39 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				b.putSpan(n, graph.Node{ID: id, Kind: KindType, Name: name, Path: b.path})
 			}
 			b.edge(module, id, EdgeContains)
+			current = id
 		}
+		nameNode := field(n, "name")
 		for i := uint(0); i < n.NamedChildCount(); i++ {
-			walkSwift(b, n.NamedChild(i), module, current)
+			c := n.NamedChild(i)
+			if c == nil || sameNode(c, nameNode) {
+				continue
+			}
+			if c.Kind() == "inheritance_specifier" {
+				if current != "" {
+					for _, t := range swiftUserTypeNames(b, c) {
+						addSwiftListProp(b, current, PropSupertypes, t)
+					}
+				}
+				continue
+			}
+			// Property types and initializers in the body belong to the type.
+			walkSwift(b, c, module, current)
+		}
+		return
+
+	case "navigation_expression":
+		// `WeatherNetworkError.serverError`, `Foo.shared`: a capitalized target is
+		// a type used through a static member or enum case.
+		if t := field(n, "target"); current != "" && t != nil && t.Kind() == "simple_identifier" {
+			if name := b.text(t); name != "" && name[0] >= 'A' && name[0] <= 'Z' {
+				addSwiftListProp(b, current, PropTypeRefs, name)
+			}
+		}
+
+	case "user_type":
+		if current != "" {
+			collectSwiftTypeRefs(b, n, current)
 		}
 		return
 
@@ -98,6 +140,65 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		walkSwift(b, n.NamedChild(i), module, current)
 	}
+}
+
+// collectSwiftTypeRefs records every type name used under n (annotations,
+// generic arguments, casts) as a reference from owner. The index resolves the
+// names to type nodes; names that do not resolve never become nodes.
+func collectSwiftTypeRefs(b *builder, n *tree_sitter.Node, owner graph.NodeID) {
+	for _, t := range swiftUserTypeNames(b, n) {
+		addSwiftListProp(b, owner, PropTypeRefs, t)
+	}
+}
+
+// swiftUserTypeNames returns the type identifiers of every user_type under n,
+// including nested generic arguments (`[Foo]`, `Result<Bar, Error>`).
+func swiftUserTypeNames(b *builder, n *tree_sitter.Node) []string {
+	var out []string
+	var walk func(*tree_sitter.Node)
+	walk = func(c *tree_sitter.Node) {
+		if c == nil {
+			return
+		}
+		if c.Kind() == "user_type" {
+			for i := uint(0); i < c.NamedChildCount(); i++ {
+				if id := c.NamedChild(i); id != nil && id.Kind() == "type_identifier" {
+					out = append(out, b.text(id))
+				}
+			}
+		}
+		for i := uint(0); i < c.NamedChildCount(); i++ {
+			walk(c.NamedChild(i))
+		}
+	}
+	walk(n)
+	return out
+}
+
+// addSwiftListProp appends value to a comma-separated, deduplicated prop.
+func addSwiftListProp(b *builder, id graph.NodeID, key, value string) {
+	node, ok := b.nodes[id]
+	if !ok || value == "" {
+		return
+	}
+	if node.Props == nil {
+		node.Props = map[string]string{}
+	}
+	for _, v := range strings.Split(node.Props[key], ",") {
+		if v == value {
+			return
+		}
+	}
+	if node.Props[key] == "" {
+		node.Props[key] = value
+	} else {
+		node.Props[key] += "," + value
+	}
+	b.nodes[id] = node
+}
+
+func sameNode(a, b *tree_sitter.Node) bool {
+	return a != nil && b != nil && a.Kind() == b.Kind() && a.StartByte() == b.StartByte() && a.EndByte() == b.EndByte()
 }
 
 func swiftDeclName(b *builder, n *tree_sitter.Node) string {

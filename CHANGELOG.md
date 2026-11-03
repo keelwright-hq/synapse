@@ -2,8 +2,38 @@
 
 ## Unreleased
 
+### Added
+
+- **Impact, dependency and path queries:**
+  - `synapse query affected <symbol>` lists code that calls, references,
+    inherits from or implements a symbol, grouped by file. Every type on the
+    walk includes its members, also those declared in Swift extensions in other
+    files, so callers of its methods count.
+  - `synapse query dependencies <symbol>` lists what a symbol uses, grouped by
+    file.
+  - `synapse query path <from> <to>` returns the fewest-hop chain between two
+    symbols. A type target is reached at any of its members, and the search
+    never climbs from a member up to its owner type. A `contains` step from a
+    type into its method counts as a hop.
+  - MCP equivalents: `affected`, `dependencies`, `shortest_path`.
+- **Swift type relationships:**
+  - Conformance and inheritance clauses become `inherits` edges.
+  - Types used in signatures, properties, generic arguments, casts and static
+    member access (`Error.offline`, `Foo.shared`) become `references` edges.
+  - Names resolve only to a unique repo type declaration, so `String` or
+    `Codable` create no nodes.
+  - Types now `contain` their methods, and code in type bodies (property
+    initializers, SwiftUI `body`) is attributed to the type.
+- **Bare type names in docs:** Markdown now links unquoted multi-word
+  CamelCase names, including acronym-led ones (`NotificationService`,
+  `URLSession`, `NOAAProvider`), when they name exactly one type declaration.
+  Single words, all-caps words and Swift extensions are never linked.
+
 ### Fixed & Improved
 
+- **Swift extensions don't make a type name ambiguous:** Name lookups prefer
+  a type's single declaration over its Swift extensions and over the module
+  named after its file (`Foo.swift`).
 - **Swift cross-file call resolution:** Calls now link across files in a Swift
   module. Type-qualified calls (`Type.method`, `Type.shared.method`,
   `self.method`) resolve by receiver type in every language. Swift calls whose
