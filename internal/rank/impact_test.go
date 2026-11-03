@@ -8,7 +8,9 @@ import (
 	"github.com/keelwright-hq/synapse/internal/graph"
 	"github.com/keelwright-hq/synapse/internal/parse"
 	"github.com/keelwright-hq/synapse/internal/rank"
+	"github.com/keelwright-hq/synapse/internal/store/federated"
 	"github.com/keelwright-hq/synapse/internal/store/memory"
+	"github.com/keelwright-hq/synapse/internal/uri"
 )
 
 // impactFixture is a small Swift-shaped graph:
@@ -212,5 +214,56 @@ func TestAffectedDoesNotExpandModulesReachedThroughImports(t *testing.T) {
 	// function in b, so expanding b to everything it declares would wrongly add it.
 	if got := filePaths(res); got != "b.ts,d.ts" {
 		t.Fatalf("affected by a.ts at depth 2 = %q, want b.ts,d.ts", got)
+	}
+}
+
+// TestShortestPathFindsExtensionMembersOnFederatedStore runs the extension
+// case of TestShortestPathEdgeCases on a workspace store, where type
+// declarations are indexed per member.
+func TestShortestPathFindsExtensionMembersOnFederatedStore(t *testing.T) {
+	src := impactFixture(t)
+	app := memory.New()
+	err := src.ForEachNode(func(n graph.Node) bool {
+		props := map[string]string{}
+		for k, v := range n.Props {
+			props[k] = v
+		}
+		if u, ok, err := uri.Assign("app", n.Path, n.Kind, n.Name, string(n.ID)); err == nil && ok {
+			props[uri.PropKey] = u
+		}
+		n.Props = props
+		if err := app.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = src.ForEachNode(func(n graph.Node) bool {
+		edges, err := src.OutEdges(n.ID, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range edges {
+			if err := app.PutEdge(e); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fed, err := federated.New([]federated.Member{{Name: "app", Store: app}, {Name: "other", Store: memory.New()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := rank.ShortestPath(fed, "method:Top.swift#Top.useBar", "type:Foo.swift#Foo", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Steps) != 2 || p.Steps[1].ID != "method:Foo+Ext.swift#Foo.bar" {
+		t.Fatalf("path to Foo = %+v", p.Steps)
 	}
 }

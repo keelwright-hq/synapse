@@ -19,6 +19,7 @@ func extractPython(path string, src []byte, root *tree_sitter.Node) Result {
 	b.edge(fid, mid, EdgeContains)
 
 	walkPython(b, root, mid, "")
+	extractHTTPPython(b, root, mid)
 	return b.result("python")
 }
 

@@ -181,3 +181,37 @@ repos:
 		t.Fatal("expected missing member error")
 	}
 }
+
+func TestLoadHTTPBlock(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "api"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeWorkspace(t, root, `
+version: 1
+repos:
+  - name: api
+    path: api
+    http:
+      base_env: [" API_URL ", API_BASE_URL]
+      gateway_prefix: /api-svc/
+`)
+	ws, err := config.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := ws.Repos[0].HTTP
+	if h == nil || strings.Join(h.BaseEnv, ",") != "API_URL,API_BASE_URL" || h.GatewayPrefix != "/api-svc" {
+		t.Fatalf("http = %+v", h)
+	}
+
+	for body, wantErr := range map[string]string{
+		"http:\n      base_env: [\"\"]":        "base_env[0] is empty",
+		"http:\n      gateway_prefix: api-svc": "must start with /",
+	} {
+		writeWorkspace(t, root, "\nversion: 1\nrepos:\n  - name: api\n    path: api\n    "+body+"\n")
+		if _, err := config.Load(root); err == nil || !strings.Contains(err.Error(), wantErr) {
+			t.Errorf("%q: err = %v, want %q", body, err, wantErr)
+		}
+	}
+}

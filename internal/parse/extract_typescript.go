@@ -19,6 +19,7 @@ func extractTypeScript(path string, src []byte, root *tree_sitter.Node) Result {
 	b.edge(fid, mid, EdgeContains)
 
 	walkTS(b, root, mid, "")
+	extractHTTPJS(b, root, mid)
 	return b.result("typescript")
 }
 

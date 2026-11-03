@@ -19,6 +19,7 @@ func extractJavaScript(path string, src []byte, root *tree_sitter.Node) Result {
 	b.edge(fid, mid, EdgeContains)
 
 	walkJS(b, root, mid, "")
+	extractHTTPJS(b, root, mid)
 	return b.result("javascript")
 }
 

@@ -1,0 +1,13 @@
+version: 1
+repos:
+  - name: api
+    path: api
+    http:
+      base_env: [API_URL]
+      gateway_prefix: /api-svc
+  - name: scores
+    path: scores
+  - name: web
+    path: web
+  - name: worker
+    path: worker
