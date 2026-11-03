@@ -313,19 +313,19 @@
       {
        "command": "{syn} query path refreshAndConsiderReview WeatherRepository --root {root}",
        "exit": 0,
-       "output_bytes": 407,
+       "output_bytes": 427,
        "output_lines": 4
       }
      ],
      "tool_calls": 1,
-     "chars_read": 481,
-     "est_tokens": 121,
+     "chars_read": 501,
+     "est_tokens": 126,
      "found": 2,
      "expected": 2,
      "missing": [],
      "complete": true,
      "fallback_to_grep": false,
-     "est_tokens_to_answer": 121,
+     "est_tokens_to_answer": 126,
      "tool_calls_to_answer": 1
     }
    }
@@ -640,8 +640,8 @@
    "items_expected": 53
   },
   "synapse": {
-   "est_tokens": 3591,
-   "est_tokens_to_answer": 5154,
+   "est_tokens": 3596,
+   "est_tokens_to_answer": 5159,
    "tool_calls_to_answer": 12,
    "tasks_complete": 7,
    "items_found": 50,

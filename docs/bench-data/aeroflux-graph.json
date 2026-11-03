@@ -80,9 +80,9 @@
    "documents": 49,
    "docprops": 177
   },
-  "after_pr31_e649265": {
+  "after_pr31_be268a8": {
    "nodes": 2886,
-   "edges": 7732,
+   "edges": 7739,
    "calls": 4062,
    "resolved": 1308,
    "crossfile": 792,
@@ -93,7 +93,7 @@
    "pair": [
     "21"
    ],
-   "documents": 107,
+   "documents": 114,
    "docprops": 177,
    "references": 998,
    "inherits": 38
@@ -115,5 +115,5 @@
   "method_nodes_with_shared_label": 282,
   "shared_method_labels": 69
  },
- "synapse_after_pr31": "e649265"
+ "synapse_after_pr31": "be268a8"
 }

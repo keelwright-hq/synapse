@@ -33,7 +33,7 @@ against [Graphify](https://pypi.org/project/graphifyy/) and against plain
 |---|---|
 | Machine | Apple M5 Pro, 24 GB RAM, macOS 27.2 |
 | Toolchain | Go 1.27.1, Python 3 (standard library only) |
-| Synapse | **#31** at `e649265` (`feat/swift-type-graph`, not yet merged) and **`main`** at `7438375`. Graph history also shows `c2ae902`, `main` before #29 |
+| Synapse | **#31** at `be268a8` (`feat/swift-type-graph`, not yet merged) and **`main`** at `7438375`. Graph history also shows `c2ae902`, `main` before #29 |
 | Graphify | 0.9.45 (`graphifyy` on PyPI), `graphify . --code-only` then `graphify cluster-only . --no-label`, no LLM |
 | Test repo | aeroflux at `3c04fb4`: a private Swift/SwiftUI iOS app with a widget extension. 134 Swift files, 15 Markdown files, 358 commits (117 merges) |
 
@@ -94,15 +94,15 @@ means the answer was incomplete.
 | Callers of `WeatherViewModel.refresh` | 5,713 · 3/3 | 232 · 3/3 | 1,725 · 3/3 | **218 · 3/3** |
 | Non-test files affected by `Temperature` | **285 · 19/19** | 5,037 · 19/19 | 2,025 · 8/19\* | 1,341 · 19/19 |
 | Files `NOAAProvider` depends on | 4,751 · 7/7 | 620 · 2/7\* | 1,809 · 2/7\* | **324 · 7/7** |
-| Call chain from `ContentView.refreshAndConsiderReview` to `WeatherRepository` | 231 · 2/2 | 113 · 0/2\* | 1,559 · 2/2 | **121 · 2/2** |
+| Call chain from `ContentView.refreshAndConsiderReview` to `WeatherRepository` | 231 · 2/2 | 113 · 0/2\* | 1,559 · 2/2 | **126 · 2/2** |
 | Files that change with `WeatherViewModel.swift` | **138 · 4/4** | 264 · 0/4\* | 549 · 4/4 | 549 · 4/4 |
 | Docs describing `NotificationService` | **17 · 1/1** | 672 · 0/1\* | 26 · 0/1\* | 45 · 1/1 |
 | Types conforming to `WeatherProviderProtocol` | 427 · 10/10 | 410 · 10/10 | 261 · 0/10\* | **400 · 10/10** |
 | What `runRefresh` does and who calls it | 1,563 · 7/7 | 676 · 4/7\* | 1,489 · 4/7\* | 593 · 4/7\* |
-| **Total read** | 13,125 | 8,024 | 9,443 | **3,591** |
+| **Total read** | 13,125 | 8,024 | 9,443 | **3,596** |
 | Complete answers | **8/8** | 3/8 | 3/8 | 7/8 |
 | Expected items found | **53/53** | 38/53 | 23/53 | 50/53 |
-| **Tokens to answer (with fallback)** | 13,125 | 14,724 | 16,486 | **5,154** |
+| **Tokens to answer (with fallback)** | 13,125 | 14,724 | 16,486 | **5,159** |
 | Tool calls to answer | **11** | 22 | 16 | 12 |
 
 What this means:
@@ -115,7 +115,7 @@ What this means:
 - **Synapse #31 wins where grep has to read around matches:**
   - **Callers across files:** 218 tokens against grep's 5,713.
   - **A type's dependencies:** 324 against 4,751.
-  - **A call chain:** 121 against 231.
+  - **A call chain:** 126 against 231.
 - **Neither graph tool fully answered "what does `runRefresh` do".** Synapse
   missed the callees reached through protocol-typed properties. It has no type
   inference, and the repo has both a real implementation and a test fake, so
@@ -128,7 +128,7 @@ Graphify for comparison:
 
 | | Synapse `c2ae902` | Synapse `7438375` | Synapse #31 | Graphify 0.9.45 |
 |---|---|---|---|---|
-| Nodes / edges | 2,803 / 8,817 | 2,502 / 5,502 | 2,886 / 7,732 | 2,122 / 4,954 |
+| Nodes / edges | 2,803 / 8,817 | 2,502 / 5,502 | 2,886 / 7,739 | 2,122 / 4,954 |
 | Call edges | 2,977 | 2,926 | 4,062 | 1,326 |
 | …linked to a real declaration | 282 | 1,149 | 1,308 | 1,326 |
 | …of which cross-file | 0 | 683 | 792 | 782 |
@@ -139,7 +139,7 @@ Graphify for comparison:
 | `// MARK:` recorded as a doc comment | 2 | 0 | 0 | n/a |
 | Git co-change pairs | 4,217 | 953 | 953 | none |
 | `WeatherViewModel` ↔ `NowDashboardView` co-change count | 46 | 21 | 21 | none |
-| Markdown → code links / doc comments | 49 / 178 | 49 / 177 | 107 / 177 | none in code-only mode |
+| Markdown → code links / doc comments | 49 / 178 | 49 / 177 | 114 / 177 | none in code-only mode |
 | Build time (median of 5 runs) | n/a | 2.12s | 2.22s | 1.23s build + 0.62s clustering |
 
 Notes:
