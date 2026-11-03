@@ -20,6 +20,9 @@ var (
 	backtickRe = regexp.MustCompile("`([^`]+)`")
 	pathRe     = regexp.MustCompile(`(?:^|[\s(])([A-Za-z0-9_./-]+\.(?:go|ts|tsx|js|jsx|py|swift|md))`)
 	adrIDRe    = regexp.MustCompile(`(?i)\bADR[- ]?(\d+)\b`)
+	// bareTypeRe matches multi-word CamelCase identifiers (NotificationService)
+	// written without backticks; single words like Temperature are too ambiguous.
+	bareTypeRe = regexp.MustCompile(`\b([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+)\b`)
 )
 
 // ListDocFiles returns absolute paths of Markdown docs under root.
@@ -118,6 +121,10 @@ func Link(opts LinkOptions) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	typesByName, err := buildTypeNameIndex(opts.Store)
+	if err != nil {
+		return 0, err
+	}
 	n := 0
 	for _, abs := range files {
 		rel, err := filepath.Rel(opts.Root, abs)
@@ -151,6 +158,12 @@ func Link(opts LinkOptions) (int, error) {
 			lineText := sc.Text()
 			for _, m := range backtickRe.FindAllStringSubmatch(lineText, -1) {
 				if id, ok := resolveMention(opts.Store, byName, m[1]); ok {
+					recordTarget(id, lineNo)
+				}
+			}
+			for _, m := range bareTypeRe.FindAllStringSubmatch(lineText, -1) {
+				if ids := typesByName[m[1]]; len(ids) == 1 {
+					id := ids[0]
 					recordTarget(id, lineNo)
 				}
 			}
@@ -253,4 +266,18 @@ func resolveMention(store graph.Store, byName map[string][]graph.NodeID, mention
 		return matches[0], true
 	}
 	return "", false
+}
+
+// buildTypeNameIndex maps type names to their declarations. An unquoted
+// CamelCase word links only when it names exactly one type declaration, so
+// prose never binds to functions, modules or Swift extensions of other types.
+func buildTypeNameIndex(store graph.Store) (map[string][]graph.NodeID, error) {
+	byName := make(map[string][]graph.NodeID)
+	err := store.ForEachNode(func(n graph.Node) bool {
+		if n.Kind == parse.KindType && n.Name != "" && n.Props[parse.PropExtension] == "" {
+			byName[n.Name] = append(byName[n.Name], n.ID)
+		}
+		return true
+	})
+	return byName, err
 }

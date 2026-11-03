@@ -20,6 +20,8 @@ var DefaultEdgeWeights = map[graph.EdgeType]float64{
 	parse.EdgeContains:      0.65,
 	parse.EdgeCalls:         0.8,
 	parse.EdgeImplements:    0.9,
+	parse.EdgeInherits:      0.85,
+	parse.EdgeReferences:    0.6,
 	parse.EdgeConsumes:      0.9,
 	parse.EdgeImports:       0.5,
 	parse.EdgeCoCommitted:   0.7,  // HISTORICAL co-change
@@ -473,6 +475,18 @@ func ResolveSeed(store graph.Store, query string) (graph.NodeID, error) {
 	if len(matches) > 1 && len(codeMatches) == 1 {
 		matches = codeMatches
 	}
+	if len(matches) > 1 {
+		// A Swift type and its extensions share a name; the declaration wins.
+		var decls []graph.Node
+		for _, m := range codeMatches {
+			if m.Kind == parse.KindType && m.Props[parse.PropExtension] == "" {
+				decls = append(decls, m)
+			}
+		}
+		if len(decls) == 1 && len(decls) < len(matches) && allTypes(matches) {
+			matches = decls
+		}
+	}
 	if len(matches) == 0 {
 		matches = symMatches
 	}
@@ -576,4 +590,13 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func allTypes(nodes []graph.Node) bool {
+	for _, n := range nodes {
+		if n.Kind != parse.KindType {
+			return false
+		}
+	}
+	return true
 }

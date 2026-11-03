@@ -62,12 +62,12 @@ func isResolvedDefinition(n graph.Node) bool {
 }
 
 // ImportantSymbols ranks resolved symbols (functions, methods, types, contracts)
-// by undirected degree over calls / implements / consumes. Unresolved
+// by undirected degree over calls / implements / consumes / inherits / references. Unresolved
 // kind=symbol nodes and container kinds are excluded.
 func ImportantSymbols(nodes []graph.Node, edges []graph.Edge, limit int) []Hub {
 	return rankHubs(nodes, edges, limit, func(e graph.Edge) bool {
 		switch e.Type {
-		case parse.EdgeCalls, parse.EdgeImplements, parse.EdgeConsumes:
+		case parse.EdgeCalls, parse.EdgeImplements, parse.EdgeConsumes, parse.EdgeInherits, parse.EdgeReferences:
 			return true
 		default:
 			return false

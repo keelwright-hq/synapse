@@ -108,7 +108,12 @@ synapse query neighborhood main --root . --json
 synapse query co-changes cmd/synapse/main.go --root . --json
 synapse query docs main --root . --json
 
-# 5. Start the MCP server over stdio for your IDE
+# 5. Impact and dependency questions (grouped by file), and call paths
+synapse query affected Store --root .
+synapse query dependencies Indexer --root .
+synapse query path Run resolveCalls --root .
+
+# 6. Start the MCP server over stdio for your IDE
 synapse mcp --root . --repo synapse
 ```
 

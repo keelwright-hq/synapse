@@ -31,6 +31,9 @@ const (
 	EdgeCoCommitted   graph.EdgeType = "co_committed"   // git history co-change (HISTORICAL)
 	EdgeObservedCalls graph.EdgeType = "observed_calls" // OpenTelemetry runtime calls (OBSERVED)
 	EdgeDocuments     graph.EdgeType = "documents"      // doc → symbol / path reference
+	// Type relationships resolved at index time (Swift today).
+	EdgeInherits   graph.EdgeType = "inherits"   // type → supertype or conformed protocol
+	EdgeReferences graph.EdgeType = "references" // declaration → type it uses in a signature or body
 )
 
 // Edge property keys and provenance values for Phase 3 edges.
@@ -44,6 +47,10 @@ const (
 	// PropExtension marks a type node that only extends a type declared
 	// elsewhere (Swift `extension Foo`), so it is not that type's definition.
 	PropExtension = "extension"
+	// PropTypeRefs and PropSupertypes hold comma-separated type names a
+	// declaration uses or inherits from; the index resolves them to type nodes.
+	PropTypeRefs   = "type_refs"
+	PropSupertypes = "supertypes"
 
 	ProvenanceExtracted  = "EXTRACTED"
 	ProvenanceInferred   = "INFERRED"
