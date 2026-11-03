@@ -246,7 +246,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 		name, desc string
 		query      func(graph.Store, graph.NodeID, int, int) (rank.ImpactResult, error)
 	}{
-		{"affected", "Code that calls, references, inherits from or implements a symbol (a type includes its members), grouped by file", rank.Affected},
+		{"affected", "Code that calls, references, inherits from or implements a symbol, grouped by file; every type on the walk includes its members, also those in Swift extensions", rank.Affected},
 		{"dependencies", "Code a symbol (and a type's members) calls, references, inherits from or implements, grouped by file", rank.Dependencies},
 	} {
 		query := tool.query
@@ -278,7 +278,7 @@ func registerTools(s *server.MCPServer, opts Options) {
 	}
 
 	shortestPath := mcp.NewTool("shortest_path",
-		mcp.WithDescription("Fewest-hop calls/references/inherits chain from one symbol to another; a type target is reached at any of its members"),
+		mcp.WithDescription("Fewest-hop calls/references/inherits chain from one symbol to another; a type target is reached at any of its members. Hops include contains steps from a type into its methods; each step carries its edge type"),
 		mcp.WithString("from", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
 		mcp.WithString("to", mcp.Required(), mcp.Description("repo:// URI, node id, or symbol name")),
 		mcp.WithNumber("max_hops", mcp.Description("Longest path to search (default 8)")),

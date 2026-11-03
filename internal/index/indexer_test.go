@@ -593,9 +593,22 @@ func TestIndexerSwiftTypeEdgesAndImpactQueries(t *testing.T) {
 }
 `)
 
+	// An extension in another file: its method belongs to Provider for queries.
+	writeGo(t, filepath.Join(root, "Weather", "Provider+Cache.swift"), `extension Provider {
+    func cached() -> WeatherError? { nil }
+}
+`)
+
 	store := memory.New()
 	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
 		t.Fatal(err)
+	}
+
+	// The bare name resolves to the declaration despite the module named after
+	// Provider.swift and the extension in Provider+Cache.swift.
+	seed, err := rank.ResolveSeed(store, "Provider")
+	if err != nil || seed != "type:Weather/Provider.swift#Provider" {
+		t.Fatalf("ResolveSeed(Provider) = %s, %v", seed, err)
 	}
 
 	// inherits: conformance resolves to the protocol; Error stays unresolved.
@@ -634,6 +647,22 @@ func TestIndexerSwiftTypeEdgesAndImpactQueries(t *testing.T) {
 	}
 	if strings.Join(depPaths, ",") != "Models/Forecast.swift,Weather/Errors.swift,Weather/Protocol.swift" {
 		t.Fatalf("Provider dependencies = %v", depPaths)
+	}
+	// The extension's cached() uses WeatherError, so its file is affected.
+	errAff, err := rank.Affected(store, "type:Weather/Errors.swift#WeatherError", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errAffPaths []string
+	for _, f := range errAff.Files {
+		errAffPaths = append(errAffPaths, f.Path)
+	}
+	if strings.Join(errAffPaths, ",") != "Weather/Provider+Cache.swift,Weather/Provider.swift" {
+		t.Fatalf("affected by WeatherError = %v", errAffPaths)
+	}
+	cachedDeps, err := rank.Dependencies(store, "method:Weather/Provider+Cache.swift#Provider.cached", 1, 0)
+	if err != nil || len(cachedDeps.Files) != 1 || cachedDeps.Files[0].Path != "Weather/Errors.swift" {
+		t.Fatalf("extension method dependencies = %+v, %v", cachedDeps.Files, err)
 	}
 
 	// path: Screen.onAppear -> ViewModel.refresh -> Repository.current (a member of the target).

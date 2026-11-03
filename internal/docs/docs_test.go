@@ -209,7 +209,7 @@ func TestListDocFilesAndLinkRespectGitignoreAndThirdParty(t *testing.T) {
 
 func TestBareCamelCaseMentionLinksOnlyUniqueTypeDeclarations(t *testing.T) {
 	root := t.TempDir()
-	body := "# Layout\n\nServices: NotificationService, LocationService, HelperFunc, Temperature.\n"
+	body := "# Layout\n\nServices: NotificationService, LocationService, HelperFunc, Temperature.\nClients: NOAAProvider over URLSession. See the README and API notes.\n"
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -233,6 +233,11 @@ func TestBareCamelCaseMentionLinksOnlyUniqueTypeDeclarations(t *testing.T) {
 		{ID: "func:h.swift#HelperFunc", Kind: parse.KindFunction, Name: "HelperFunc", Path: "h.swift"},
 		// Single-word names are too ambiguous in prose.
 		{ID: "type:T.swift#Temperature", Kind: parse.KindType, Name: "Temperature", Path: "T.swift"},
+		// Acronym-led names are multi-word CamelCase too.
+		{ID: "type:NOAAProvider.swift#NOAAProvider", Kind: parse.KindType, Name: "NOAAProvider", Path: "NOAAProvider.swift"},
+		{ID: "type:Net.swift#URLSession", Kind: parse.KindType, Name: "URLSession", Path: "Net.swift"},
+		// All-caps words are not type names in prose.
+		{ID: "type:Api.swift#API", Kind: parse.KindType, Name: "API", Path: "Api.swift"},
 	} {
 		if err := store.PutNode(n); err != nil {
 			t.Fatal(err)
@@ -242,7 +247,8 @@ func TestBareCamelCaseMentionLinksOnlyUniqueTypeDeclarations(t *testing.T) {
 		t.Fatal(err)
 	}
 	linked := map[graph.NodeID]bool{}
-	for _, id := range []graph.NodeID{"type:NotificationService.swift#NotificationService", "type:Loc+Ext.swift#LocationService", "func:h.swift#HelperFunc", "type:T.swift#Temperature"} {
+	for _, id := range []graph.NodeID{"type:NotificationService.swift#NotificationService", "type:Loc+Ext.swift#LocationService", "func:h.swift#HelperFunc", "type:T.swift#Temperature",
+		"type:NOAAProvider.swift#NOAAProvider", "type:Net.swift#URLSession", "type:Api.swift#API"} {
 		in, err := store.InEdges(id, parse.EdgeDocuments)
 		if err != nil {
 			t.Fatal(err)
@@ -254,6 +260,9 @@ func TestBareCamelCaseMentionLinksOnlyUniqueTypeDeclarations(t *testing.T) {
 		"type:Loc+Ext.swift#LocationService":                 false,
 		"func:h.swift#HelperFunc":                            false,
 		"type:T.swift#Temperature":                           false,
+		"type:NOAAProvider.swift#NOAAProvider":               true,
+		"type:Net.swift#URLSession":                          true,
+		"type:Api.swift#API":                                 false,
 	}
 	for id, w := range want {
 		if linked[id] != w {

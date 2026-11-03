@@ -227,8 +227,9 @@ var queryAffectedCmd = &cobra.Command{
 	Use:   "affected <symbol>",
 	Short: "Code that calls, references or inherits from a symbol, grouped by file",
 	Long: `affected walks calls, references, inherits and implements edges backwards
-from a symbol. For a type it includes the type's members, so callers of its
-methods count. Use --depth to follow dependents of dependents.`,
+from a symbol. Every type on the walk includes its members, also those declared
+in Swift extensions in other files, so callers of its methods count. Use
+--depth to follow dependents of dependents.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runImpactQuery(cmd, args[0], rank.Affected)
@@ -251,7 +252,11 @@ var queryPathCmd = &cobra.Command{
 	Short: "Shortest call/reference path between two symbols",
 	Long: `path finds the fewest-hop chain from one symbol to another along calls,
 references, inherits and implements edges in their own direction. A type target
-is reached when the chain reaches any of its members.`,
+is reached when the chain reaches any of its members.
+
+Hops count every edge on the chain, including a "contains" step from a type
+into one of its methods, so "3 hops" is not always three calls; the edge type
+of each step is printed.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, cleanup, err := openMemberQueryStore(cmd)
@@ -274,7 +279,7 @@ is reached when the chain reaches any of its members.`,
 		if queryJSON {
 			return writeJSON(cmd, res)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "path %s -> %s (%d hops)\n", from, to, len(res.Steps)-1)
+		fmt.Fprintf(cmd.OutOrStdout(), "path %s -> %s (%d hops, edge type per step)\n", from, to, len(res.Steps)-1)
 		for _, st := range res.Steps {
 			edge := "start"
 			if st.Edge != "" {

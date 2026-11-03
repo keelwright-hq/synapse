@@ -38,16 +38,18 @@ type SymbolRef struct {
 
 // ImpactResult is the file-grouped answer to an affected or dependencies query.
 type ImpactResult struct {
-	Seed      graph.NodeID `json:"seed"`
-	Direction string       `json:"direction"`
-	Files     []FileGroup  `json:"files"`
-	Symbols   int          `json:"symbols"`
-	Truncated bool         `json:"truncated,omitempty"`
+	Seed       graph.NodeID `json:"seed"`
+	Direction  string       `json:"direction"`
+	Files      []FileGroup  `json:"files"`
+	Symbols    int          `json:"symbols"`     // symbols in the returned files
+	TotalFiles int          `json:"total_files"` // files before --limit
+	Truncated  bool         `json:"truncated,omitempty"`
 }
 
 // Affected walks dependency edges backwards from seed: everything that calls,
-// references, inherits from or implements it, up to depth hops. A type seed
-// includes its members, so callers of a type's methods count as affected.
+// references, inherits from or implements it, up to depth hops. Every type on
+// the walk includes its members (also those declared in Swift extensions in
+// other files), so callers of a type's methods count as affected.
 func Affected(store graph.Store, seed graph.NodeID, depth, limit int) (ImpactResult, error) {
 	return walkDependencies(store, seed, depth, limit, "in")
 }
@@ -66,7 +68,11 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 	if err != nil {
 		return ImpactResult{}, err
 	}
-	own, err := withMembers(store, seedNode)
+	mx, err := newMemberIndex(store)
+	if err != nil {
+		return ImpactResult{}, err
+	}
+	own, err := mx.withMembers(seedNode)
 	if err != nil {
 		return ImpactResult{}, err
 	}
@@ -79,7 +85,16 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 	frontier := own
 	for d := 1; d <= depth && len(frontier) > 0; d++ {
 		var next []graph.Node
+		var sources []graph.Node
 		for _, cur := range frontier {
+			// A type reached mid-walk also stands for its members.
+			expanded, err := mx.withMembers(cur)
+			if err != nil {
+				return ImpactResult{}, err
+			}
+			sources = append(sources, expanded...)
+		}
+		for _, cur := range sources {
 			for _, et := range dependencyEdges {
 				var edges []graph.Edge
 				if dir == "in" {
@@ -136,7 +151,7 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 		}
 		g.Symbols = append(g.Symbols, ref)
 	}
-	res := ImpactResult{Seed: seed, Direction: dir, Symbols: len(reached)}
+	res := ImpactResult{Seed: seed, Direction: dir}
 	for _, g := range byPath {
 		sort.Slice(g.Symbols, func(i, j int) bool {
 			if g.Symbols[i].Line != g.Symbols[j].Line {
@@ -152,29 +167,70 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 		}
 		return res.Files[i].Path < res.Files[j].Path
 	})
+	res.TotalFiles = len(res.Files)
 	if limit > 0 && len(res.Files) > limit {
 		res.Files = res.Files[:limit]
 		res.Truncated = true
 	}
+	for _, g := range res.Files {
+		res.Symbols += len(g.Symbols)
+	}
 	return res, nil
 }
 
-// withMembers returns n plus, for a type, the members it contains.
-func withMembers(store graph.Store, n graph.Node) ([]graph.Node, error) {
+// memberIndex finds a type's members: what it contains, plus, when the name
+// has exactly one declaration, the Swift extensions of that name and what
+// they contain (extension methods hang off the extension file's type node).
+type memberIndex struct {
+	store      graph.Store
+	decls      map[string][]graph.NodeID
+	extensions map[string][]graph.NodeID
+}
+
+func newMemberIndex(store graph.Store) (*memberIndex, error) {
+	mx := &memberIndex{store: store, decls: map[string][]graph.NodeID{}, extensions: map[string][]graph.NodeID{}}
+	err := store.ForEachNode(func(n graph.Node) bool {
+		if n.Kind != parse.KindType || n.Name == "" {
+			return true
+		}
+		if n.Props[parse.PropExtension] != "" {
+			mx.extensions[n.Name] = append(mx.extensions[n.Name], n.ID)
+		} else {
+			mx.decls[n.Name] = append(mx.decls[n.Name], n.ID)
+		}
+		return true
+	})
+	return mx, err
+}
+
+// withMembers returns n plus, for a type, its members and its extensions.
+func (mx *memberIndex) withMembers(n graph.Node) ([]graph.Node, error) {
 	out := []graph.Node{n}
 	if n.Kind != parse.KindType {
 		return out, nil
 	}
-	edges, err := store.OutEdges(n.ID, parse.EdgeContains)
-	if err != nil {
-		return nil, err
-	}
-	for _, e := range edges {
-		m, err := store.GetNode(e.To)
-		if err != nil {
-			continue
+	containers := []graph.NodeID{n.ID}
+	if len(mx.decls[n.Name]) == 1 {
+		for _, id := range append(append([]graph.NodeID{}, mx.decls[n.Name]...), mx.extensions[n.Name]...) {
+			if id == n.ID {
+				continue
+			}
+			if m, err := mx.store.GetNode(id); err == nil {
+				out = append(out, m)
+				containers = append(containers, id)
+			}
 		}
-		out = append(out, m)
+	}
+	for _, c := range containers {
+		edges, err := mx.store.OutEdges(c, parse.EdgeContains)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range edges {
+			if m, err := mx.store.GetNode(e.To); err == nil {
+				out = append(out, m)
+			}
+		}
 	}
 	return out, nil
 }
@@ -197,10 +253,11 @@ type PathResult struct {
 }
 
 // ShortestPath finds the fewest-hop path from `from` to `to` along dependency
-// edges in their own direction. A type may step into its members, and the
-// search also ends on any member of a type target, so "A reaches Repository"
-// means A reaches one of Repository's methods. It never climbs from a member
-// up to its owner type, which would turn "lives in the same type" into a path.
+// edges in their own direction. A type may step into its members (a contains
+// hop, counted like any other), and the search also ends on any member of a
+// type target, so "A reaches Repository" means A reaches one of Repository's
+// methods. It never climbs from a member up to its owner type, which would
+// turn "lives in the same type" into a path.
 func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathResult, error) {
 	if maxDepth <= 0 {
 		maxDepth = 8
@@ -212,8 +269,12 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 	if err != nil {
 		return PathResult{}, err
 	}
+	mx, err := newMemberIndex(store)
+	if err != nil {
+		return PathResult{}, err
+	}
 	goal := map[graph.NodeID]bool{to: true}
-	members, err := withMembers(store, target)
+	members, err := mx.withMembers(target)
 	if err != nil {
 		return PathResult{}, err
 	}
@@ -228,6 +289,10 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 	prev := map[graph.NodeID]hop{from: {}}
 	frontier := []graph.NodeID{from}
 	var found graph.NodeID
+	if goal[from] {
+		// Already there: from is the target or one of its members.
+		found = from
+	}
 	for d := 0; d < maxDepth && found == "" && len(frontier) > 0; d++ {
 		var next []graph.NodeID
 		for _, cur := range frontier {
@@ -235,17 +300,23 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 			if err != nil {
 				continue
 			}
-			types := dependencyEdges
-			if n.Kind == parse.KindType {
-				types = append(append([]graph.EdgeType{}, dependencyEdges...), parse.EdgeContains)
-			}
 			var edges []graph.Edge
-			for _, et := range types {
+			for _, et := range dependencyEdges {
 				es, err := store.OutEdges(cur, et)
 				if err != nil {
 					return PathResult{}, err
 				}
 				edges = append(edges, es...)
+			}
+			if n.Kind == parse.KindType {
+				// Step into members, including those declared in extensions.
+				members, err := mx.withMembers(n)
+				if err != nil {
+					return PathResult{}, err
+				}
+				for _, m := range members[1:] {
+					edges = append(edges, graph.Edge{From: cur, To: m.ID, Type: parse.EdgeContains})
+				}
 			}
 			sort.Slice(edges, func(i, j int) bool {
 				if edges[i].To != edges[j].To {
