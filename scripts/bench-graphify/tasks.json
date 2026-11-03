@@ -28,8 +28,8 @@
           "graphify affected 'aeroflux_viewmodels_weatherviewmodel_weatherviewmodel_refresh' --depth 1 --graph {graph}"
         ],
         "synapse": [
-          "{syn} query neighborhood refresh --root {root}",
-          "{syn} query neighborhood 'repo://aeroflux/aeroflux/ViewModels/WeatherViewModel.swift#method:WeatherViewModel.refresh' --root {root}"
+          "{syn} query affected refresh --root {root}",
+          "{syn} query affected 'repo://aeroflux/aeroflux/ViewModels/WeatherViewModel.swift#method:WeatherViewModel.refresh' --root {root}"
         ]
       }
     },
@@ -46,9 +46,6 @@
         [
           "aerofluxwidget.swift",
           "AeroFluxWidget/aerofluxwidget"
-        ],
-        [
-          "UserPreferences"
         ],
         [
           "WeatherCondition.swift",
@@ -98,9 +95,6 @@
         ],
         [
           "CombinedWeatherProvider"
-        ],
-        [
-          "DWDProvider"
         ]
       ],
       "approaches": {
@@ -113,7 +107,7 @@
           "graphify affected 'aeroflux_models_temperature_temperature' --graph {graph}"
         ],
         "synapse": [
-          "{syn} query neighborhood Temperature --root {root}"
+          "{syn} query affected Temperature --root {root}"
         ]
       }
     },
@@ -153,7 +147,7 @@
           "graphify explain 'NOAAProvider' --graph {graph}"
         ],
         "synapse": [
-          "{syn} query neighborhood NOAAProvider --root {root}"
+          "{syn} query dependencies NOAAProvider --root {root}"
         ]
       }
     },
@@ -180,7 +174,7 @@
           "graphify path '.refreshAndConsiderReview()' 'WeatherRepository' --undirected --graph {graph}"
         ],
         "synapse": [
-          "{syn} query neighborhood refreshAndConsiderReview --root {root}"
+          "{syn} query path refreshAndConsiderReview WeatherRepository --root {root}"
         ]
       }
     },
@@ -276,7 +270,7 @@
           "graphify affected 'WeatherProviderProtocol' --depth 1 --graph {graph}"
         ],
         "synapse": [
-          "{syn} query neighborhood WeatherProviderProtocol --root {root}"
+          "{syn} query affected WeatherProviderProtocol --root {root}"
         ]
       }
     },
@@ -315,7 +309,8 @@
           "graphify explain '.runRefresh()' --graph {graph}"
         ],
         "synapse": [
-          "{syn} query neighborhood runRefresh --root {root}"
+          "{syn} query affected runRefresh --root {root}",
+          "{syn} query dependencies runRefresh --root {root}"
         ]
       }
     }

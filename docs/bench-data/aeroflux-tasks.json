@@ -68,27 +68,27 @@
     "synapse": {
      "steps": [
       {
-       "command": "{syn} query neighborhood refresh --root {root}",
+       "command": "{syn} query affected refresh --root {root}",
        "exit": 1,
        "output_bytes": 265,
        "output_lines": 1
       },
       {
-       "command": "{syn} query neighborhood 'repo://aeroflux/aeroflux/ViewModels/WeatherViewModel.swift#method:WeatherViewModel.refresh' --root {root}",
+       "command": "{syn} query affected 'repo://aeroflux/aeroflux/ViewModels/WeatherViewModel.swift#method:WeatherViewModel.refresh' --root {root}",
        "exit": 0,
-       "output_bytes": 6505,
-       "output_lines": 60
+       "output_bytes": 433,
+       "output_lines": 4
       }
      ],
      "tool_calls": 2,
-     "chars_read": 6897,
-     "est_tokens": 1725,
+     "chars_read": 869,
+     "est_tokens": 218,
      "found": 3,
      "expected": 3,
      "missing": [],
      "complete": true,
      "fallback_to_grep": false,
-     "est_tokens_to_answer": 1725,
+     "est_tokens_to_answer": 218,
      "tool_calls_to_answer": 2
     }
    }
@@ -109,8 +109,8 @@
      "tool_calls": 1,
      "chars_read": 1137,
      "est_tokens": 285,
-     "found": 21,
-     "expected": 21,
+     "found": 19,
+     "expected": 19,
      "missing": [],
      "complete": true,
      "fallback_to_grep": false,
@@ -141,49 +141,33 @@
      "tool_calls": 3,
      "chars_read": 20145,
      "est_tokens": 5037,
-     "found": 20,
-     "expected": 21,
-     "missing": [
-      "UserPreferences"
-     ],
-     "complete": false,
-     "fallback_to_grep": true,
-     "est_tokens_to_answer": 5322,
-     "tool_calls_to_answer": 4
+     "found": 19,
+     "expected": 19,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 5037,
+     "tool_calls_to_answer": 3
     },
     "synapse": {
      "steps": [
       {
-       "command": "{syn} query neighborhood Temperature --root {root}",
+       "command": "{syn} query affected Temperature --root {root}",
        "exit": 0,
-       "output_bytes": 8111,
-       "output_lines": 65
+       "output_bytes": 5316,
+       "output_lines": 33
       }
      ],
      "tool_calls": 1,
-     "chars_read": 8098,
-     "est_tokens": 2025,
-     "found": 8,
-     "expected": 21,
-     "missing": [
-      "AeroFluxLiveActivityAttributes",
-      "aerofluxwidget.swift",
-      "UserPreferences",
-      "WidgetWeatherPayload",
-      "DailyForecastView",
-      "HourlyForecastView",
-      "LiquidHeaderView",
-      "NowDashboardView",
-      "FullScreenRadarView",
-      "WeatherMapStackView",
-      "HourlyForecastWindow",
-      "NormalizedWeatherModels",
-      "DWDProvider"
-     ],
-     "complete": false,
-     "fallback_to_grep": true,
-     "est_tokens_to_answer": 2310,
-     "tool_calls_to_answer": 2
+     "chars_read": 5363,
+     "est_tokens": 1341,
+     "found": 19,
+     "expected": 19,
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 1341,
+     "tool_calls_to_answer": 1
     }
    }
   },
@@ -246,28 +230,22 @@
     "synapse": {
      "steps": [
       {
-       "command": "{syn} query neighborhood NOAAProvider --root {root}",
+       "command": "{syn} query dependencies NOAAProvider --root {root}",
        "exit": 0,
-       "output_bytes": 7237,
-       "output_lines": 63
+       "output_bytes": 1244,
+       "output_lines": 9
       }
      ],
      "tool_calls": 1,
-     "chars_read": 7233,
-     "est_tokens": 1809,
-     "found": 2,
+     "chars_read": 1296,
+     "est_tokens": 324,
+     "found": 7,
      "expected": 7,
-     "missing": [
-      "WeatherCondition",
-      "HourlyForecastWindow",
-      "PrecipitationChance",
-      "WeatherNetworkError",
-      "WeatherSession"
-     ],
-     "complete": false,
-     "fallback_to_grep": true,
-     "est_tokens_to_answer": 6560,
-     "tool_calls_to_answer": 3
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 324,
+     "tool_calls_to_answer": 1
     }
    }
   },
@@ -333,21 +311,21 @@
     "synapse": {
      "steps": [
       {
-       "command": "{syn} query neighborhood refreshAndConsiderReview --root {root}",
+       "command": "{syn} query path refreshAndConsiderReview WeatherRepository --root {root}",
        "exit": 0,
-       "output_bytes": 6219,
-       "output_lines": 58
+       "output_bytes": 407,
+       "output_lines": 4
       }
      ],
      "tool_calls": 1,
-     "chars_read": 6235,
-     "est_tokens": 1559,
+     "chars_read": 481,
+     "est_tokens": 121,
      "found": 2,
      "expected": 2,
      "missing": [],
      "complete": true,
      "fallback_to_grep": false,
-     "est_tokens_to_answer": 1559,
+     "est_tokens_to_answer": 121,
      "tool_calls_to_answer": 1
     }
    }
@@ -473,23 +451,21 @@
      "steps": [
       {
        "command": "{syn} query docs NotificationService --root {root}",
-       "exit": 1,
-       "output_bytes": 50,
+       "exit": 0,
+       "output_bytes": 134,
        "output_lines": 1
       }
      ],
      "tool_calls": 1,
-     "chars_read": 101,
-     "est_tokens": 26,
-     "found": 0,
+     "chars_read": 177,
+     "est_tokens": 45,
+     "found": 1,
      "expected": 1,
-     "missing": [
-      "README.md"
-     ],
-     "complete": false,
-     "fallback_to_grep": true,
-     "est_tokens_to_answer": 43,
-     "tool_calls_to_answer": 2
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 45,
+     "tool_calls_to_answer": 1
     }
    }
   },
@@ -540,33 +516,22 @@
     "synapse": {
      "steps": [
       {
-       "command": "{syn} query neighborhood WeatherProviderProtocol --root {root}",
+       "command": "{syn} query affected WeatherProviderProtocol --root {root}",
        "exit": 0,
-       "output_bytes": 981,
-       "output_lines": 11
+       "output_bytes": 1538,
+       "output_lines": 16
       }
      ],
      "tool_calls": 1,
-     "chars_read": 1042,
-     "est_tokens": 261,
-     "found": 0,
+     "chars_read": 1597,
+     "est_tokens": 400,
+     "found": 10,
      "expected": 10,
-     "missing": [
-      "AirNowProvider",
-      "OpenMeteoProvider",
-      "JWAProvider",
-      "CombinedWeatherProvider",
-      "WeatherKitProvider",
-      "NOAAProvider",
-      "ECCCProvider",
-      "DWDProvider",
-      "TomorrowProvider",
-      "MeteoblueProvider"
-     ],
-     "complete": false,
-     "fallback_to_grep": true,
-     "est_tokens_to_answer": 688,
-     "tool_calls_to_answer": 2
+     "missing": [],
+     "complete": true,
+     "fallback_to_grep": false,
+     "est_tokens_to_answer": 400,
+     "tool_calls_to_answer": 1
     }
    }
   },
@@ -627,15 +592,21 @@
     "synapse": {
      "steps": [
       {
-       "command": "{syn} query neighborhood runRefresh --root {root}",
+       "command": "{syn} query affected runRefresh --root {root}",
        "exit": 0,
-       "output_bytes": 5952,
-       "output_lines": 56
+       "output_bytes": 941,
+       "output_lines": 4
+      },
+      {
+       "command": "{syn} query dependencies runRefresh --root {root}",
+       "exit": 0,
+       "output_bytes": 1335,
+       "output_lines": 8
       }
      ],
-     "tool_calls": 1,
-     "chars_read": 5956,
-     "est_tokens": 1489,
+     "tool_calls": 2,
+     "chars_read": 2372,
+     "est_tokens": 593,
      "found": 4,
      "expected": 7,
      "missing": [
@@ -645,8 +616,8 @@
      ],
      "complete": false,
      "fallback_to_grep": true,
-     "est_tokens_to_answer": 3052,
-     "tool_calls_to_answer": 3
+     "est_tokens_to_answer": 2156,
+     "tool_calls_to_answer": 4
     }
    }
   }
@@ -657,24 +628,24 @@
    "est_tokens_to_answer": 13125,
    "tool_calls_to_answer": 11,
    "tasks_complete": 8,
-   "items_found": 55,
-   "items_expected": 55
+   "items_found": 53,
+   "items_expected": 53
   },
   "graphify": {
    "est_tokens": 8024,
-   "est_tokens_to_answer": 15009,
-   "tool_calls_to_answer": 23,
-   "tasks_complete": 2,
-   "items_found": 39,
-   "items_expected": 55
+   "est_tokens_to_answer": 14724,
+   "tool_calls_to_answer": 22,
+   "tasks_complete": 3,
+   "items_found": 38,
+   "items_expected": 53
   },
   "synapse": {
-   "est_tokens": 9443,
-   "est_tokens_to_answer": 16486,
-   "tool_calls_to_answer": 16,
-   "tasks_complete": 3,
-   "items_found": 23,
-   "items_expected": 55
+   "est_tokens": 3591,
+   "est_tokens_to_answer": 5154,
+   "tool_calls_to_answer": 12,
+   "tasks_complete": 7,
+   "items_found": 50,
+   "items_expected": 53
   }
  }
 }

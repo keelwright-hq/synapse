@@ -35,6 +35,16 @@
     2.07,
     2.48
    ]
+  },
+  "synapse index --report (feat/swift-type-graph)": {
+   "median_s": 2.22,
+   "runs_s": [
+    2.32,
+    2.22,
+    2.34,
+    2.15,
+    2.16
+   ]
   }
  },
  "synapse_graph": {
@@ -69,6 +79,24 @@
    ],
    "documents": 49,
    "docprops": 177
+  },
+  "after_pr31_e649265": {
+   "nodes": 2886,
+   "edges": 7732,
+   "calls": 4062,
+   "resolved": 1308,
+   "crossfile": 792,
+   "agree": 579,
+   "defer": 0,
+   "mark": 0,
+   "cochange": 953,
+   "pair": [
+    "21"
+   ],
+   "documents": 107,
+   "docprops": 177,
+   "references": 998,
+   "inherits": 38
   }
  },
  "graphify_graph": {
@@ -86,5 +114,6 @@
   "method_nodes": 875,
   "method_nodes_with_shared_label": 282,
   "shared_method_labels": 69
- }
+ },
+ "synapse_after_pr31": "e649265"
 }
