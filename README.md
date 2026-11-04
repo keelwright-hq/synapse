@@ -1,9 +1,11 @@
 # Synapse
 
-Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single static binary.
+Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single self-contained binary.
 
 It also indexes **OpenAPI 3.x**, **GraphQL SDL**, and **Protobuf / gRPC** specs into the
 graph and links handlers/clients across repos with `implements` / `consumes` edges.
+Without spec files, it links HTTP routes to client calls found in code: Express, Hono,
+FastAPI, Flask and Next.js routes, and `fetch`, axios, got, ky, httpx and requests clients.
 
 ## Requirements
 
@@ -11,6 +13,18 @@ graph and links handlers/clients across repos with `implements` / `consumes` edg
 - A C toolchain (**CGO required** for tree-sitter grammars — see [docs/tree-sitter.md](docs/tree-sitter.md))
 
 Supported source languages: **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Swift**, **Java**, **Kotlin**, **Ruby**, **PHP**, **C**, **C++**, and **C#**. Extension map, grammar packages, and extractor completeness: [docs/tree-sitter.md](docs/tree-sitter.md).
+
+## Language support
+
+| Language | Calls and imports | Type edges (`inherits`, `references`) | HTTP route and client linking |
+|---|---|---|---|
+| Swift | Yes | Yes | No |
+| JavaScript, TypeScript | Yes; relative imports resolve to files | Yes | Express, Hono, Next.js routes; `fetch`, axios, got, ky clients |
+| Python | Yes; local imports resolve to files | Yes | FastAPI, Flask routes; httpx, requests clients |
+| Go, Java, Kotlin, Ruby, PHP, C, C++, C# | See [docs/tree-sitter.md](docs/tree-sitter.md) | Not yet | Not yet |
+
+Benchmarked so far: Swift, JavaScript, TypeScript, React, Python and Next.js. Not
+benchmarked yet: Go, Java, Kotlin, Ruby, PHP, C, C++ and C#.
 
 ## Install
 
@@ -72,6 +86,12 @@ brew uninstall synapse
 Tap repo: [keelwright-hq/homebrew-synapse](https://github.com/keelwright-hq/homebrew-synapse)
 (prebuilt macOS binaries from GitHub Releases; not compiled from source during install).
 Linux Homebrew is not supported — use `go install` or a release tarball above.
+
+### Installed more than one way?
+
+If you installed with both `go install` and Homebrew, run `which -a synapse` and keep
+one: the first match on your `PATH` wins. A `go install` build reports `commit: none` in
+`synapse version`, because it embeds the module version rather than release build flags.
 
 
 ### Development (from source)
@@ -174,6 +194,31 @@ synapse mcp --workspace . --data-dir .synapse
 
 Details: [docs/workspace.md](docs/workspace.md). Cross-repo MCP tools (`resolve_api`, `list_providers`, `list_consumers`): [docs/mcp.md](docs/mcp.md).
 
+## Cross-service HTTP linking (beta)
+
+Synapse matches server routes to client calls across the repos in a workspace, without
+needing API spec files. For best results, declare how other services reach each member
+in `synapse.yaml`:
+
+```yaml
+  - name: api
+    path: ./api
+    http:
+      base_env: [API_URL]        # env vars other members read to reach api
+      gateway_prefix: /api-svc   # optional: stripped from client paths
+```
+
+With nothing declared, a call links only when exactly one other service matches. Ties
+are left unlinked on purpose. Then ask who calls a service, or whom it calls:
+
+```bash
+synapse query services --workspace . --consumers-of api --sites 5
+synapse query services --workspace . --calls-from web
+synapse query services --workspace . --consumers-of api --depth 2
+```
+
+Details: [docs/http-linking.md](docs/http-linking.md).
+
 ## OpenAPI contracts
 
 On index, Synapse content-sniffs `.yaml` / `.yml` / `.json` for OpenAPI 3.x, creates `operation` / `schema` nodes, then heuristically binds:
@@ -270,6 +315,7 @@ Details: [docs/federation.md](docs/federation.md).
 | [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |
 | [docs/graphql.md](docs/graphql.md) | GraphQL SDL contracts and edges |
 | [docs/protobuf.md](docs/protobuf.md) | Protobuf / gRPC contracts and edges |
+| [docs/http-linking.md](docs/http-linking.md) | HTTP route and client linking across services |
 | [docs/federation.md](docs/federation.md) | Federated shards and NDJSON snapshots |
 | [docs/mcp.md](docs/mcp.md) | MCP IDE wiring |
 | [docs/phase3.md](docs/phase3.md) | Phase 3 semantic extraction |
@@ -277,6 +323,12 @@ Details: [docs/federation.md](docs/federation.md).
 | [docs/otel.md](docs/otel.md) | OpenTelemetry ingest |
 | [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
+
+## Testing the beta
+
+Synapse is v0.5.0, a public beta. If it misses something or links the wrong service,
+please [open an issue](https://github.com/keelwright-hq/synapse/issues). Notes on how you
+ran it (stack, number of repos, what you asked) help most.
 
 ## License
 
