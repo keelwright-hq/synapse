@@ -1,0 +1,21 @@
+# Example workspace for the cross-service round. Copy it next to your repos,
+# replace the placeholder names and paths, and pass it to run.py --workspace.
+# http.base_env lists the env vars other members read to reach a member;
+# gateway_prefix is stripped from client paths (a gateway in front of it).
+# Members without an http block are only linked by path inference.
+version: 1
+repos:
+  - name: orders-api
+    path: ../orders-api
+    http:
+      base_env: [ORDERS_API_URL, ORDERS_BASE_URL]
+      gateway_prefix: /orders
+  - name: billing-api
+    path: ../billing-api
+    http:
+      base_env: [BILLING_API_URL]
+      gateway_prefix: /billing
+  - name: web
+    path: ../web
+  - name: worker
+    path: ../worker

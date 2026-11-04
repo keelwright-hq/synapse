@@ -54,3 +54,10 @@ Measured on a benchmark fixture (50 files, 300 functions; depth=3, max_nodes=32)
 | `BenchmarkNeighborhoodSemanticFusionExplain` | ~402 µs/op | ~143.9 KB/op | 1151 allocs/op | ~2.5k req/sec |
 
 Because the fused semantic graph connects nodes across runtime calls, git co-commits, and documentation links, the BFS traverses a significantly richer candidate neighborhood prior to scoring and truncation. Fused ranking remains well within sub-millisecond territory (~0.37 ms), and capturing the per-family attribution breakdown (`Explain: true`) adds ~29 µs overhead.
+
+## Harness
+
+The token-cost comparison of grep, Graphify and Synapse on scripted code
+questions uses the harness in [bench/harness](../bench/harness/README.md). It
+ships with a small synthetic fixture and example tasks, so you can rerun the
+protocol; the original runs used private repos and are not reproducible from it.
