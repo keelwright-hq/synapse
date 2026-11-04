@@ -13,7 +13,7 @@ as the fallback an agent would need to finish the job.
 
 Usage:
   run.py --repo PATH --graph PATH/graphify-out/graph.json \
-         --synapse PATH/synapse --data-dir PATH [--tasks tasks.json] \
+         --synapse PATH/synapse --data-dir PATH [--tasks tasks.example.json] \
          [--out results.json] [--raw-dir DIR]
 
 Raw command outputs may contain source code; they are written only to
@@ -45,6 +45,20 @@ def score(expected, text):
     return sum(hit), len(hit), [aliases[0] for aliases, ok in zip(expected, hit) if not ok]
 
 
+def check_commit(repo, want):
+    """Exit unless repo is a clean git checkout at the commit the tasks were keyed against."""
+    def git(*a):
+        p = subprocess.run(["git", "-C", repo, *a], capture_output=True, text=True)
+        if p.returncode != 0:
+            sys.exit(f"run.py: {repo} is not a git checkout: {p.stderr.strip()}")
+        return p.stdout.strip()
+    head = git("rev-parse", "HEAD")
+    if len(want) < 7 or not head.startswith(want):
+        sys.exit(f"run.py: {repo} is at {head[:12]}, but the tasks were keyed against {want}")
+    if git("status", "--porcelain"):
+        sys.exit(f"run.py: {repo} has uncommitted or untracked changes; results would not match {want}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True)
@@ -52,7 +66,7 @@ def main():
     ap.add_argument("--synapse", required=True)
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--repo-name", default=None, help="synapse --repo name (default: tasks.json repo)")
-    ap.add_argument("--tasks", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.json"))
+    ap.add_argument("--tasks", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.example.json"))
     ap.add_argument("--out", default="results.json")
     ap.add_argument("--raw-dir", default=None)
     ap.add_argument("--workspace", default=None, help="synapse.yaml: run Synapse federated over a workspace instead of one repo")
@@ -60,6 +74,7 @@ def main():
 
     spec = json.load(open(args.tasks))
     repo = os.path.abspath(args.repo)
+    check_commit(repo, spec["repo_commit"])
     name = args.repo_name or spec["repo"]
     scope = ["--workspace", os.path.abspath(args.workspace)] if args.workspace else ["--repo", name]
     syn = " ".join(shlex.quote(x) for x in [os.path.abspath(args.synapse), *scope, "--data-dir", os.path.abspath(args.data_dir)])

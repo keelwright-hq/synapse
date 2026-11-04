@@ -43,7 +43,7 @@
    "synapse": ["{syn} query affected checkout --root {root}", "{syn} query dependencies checkout --root {root}"]}},
  {"id": "path",
   "question": "What call chain takes cli.main to line_total?",
-  "expected": [["checkout"], ["Cart.total", ".total()"]],
+  "expected": [["def checkout", "checkout(", "checkout shop/"], ["Cart.total", ".total()"]],
   "approaches": {
    "grep": ["grep -n -A 6 'def main' shop/cli.py", "cat shop/checkout.py", "grep -n -A 2 'def total' shop/cart.py"],
    "graphify": ["graphify path 'main()' 'line_total()' --graph {graph}"],

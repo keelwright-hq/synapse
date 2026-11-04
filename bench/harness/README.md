@@ -56,6 +56,8 @@ with both tools, and pass the repo and task file to `run.py`.
   binary with its `--repo` (or `--workspace`) and `--data-dir` flags, and `{root}` is the repo path.
 - **Answer keys:** `expected` is a list of items. Each item is a list of aliases,
   and the item counts as found when any alias appears in the approach's output.
+- **Commit:** set `repo_commit` to the commit you wrote the keys against (at least
+  7 characters). `run.py` stops if `--repo` is at another commit or has changes.
 
 For the cross-service round, list the repos in a workspace file (start from
 `synapse.example.yaml`), index it, and pass `--workspace`:
@@ -82,10 +84,16 @@ because the fixture is a single repo.
   the ones an agent would run. No live agent chooses them.
 - **Failed attempts are kept.** When a lookup fails or comes back ambiguous, the
   next command uses what the tool suggested, and the failed call is still paid for.
-- **Token estimate.** Tokens = characters / 4, over each command's text and its
-  full stdout and stderr. No tokenizer is used and no LLM is called.
+- **Token estimate.** Tokens = characters / 4, over each command's template and its
+  full stdout and stderr. The template is counted as written in the task file,
+  with `{syn}`, `{graph}` and `{root}` left as placeholders, not the expanded
+  command that ran. That keeps counts the same across machines, and makes them
+  a little smaller than the command an agent would actually send. No tokenizer
+  is used and no LLM is called.
 - **Reruns are byte-identical.** With the same repo commit and tool versions,
-  `results.json` is the same on every run.
+  `results.json` is the same on every run. `run.py` checks that `--repo` is a
+  clean git checkout whose HEAD matches the task file's `repo_commit`, and stops
+  if it is not.
 - **Fallback cost.** When a graph tool's answer is incomplete, "tokens to answer"
   adds the grep approach's cost, because an agent would still have to finish
   the job with grep.
@@ -110,5 +118,9 @@ because the fixture is a single repo.
   in the output, including the command text. A tool that mentions a file for an
   unrelated reason still gets credit, and a command that spells out an expected
   name credits itself. Keep expected names out of commands where you can.
+- **`--workspace` changes `{syn}` only.** Every command, in every approach, still
+  runs with `--repo` as its working directory. A cross-service grep command sees
+  only that one member unless the task writes paths to the other members. No
+  cross-service tasks ship here yet.
 - **Small fixture.** The synthetic tasks show how the harness works. Results on
   a 12-file repo say little about results on a real one.

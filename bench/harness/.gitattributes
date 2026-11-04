@@ -1,0 +1,4 @@
+# Keep the fixture byte-for-byte on every checkout, so make_fixture.sh
+# reproduces the same commit hashes. Line-ending conversion would change them.
+fixture/** -text
+*.sh text eol=lf
