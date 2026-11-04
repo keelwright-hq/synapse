@@ -1,0 +1,65 @@
+{"repo": "shop", "repo_commit": "fbb0c2f", "tasks": [
+ {"id": "callers",
+  "question": "What calls round_money?",
+  "expected": [["line_total"], ["format_receipt"], ["tax_for"], ["test_round_money"]],
+  "approaches": {
+   "grep": ["grep -rn -B 5 'round_money(' --include='*.py' ."],
+   "graphify": ["graphify affected 'round_money()' --depth 1 --graph {graph}"],
+   "synapse": ["{syn} query affected round_money --root {root}"]}},
+ {"id": "impact",
+  "question": "Which non-test files are affected if the Product type changes?",
+  "expected": [["shop/cart.py"], ["shop/pricing.py"], ["shop/rules.py"]],
+  "approaches": {
+   "grep": ["grep -rlw Product --include='*.py' . | grep -v '^./tests/'"],
+   "graphify": ["graphify affected 'Product' --graph {graph}"],
+   "synapse": ["{syn} query affected Product --root {root}"]}},
+ {"id": "module",
+  "question": "Which non-test files import shop/pricing.py?",
+  "expected": [["shop/cart.py"], ["shop/receipt.py"], ["shop/tax.py"]],
+  "approaches": {
+   "grep": ["grep -rlE '(from|import) shop[.]pricing' --include='*.py' . | grep -v '^./tests/'"],
+   "graphify": ["graphify affected 'pricing.py' --depth 1 --graph {graph}"],
+   "synapse": ["{syn} query affected pricing.py --root {root}"]}},
+ {"id": "dependencies",
+  "question": "Which local files does shop/cli.py depend on?",
+  "expected": [["shop/cart.py", "shop.cart", "cart.py"], ["shop/checkout.py", "shop.checkout", "checkout.py"], ["shop/models.py", "shop.models", "models.py"]],
+  "approaches": {
+   "grep": ["grep -nE '^(from|import) ' shop/cli.py"],
+   "graphify": ["graphify explain 'cli.py' --graph {graph}"],
+   "synapse": ["{syn} query dependencies cli.py --root {root}"]}},
+ {"id": "inheritance",
+  "question": "Which classes extend Product?",
+  "expected": [["Magazine"], ["Ebook"], ["GiftCard"]],
+  "approaches": {
+   "grep": ["grep -rnE 'class [A-Za-z_]+[(]Product[)]' --include='*.py' ."],
+   "graphify": ["graphify affected 'Product' --depth 1 --graph {graph}"],
+   "synapse": ["{syn} query affected Product --root {root}"]}},
+ {"id": "explain",
+  "question": "What does checkout do, and who calls it?",
+  "expected": [["Cart.total", ".total()"], ["tax_for"], ["format_receipt"], ["main()", "main [calls]", "def main"]],
+  "approaches": {
+   "grep": ["grep -rn 'checkout(' --include='*.py' .", "cat shop/checkout.py", "grep -n 'def ' shop/cli.py"],
+   "graphify": ["graphify explain 'checkout()' --graph {graph}"],
+   "synapse": ["{syn} query affected checkout --root {root}", "{syn} query dependencies checkout --root {root}"]}},
+ {"id": "path",
+  "question": "What call chain takes cli.main to line_total?",
+  "expected": [["checkout"], ["Cart.total", ".total()"]],
+  "approaches": {
+   "grep": ["grep -n -A 6 'def main' shop/cli.py", "cat shop/checkout.py", "grep -n -A 2 'def total' shop/cart.py"],
+   "graphify": ["graphify path 'main()' 'line_total()' --graph {graph}"],
+   "synapse": ["{syn} query path main line_total --root {root}"]}},
+ {"id": "co-change",
+  "question": "Which files usually change together with shop/pricing.py?",
+  "expected": [["shop/rules.py"], ["tests/test_pricing.py"], ["docs/pricing.md"]],
+  "approaches": {
+   "grep": ["git log --no-merges --full-diff --name-only --format= -- shop/pricing.py | grep -v '^$' | sort | uniq -c | sort -rn | head -10"],
+   "graphify": ["graphify explain 'pricing.py' --graph {graph}"],
+   "synapse": ["{syn} query co-changes shop/pricing.py --root {root}"]}},
+ {"id": "docs",
+  "question": "Which docs describe PriceRule?",
+  "expected": [["docs/pricing.md"]],
+  "approaches": {
+   "grep": ["git ls-files '*.md' | xargs grep -ln PriceRule"],
+   "graphify": ["graphify explain 'PriceRule' --graph {graph}"],
+   "synapse": ["{syn} query docs PriceRule --root {root}"]}}
+]}
