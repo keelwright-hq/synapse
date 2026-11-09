@@ -51,6 +51,12 @@ const (
 	// declaration uses or inherits from; the index resolves them to type nodes.
 	PropTypeRefs   = "type_refs"
 	PropSupertypes = "supertypes"
+	// PropVarTypes holds "name:Type" pairs for the parameters, locals and
+	// stored properties a declaration gives a type, so a call through one
+	// (`store.save()`) can be resolved against that type's methods.
+	PropVarTypes = "var_types"
+	// PropRequirement marks a method a protocol declares without a body.
+	PropRequirement = "requirement"
 
 	ProvenanceExtracted  = "EXTRACTED"
 	ProvenanceInferred   = "INFERRED"

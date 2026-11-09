@@ -87,9 +87,12 @@ For cross-repo, use the same `--workspace` / `--data-dir` args as the Cursor wor
 | `co_changes` | Top git `co_committed` neighbors for a file/symbol (Phase 3) |
 | `hot_paths` | Runtime `observed_calls` hot paths (Phase 3) |
 | `docs_for_symbol` | Doc edges + `props.doc` snippets for a symbol (Phase 3) |
-| `affected` | Code that calls, references, inherits from or implements a symbol, grouped by file (a type includes its members) |
-| `dependencies` | Code a symbol calls, references, inherits from or implements, grouped by file |
+| `affected` | Code that calls, references, inherits from or implements a symbol, grouped by file (a type includes its members; a nested function's use also counts for the function that defines it) |
+| `dependencies` | Code a symbol calls, references, inherits from or implements, grouped by file (a function includes its nested functions and closures) |
 | `shortest_path` | Fewest-hop dependency chain from one symbol to another |
+
+What these three walk, and how Swift calls through typed values resolve:
+[impact-queries.md](impact-queries.md).
 
 ### Reviewer workflow (Phase 3)
 

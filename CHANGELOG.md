@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Swift calls through typed values resolve by type.** A call such as
+  `store.save()` or `self.store.save()` now links to the method of the type
+  `store` is declared with: a parameter, a local (`let cache = Cache()` or an
+  annotated one), or a stored property of the enclosing type.
+  - A protocol type links to the protocol's requirement, so
+    `dependencies` lists what a function calls through its injected
+    dependencies even when several types implement the method.
+  - **Protocol requirements are now method nodes** (`requirement=true`).
+    A bare name that a protocol and its one implementation share is now
+    ambiguous in `query`; the error lists both `repo://` IDs.
+- **Nested functions belong to the function that defines them** (Python,
+  JavaScript, TypeScript, Swift):
+  - `dependencies` on a function includes what its nested functions and
+    returned closures call.
+  - `affected` on a function lists the enclosing function of a nested caller
+    as well as the nested function.
+  - `path` steps from a function into a closure it builds (a `contains` step).
+
+- **New page:** [docs/impact-queries.md](docs/impact-queries.md) describes the
+  `affected`, `dependencies` and `path` queries.
+
+### Changed
+
+- **`query affected` and `query dependencies` list every symbol.** The text
+  output used to stop at eight symbols per file with a `+N more` tail, which
+  could hide part of the answer. Output for files with many symbols is longer.
+
 ## v0.5.0 — Public beta
 
 ### Added

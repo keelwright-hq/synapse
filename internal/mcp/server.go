@@ -246,8 +246,8 @@ func registerTools(s *server.MCPServer, opts Options) {
 		name, desc string
 		query      func(graph.Store, graph.NodeID, int, int) (rank.ImpactResult, error)
 	}{
-		{"affected", "Code that calls, references, inherits from or implements a symbol, grouped by file; every type on the walk includes its members, also those in Swift extensions", rank.Affected},
-		{"dependencies", "Code a symbol (and a type's members) calls, references, inherits from or implements, grouped by file", rank.Dependencies},
+		{"affected", "Code that calls, references, inherits from or implements a symbol, grouped by file; every type on the walk includes its members, also those in Swift extensions; a use inside a nested function also counts for the function that defines it", rank.Affected},
+		{"dependencies", "Code a symbol (and a type's members) calls, references, inherits from or implements, grouped by file; a function includes its nested functions and closures", rank.Dependencies},
 	} {
 		query := tool.query
 		s.AddTool(mcp.NewTool(tool.name,

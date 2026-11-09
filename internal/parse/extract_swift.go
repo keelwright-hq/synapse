@@ -54,15 +54,43 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			} else {
 				b.edge(module, id, EdgeContains)
 			}
+			b.nest(current, id)
 			body := field(n, "body")
 			for i := uint(0); i < n.NamedChildCount(); i++ {
 				if c := n.NamedChild(i); c != nil && !sameNode(c, body) {
 					// Parameter and return types are references from the declaration.
 					collectSwiftTypeRefs(b, c, id)
+					if c.Kind() == "parameter" {
+						recordSwiftVarType(b, id, swiftParamName(b, c), swiftParamType(c))
+					}
 				}
 			}
 			walkSwift(b, body, module, id)
 			return
+		}
+
+	case "protocol_function_declaration":
+		// A requirement has no body, but it is what a call through a
+		// protocol-typed value (`store.save()`) statically targets.
+		name := swiftDeclName(b, n)
+		if recv := containingSwiftType(b, n); name != "" && recv != "" {
+			id := methodID(b.path, recv, name)
+			if _, exists := b.nodes[id]; !exists {
+				b.putSpan(n, graph.Node{ID: id, Kind: KindMethod, Name: name, Path: b.path,
+					Props: map[string]string{PropRequirement: "true"}})
+				b.edge(typeID(b.path, recv), id, EdgeContains)
+			}
+			collectSwiftTypeRefs(b, n, id)
+			return
+		}
+
+	case "property_declaration":
+		// `let store: any StoreProtocol`, `let cache = Cache()`: remember the
+		// type so calls through the name can be resolved. Children are still
+		// walked below.
+		if owner := b.nodes[current]; owner.Kind == KindType || owner.Kind == KindFunction || owner.Kind == KindMethod {
+			name, typ := swiftPropertyNameAndType(b, n)
+			recordSwiftVarType(b, current, name, typ)
 		}
 
 	case "class_declaration", "struct_declaration", "enum_declaration", "protocol_declaration", "actor_declaration":
@@ -140,6 +168,107 @@ func walkSwift(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 	for i := uint(0); i < n.NamedChildCount(); i++ {
 		walkSwift(b, n.NamedChild(i), module, current)
 	}
+}
+
+// recordSwiftVarType notes on owner that name has the declared type typ.
+func recordSwiftVarType(b *builder, owner graph.NodeID, name string, typ *tree_sitter.Node) {
+	if name == "" || name == "_" || typ == nil {
+		return
+	}
+	if t := swiftSingleTypeName(b, typ); t != "" {
+		b.addListProp(owner, PropVarTypes, name+":"+t)
+	}
+}
+
+// swiftParamName returns a parameter's internal name (`for id: Int` is `id`).
+func swiftParamName(b *builder, p *tree_sitter.Node) string {
+	name := ""
+	for i := uint(0); i < p.NamedChildCount(); i++ {
+		if c := p.NamedChild(i); c != nil && c.Kind() == "simple_identifier" {
+			name = b.text(c)
+		} else {
+			break
+		}
+	}
+	return name
+}
+
+// swiftParamType returns a parameter's type node: the first child after its names.
+func swiftParamType(p *tree_sitter.Node) *tree_sitter.Node {
+	for i := uint(0); i < p.NamedChildCount(); i++ {
+		if c := p.NamedChild(i); c != nil && c.Kind() != "simple_identifier" {
+			return c
+		}
+	}
+	return nil
+}
+
+// swiftPropertyNameAndType returns the single name a property declaration
+// binds and where its type comes from: its annotation, or the initializer
+// call `Foo(...)` when there is none.
+func swiftPropertyNameAndType(b *builder, n *tree_sitter.Node) (string, *tree_sitter.Node) {
+	var name string
+	var annotation, value *tree_sitter.Node
+	for i := uint(0); i < n.NamedChildCount(); i++ {
+		c := n.NamedChild(i)
+		if c == nil {
+			continue
+		}
+		switch c.Kind() {
+		case "pattern":
+			if name != "" {
+				return "", nil // `let a = 1, b = 2`: not a single binding
+			}
+			if c.NamedChildCount() == 1 && c.NamedChild(0).Kind() == "simple_identifier" {
+				name = b.text(c.NamedChild(0))
+			}
+		case "type_annotation":
+			annotation = c
+		case "call_expression":
+			value = c
+		}
+	}
+	if annotation != nil {
+		return name, annotation
+	}
+	if value != nil && value.NamedChildCount() > 0 {
+		// `Foo()` constructs a Foo; `foo()` and `Foo.make()` say nothing certain.
+		if callee := value.NamedChild(0); callee.Kind() == "simple_identifier" {
+			if t := b.text(callee); t != "" && t[0] >= 'A' && t[0] <= 'Z' {
+				return name, callee
+			}
+		}
+	}
+	return name, nil
+}
+
+// swiftSingleTypeName returns the one named type a type node stands for,
+// seeing through optionals, `any`/`some` and parentheses (`(any Foo)?` is
+// Foo). Arrays, dictionaries, closures and tuples of several types give "".
+func swiftSingleTypeName(b *builder, n *tree_sitter.Node) string {
+	for n != nil {
+		switch n.Kind() {
+		case "simple_identifier", "type_identifier":
+			return b.text(n)
+		case "user_type":
+			last := ""
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				if c := n.NamedChild(i); c != nil && c.Kind() == "type_identifier" {
+					last = b.text(c)
+				}
+			}
+			return last
+		case "type_annotation", "optional_type", "existential_type", "opaque_type",
+			"tuple_type", "tuple_type_item", "implicitly_unwrapped_type":
+			if n.NamedChildCount() != 1 {
+				return ""
+			}
+			n = n.NamedChild(0)
+		default:
+			return ""
+		}
+	}
+	return ""
 }
 
 // collectSwiftTypeRefs records every type name used under n (annotations,

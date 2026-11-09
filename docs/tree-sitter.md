@@ -47,6 +47,16 @@ Unknown extensions are **not** parse errors: `Registry.Lookup` returns nil, `Par
 
 JS/JSX, Python, and Swift extractors are **best-effort** (file + module, declarations, imports, calls). They are looser than the Go extractor.
 
+Two things these extractors record beyond declarations and calls
+([impact-queries.md](impact-queries.md) has examples):
+
+- **Nested functions** (JavaScript, TypeScript, Python, Swift): a function
+  defined inside another gets a `contains` edge from the enclosing function.
+- **Swift variable types and protocol requirements:** functions and types
+  carry `var_types` (`name:Type` pairs for parameters, locals and stored
+  properties), and a protocol's method declarations are method nodes with
+  `requirement=true`. The index uses both to resolve `value.method()` calls.
+
 | Ext | Registry name | Grammar package | Extractor | Completeness |
 |-----|---------------|-----------------|-----------|----------------|
 | `.go` | `go` | [`github.com/tree-sitter/tree-sitter-go`](https://github.com/tree-sitter/tree-sitter-go) | `extractGo` | Full (package, func/method, type, import, call) |
@@ -55,7 +65,7 @@ JS/JSX, Python, and Swift extractors are **best-effort** (file + module, declara
 | `.ts` | `typescript` | [`github.com/tree-sitter/tree-sitter-typescript`](https://github.com/tree-sitter/tree-sitter-typescript) `LanguageTypescript()` | `extractTypeScript` | Existing TS extractor |
 | `.tsx` | `tsx` | same package `LanguageTSX()` | `extractTypeScript` | Existing TSX extractor |
 | `.py` | `python` | [`github.com/tree-sitter/tree-sitter-python`](https://github.com/tree-sitter/tree-sitter-python) | `extractPython` | Best-effort: module, function/method, class as type, `import`/`from`, calls |
-| `.swift` | `swift` | vendored [`tree-sitter-swift@0.7.1`](https://github.com/alex-pinkus/tree-sitter-swift) C sources under [`third_party/tree-sitter-swift`](../third_party/tree-sitter-swift) | `extractSwift` | Best-effort: module, function/method, class/struct/enum/protocol/actor as type, import, calls |
+| `.swift` | `swift` | vendored [`tree-sitter-swift@0.7.1`](https://github.com/alex-pinkus/tree-sitter-swift) C sources under [`third_party/tree-sitter-swift`](../third_party/tree-sitter-swift) | `extractSwift` | Best-effort: module, function/method (including protocol requirements), class/struct/enum/protocol/actor as type, import, calls (resolved through declared receiver types where known) |
 | `.java` | `java` | [`github.com/tree-sitter/tree-sitter-java`](https://github.com/tree-sitter/tree-sitter-java) | `extractJava` | Best-effort: module, package, class/interface/enum/record as type, method/constructor (IDs include param types so overloads stay distinct), import, calls |
 | `.kt` `.kts` | `kotlin` | vendored [`fwcd/tree-sitter-kotlin@0.3.2`](https://github.com/fwcd/tree-sitter-kotlin) C sources under [`third_party/tree-sitter-kotlin`](../third_party/tree-sitter-kotlin) | `extractKotlin` | Best-effort: module, package, class/object as type, function/method (IDs include param types so overloads stay distinct), import, calls |
 | `.rb` | `ruby` | [`github.com/tree-sitter/tree-sitter-ruby`](https://github.com/tree-sitter/tree-sitter-ruby) | `extractRuby` | Best-effort: module, class/module as type, method/function, `require`/`require_relative`, calls |
