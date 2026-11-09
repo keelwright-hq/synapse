@@ -60,6 +60,7 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			id := funcID(b.path, name)
 			b.putSpan(n, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 			b.edge(module, id, EdgeContains)
+			b.nest(current, id)
 			walkJS(b, field(n, "body"), module, id)
 			return
 		}
@@ -103,6 +104,7 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				id := funcID(b.path, name)
 				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 				b.edge(module, id, EdgeContains)
+				b.nest(current, id)
 				// Walk the whole function node so default params (e.g. x = bar()) are captured.
 				walkJS(b, value, module, id)
 				continue

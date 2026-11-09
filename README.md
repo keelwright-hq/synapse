@@ -18,7 +18,7 @@ Supported source languages: **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Py
 
 | Language | Calls and imports | Type edges (`inherits`, `references`) | HTTP route and client linking |
 |---|---|---|---|
-| Swift | Yes | Yes | No |
+| Swift | Yes; calls through typed values resolve by type | Yes | No |
 | JavaScript, TypeScript | Yes; relative imports resolve to files | Yes | Express, Hono, Next.js routes; `fetch`, axios, got, ky clients |
 | Python | Yes; local imports resolve to files | Yes | FastAPI, Flask routes; httpx, requests clients |
 | Go, Java, Kotlin, Ruby, PHP, C, C++, C# | See [docs/tree-sitter.md](docs/tree-sitter.md) | Not yet | Not yet |
@@ -146,6 +146,11 @@ Override the storage path with `--data-dir /tmp/synapse-test` for disposable
 runs. If you indexed from outside the repo or used a custom `--data-dir`, pass
 the same `--data-dir` (or `--root`) to subsequent `query`, `otel`, `graph`, and
 `mcp` commands.
+
+`affected`, `dependencies` and `path` group results by file and list every
+symbol. A function includes the functions and closures nested in it, and Swift
+calls through a typed value resolve to that type's method. Details:
+[docs/impact-queries.md](docs/impact-queries.md).
 
 Pass `--report` to also write readable dry-run artifacts under
 `<repo>/.synapse-out/` (`manifest.json`, `graph.json`, `GRAPH_REPORT.md`,
@@ -311,6 +316,7 @@ Details: [docs/federation.md](docs/federation.md).
 | [docs/tree-sitter.md](docs/tree-sitter.md) | Tree-sitter / CGO |
 | [docs/report.md](docs/report.md) | Readable dry-run artifacts (`--report`) |
 | [docs/repo-uri.md](docs/repo-uri.md) | Global `repo://` identifiers |
+| [docs/impact-queries.md](docs/impact-queries.md) | `affected`, `dependencies` and `path` queries |
 | [docs/workspace.md](docs/workspace.md) | Polyrepo workspace |
 | [docs/openapi.md](docs/openapi.md) | OpenAPI contracts and edges |
 | [docs/graphql.md](docs/graphql.md) | GraphQL SDL contracts and edges |

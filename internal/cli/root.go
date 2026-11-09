@@ -37,7 +37,7 @@ func RootCommand() *cobra.Command {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", ".synapse", "Directory for local graph index data (single-repo index defaults to <repo>/.synapse when omitted)")
-	rootCmd.PersistentFlags().StringVar(&repoName, "repo", "", "Canonical repo:// name (default: basename of index/query root); with --workspace scopes queries to one member")
+	rootCmd.PersistentFlags().StringVar(&repoName, "repo", "", "Canonical repo:// name (default: basename of index/query root); with --workspace names the member a query starts in (affected and dependencies still search every member)")
 	rootCmd.PersistentFlags().StringVar(&workspacePath, "workspace", "", "Path to synapse.yaml (or its directory) for multi-repo mode")
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(indexCmd)

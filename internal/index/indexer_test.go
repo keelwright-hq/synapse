@@ -3,6 +3,7 @@ package index_test
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -787,5 +788,165 @@ router.get('/', (req, res) => { Repo.prototype.load(); });
 	}
 	if has("module:svc/src/app/models/user.py", "module:svc/src/app/models/base.py", parse.EdgeImports) {
 		t.Fatal("stale import edge after deleting the imported file")
+	}
+}
+
+func impactNames(res rank.ImpactResult) string {
+	var names []string
+	for _, f := range res.Files {
+		for _, s := range f.Symbols {
+			names = append(names, s.Name)
+		}
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
+}
+
+func TestIndexerSwiftCallsThroughTypedReceivers(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Tests"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGo(t, filepath.Join(root, "Store.swift"), `protocol StoreProtocol {
+    func save(_ x: Int)
+    func load() -> Int
+}
+final class DiskStore: StoreProtocol {
+    func save(_ x: Int) {}
+    func load() -> Int { 0 }
+}
+`)
+	// A test fake makes every requirement's name ambiguous among implementations.
+	writeGo(t, filepath.Join(root, "Tests", "FakeStore.swift"), `final class FakeStore: StoreProtocol {
+    func save(_ x: Int) {}
+    func load() -> Int { 1 }
+}
+`)
+	writeGo(t, filepath.Join(root, "Service.swift"), `final class Cache { func warm() {} }
+final class Other { func warm() {} }
+enum Service {
+    static func run(store: (any StoreProtocol)? = nil) {
+        let store = store ?? DiskStore()
+        store.save(1)
+        let cache = Cache()
+        cache.warm()
+    }
+}
+final class Holder {
+    private let store: any StoreProtocol
+    init(store: any StoreProtocol) { self.store = store }
+    func go() {
+        _ = store.load()
+        self.store.save(2)
+    }
+}
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	req, err := store.GetNode("method:Store.swift#StoreProtocol.save")
+	if err != nil || req.Props[parse.PropRequirement] == "" {
+		t.Fatalf("protocol requirement node: %+v, %v", req, err)
+	}
+	calls := func(id graph.NodeID) string {
+		t.Helper()
+		out, err := store.OutEdges(id, "calls")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var to []string
+		for _, e := range out {
+			to = append(to, string(e.To))
+		}
+		sort.Strings(to)
+		return strings.Join(to, ",")
+	}
+	// A parameter typed as the protocol goes to the requirement, never to one
+	// of the two implementations; a local built with Cache() picks Cache.warm.
+	if got, want := calls("method:Service.swift#Service.run"),
+		"method:Service.swift#Cache.warm,method:Store.swift#StoreProtocol.save,type:Service.swift#Cache,type:Store.swift#DiskStore"; got != want {
+		t.Fatalf("Service.run calls:\n got %s\nwant %s", got, want)
+	}
+	// A stored property's type resolves both `store.x()` and `self.store.x()`.
+	if got, want := calls("method:Service.swift#Holder.go"),
+		"method:Store.swift#StoreProtocol.load,method:Store.swift#StoreProtocol.save"; got != want {
+		t.Fatalf("Holder.go calls:\n got %s\nwant %s", got, want)
+	}
+	deps, err := rank.Dependencies(store, "method:Service.swift#Service.run", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := impactNames(deps); !strings.Contains(got, "StoreProtocol.save") {
+		t.Fatalf("dependencies of Service.run = %s", got)
+	}
+}
+
+func TestIndexerNestedFunctionsBelongToTheirEnclosingFunction(t *testing.T) {
+	root := t.TempDir()
+	writeGo(t, filepath.Join(root, "graph.py"), `def leaf():
+    pass
+
+
+def run():
+    leaf()
+
+
+def make_node():
+    def node():
+        return run()
+
+    return node
+
+
+def build():
+    return make_node()
+`)
+	writeGo(t, filepath.Join(root, "rank.js"), `function score(x) { return x; }
+function rankAll(items) {
+  const best = (a) => score(a);
+  return items.map(best);
+}
+module.exports = { rankAll };
+`)
+
+	store := memory.New()
+	if _, err := index.New(store).Run(root, index.Options{Workers: 2}); err != nil {
+		t.Fatal(err)
+	}
+	// A factory's returned closure is part of the factory: build reaches leaf.
+	p, err := rank.ShortestPath(store, "func:graph.py#build", "func:graph.py#leaf", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps []string
+	for _, st := range p.Steps {
+		steps = append(steps, st.Name)
+	}
+	if strings.Join(steps, " -> ") != "build -> make_node -> node -> run -> leaf" {
+		t.Fatalf("path = %v", steps)
+	}
+	deps, err := rank.Dependencies(store, "func:graph.py#make_node", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := impactNames(deps); got != "run" {
+		t.Fatalf("dependencies of make_node = %q, want run", got)
+	}
+	aff, err := rank.Affected(store, "func:graph.py#run", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := impactNames(aff); got != "make_node,node" {
+		t.Fatalf("affected by run = %q, want make_node,node", got)
+	}
+	// A local helper is still listed, and so is what it calls.
+	js, err := rank.Dependencies(store, "func:rank.js#rankAll", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := impactNames(js); got != "score" {
+		t.Fatalf("dependencies of rankAll = %q, want score", got)
 	}
 }

@@ -230,6 +230,17 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 			}
 			for _, n := range expanded {
 				sources = append(sources, repoNode{cur.repo, n})
+				if dir != "out" {
+					continue
+				}
+				// A function's body includes its nested functions and closures.
+				nested, err := mx.nestedFuncs(cur.repo, n)
+				if err != nil {
+					return ImpactResult{}, err
+				}
+				for _, m := range nested {
+					sources = append(sources, repoNode{cur.repo, m})
+				}
 			}
 		}
 		for _, cur := range sources {
@@ -243,8 +254,23 @@ func walkDependencies(store graph.Store, seed graph.NodeID, depth, limit int, di
 					if dir == "out" {
 						other = e.To
 					}
-					if err := reach(otherRepo(e, dir, cur.repo), other, string(et), d, &next); err != nil {
+					or := otherRepo(e, dir, cur.repo)
+					if err := reach(or, other, string(et), d, &next); err != nil {
 						return ImpactResult{}, err
+					}
+					if dir != "in" {
+						continue
+					}
+					// A use inside a nested function is also a use by the
+					// function that defines it.
+					outer, err := mx.enclosingFuncs(or, other)
+					if err != nil {
+						return ImpactResult{}, err
+					}
+					for _, o := range outer {
+						if err := reach(or, o.ID, string(et), d, &next); err != nil {
+							return ImpactResult{}, err
+						}
 					}
 				}
 			}
@@ -407,6 +433,65 @@ func (mx *memberIndex) withMembers(repo string, n graph.Node) ([]graph.Node, err
 	return out, nil
 }
 
+func isFuncKind(k string) bool { return k == parse.KindFunction || k == parse.KindMethod }
+
+// nestedFuncs returns the functions defined inside the function or method n,
+// at any depth.
+func (mx *memberIndex) nestedFuncs(repo string, n graph.Node) ([]graph.Node, error) {
+	if !isFuncKind(n.Kind) {
+		return nil, nil
+	}
+	var out []graph.Node
+	seen := map[graph.NodeID]bool{n.ID: true}
+	queue := []graph.NodeID{n.ID}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		edges, err := mx.view.edges(repo, id, parse.EdgeContains, "out")
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range edges {
+			if seen[e.To] {
+				continue
+			}
+			seen[e.To] = true
+			if m, err := mx.view.node(repo, e.To); err == nil && isFuncKind(m.Kind) {
+				out = append(out, m)
+				queue = append(queue, m.ID)
+			}
+		}
+	}
+	return out, nil
+}
+
+// enclosingFuncs returns the functions or methods that the function id is
+// defined inside, innermost first.
+func (mx *memberIndex) enclosingFuncs(repo string, id graph.NodeID) ([]graph.Node, error) {
+	var out []graph.Node
+	seen := map[graph.NodeID]bool{id: true}
+	queue := []graph.NodeID{id}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		edges, err := mx.view.edges(repo, cur, parse.EdgeContains, "in")
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range edges {
+			if seen[e.From] {
+				continue
+			}
+			seen[e.From] = true
+			if m, err := mx.view.node(repo, e.From); err == nil && isFuncKind(m.Kind) {
+				out = append(out, m)
+				queue = append(queue, m.ID)
+			}
+		}
+	}
+	return out, nil
+}
+
 // containedClosure walks contains edges from a file or module down to its
 // declarations and their members.
 func (mx *memberIndex) containedClosure(repo string, root graph.Node) ([]graph.Node, error) {
@@ -510,6 +595,17 @@ func ShortestPath(store graph.Store, from, to graph.NodeID, maxDepth int) (PathR
 					return PathResult{}, err
 				}
 				for _, m := range members[1:] {
+					edges = append(edges, graph.Edge{From: cur, To: m.ID, Type: parse.EdgeContains})
+				}
+			}
+			if isFuncKind(n.Kind) {
+				// Step into nested functions: a closure a function builds and
+				// returns is part of what the function does.
+				nested, err := mx.nestedFuncs(mx.repoOf(n), n)
+				if err != nil {
+					return PathResult{}, err
+				}
+				for _, m := range nested {
 					edges = append(edges, graph.Edge{From: cur, To: m.ID, Type: parse.EdgeContains})
 				}
 			}

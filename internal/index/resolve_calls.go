@@ -66,6 +66,10 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 	defer idx.mu.Unlock()
 
 	defsByName := make(map[string][]graph.Node)
+	// implsByName leaves out protocol requirements, so the name-based tiers
+	// see the same candidates they always did.
+	implsByName := make(map[string][]graph.Node)
+	swiftPropTypes := map[string]map[string][]string{}
 	typesByFamily := map[string]map[string][]graph.Node{}
 	importsByFile := make(map[string][]string)
 	var callers, typeUsers []graph.Node
@@ -76,8 +80,18 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 		case parse.KindFunction, parse.KindMethod:
 			if n.Name != "" {
 				defsByName[n.Name] = append(defsByName[n.Name], n)
+				if n.Props[parse.PropRequirement] == "" {
+					implsByName[n.Name] = append(implsByName[n.Name], n)
+				}
 			}
 		case parse.KindType:
+			// Stored properties of a Swift type and its extensions, by type name.
+			if isSwiftPath(n.Path) && n.Name != "" && n.Props[parse.PropVarTypes] != "" {
+				if swiftPropTypes[n.Name] == nil {
+					swiftPropTypes[n.Name] = map[string][]string{}
+				}
+				addVarTypes(swiftPropTypes[n.Name], n.Props[parse.PropVarTypes])
+			}
 			if fam := languageFamily(n.Path); n.Name != "" && fam != "" && n.Props[parse.PropExtension] == "" {
 				if typesByFamily[fam] == nil {
 					typesByFamily[fam] = map[string][]graph.Node{}
@@ -104,7 +118,7 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 	}
 
 	swiftTypesByName := typesByFamily["swift"]
-	byNames := []map[string][]graph.Node{defsByName}
+	byNames := []map[string][]graph.Node{defsByName, implsByName}
 	for _, m := range typesByFamily {
 		byNames = append(byNames, m)
 	}
@@ -131,14 +145,32 @@ func (idx *Indexer) resolveCalls(log *slog.Logger) error {
 				continue
 			}
 			_, memberName := splitCalleeQualifier(calleeName)
-			targetID, prov, ok := pickCalleeTarget(caller, calleeName, defsByName[memberName], fileImports)
+			// A Swift call through a value with a declared type goes to that
+			// type's method. A concrete type settles it; a protocol requirement
+			// is recorded next to whatever the name-based tiers find.
+			typedOK := false
+			if isSwiftPath(caller.Path) {
+				if id, ok := pickSwiftTypedReceiver(caller, calleeName, defsByName[memberName], swiftPropTypes); ok {
+					typedOK = true
+					if id != caller.ID {
+						desired[id] = parse.ProvenanceInferred
+					}
+					if !isRequirementIn(defsByName[memberName], id) {
+						continue
+					}
+				}
+			}
+			targetID, prov, ok := pickCalleeTarget(caller, calleeName, implsByName[memberName], fileImports)
 			if !ok && isSwiftPath(caller.Path) {
-				targetID, prov, ok = pickSwiftModuleTarget(caller, calleeName, defsByName[memberName], swiftTypesByName)
+				targetID, prov, ok = pickSwiftModuleTarget(caller, calleeName, implsByName[memberName], swiftTypesByName)
 			}
 			if ok {
 				if targetID != caller.ID {
 					desired[targetID] = prov
 				}
+				continue
+			}
+			if typedOK {
 				continue
 			}
 			symID := graph.NodeID("symbol:" + calleeName)
@@ -515,6 +547,83 @@ func pickSwiftModuleTarget(caller graph.Node, calleeName string, candidates []gr
 		}
 	}
 	return "", "", false
+}
+
+// addVarTypes adds the "name:Type" pairs of a var_types prop to byName.
+func addVarTypes(byName map[string][]string, raw string) {
+	for _, pair := range strings.Split(raw, ",") {
+		name, typ, ok := strings.Cut(pair, ":")
+		if !ok || name == "" || typ == "" {
+			continue
+		}
+		known := false
+		for _, t := range byName[name] {
+			if t == typ {
+				known = true
+			}
+		}
+		if !known {
+			byName[name] = append(byName[name], typ)
+		}
+	}
+}
+
+// pickSwiftTypedReceiver resolves `x.method()` and `self.x.method()` through
+// the declared type of x: a parameter or local of the caller, or a stored
+// property of the caller's type. It links only when x has exactly one known
+// type and that type declares exactly one method of the name. A protocol type
+// gives its requirement.
+func pickSwiftTypedReceiver(caller graph.Node, calleeName string, candidates []graph.Node, propTypes map[string]map[string][]string) (graph.NodeID, bool) {
+	qualifier, _ := splitCalleeQualifier(calleeName)
+	if qualifier == "" {
+		return "", false
+	}
+	segs := strings.Split(qualifier, ".")
+	viaSelf := segs[0] == "self"
+	if viaSelf {
+		segs = segs[1:]
+	}
+	if len(segs) != 1 {
+		return "", false
+	}
+	name := strings.TrimRight(segs[0], "?!")
+	if name == "" {
+		return "", false
+	}
+	var types []string
+	if !viaSelf {
+		local := map[string][]string{}
+		addVarTypes(local, caller.Props[parse.PropVarTypes])
+		types = local[name]
+	}
+	if len(types) == 0 {
+		if recv := methodReceiver(caller); recv != "" {
+			types = propTypes[recv][name]
+		}
+	}
+	if len(types) != 1 {
+		return "", false
+	}
+	var match []graph.Node
+	for _, c := range candidates {
+		if c.Kind == parse.KindMethod && isSwiftPath(c.Path) && methodReceiver(c) == types[0] {
+			match = append(match, c)
+		}
+	}
+	if len(match) != 1 {
+		return "", false
+	}
+	return match[0].ID, true
+}
+
+// isRequirementIn reports whether id is a protocol requirement among nodes.
+func isRequirementIn(nodes []graph.Node, id graph.NodeID) bool {
+	for _, n := range nodes {
+		if n.ID == id {
+			return n.Props[parse.PropRequirement] != ""
+		}
+	}
+	return false
 }
 
 // methodReceiver returns the receiver type encoded in a method node ID

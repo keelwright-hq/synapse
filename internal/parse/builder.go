@@ -455,3 +455,14 @@ func cleanLineComment(raw string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// nest records that fn is defined inside the function or method outer, so a
+// walk from outer reaches the code of its nested functions and closures.
+func (b *builder) nest(outer, fn graph.NodeID) {
+	if outer == "" || outer == fn {
+		return
+	}
+	if k := b.nodes[outer].Kind; k == KindFunction || k == KindMethod {
+		b.edge(outer, fn, EdgeContains)
+	}
+}

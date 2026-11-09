@@ -229,7 +229,10 @@ var queryAffectedCmd = &cobra.Command{
 	Long: `affected walks calls, references, inherits and implements edges backwards
 from a symbol. Every type on the walk includes its members, also those declared
 in Swift extensions in other files, so callers of its methods count. A file:
-seed covers everything the file declares.
+seed covers everything the file declares. A use inside a nested function also
+counts as a use by the function that defines it.
+
+Every symbol is listed, one line per file. See docs/impact-queries.md.
 
 --depth follows dependents of dependents. A file reached through an import at
 depth 2 or more counts only its imports and top-level code, not everything it
@@ -244,7 +247,13 @@ var queryDependenciesCmd = &cobra.Command{
 	Use:   "dependencies <symbol>",
 	Short: "Code a symbol calls, references or inherits from, grouped by file",
 	Long: `dependencies walks calls, references, inherits and implements edges forwards
-from a symbol (and a type's members).`,
+from a symbol (and a type's members). A function includes the functions and
+closures defined inside it, so what they call is listed too.
+
+Swift calls through a value with a declared type (a parameter, local or stored
+property) resolve to that type's method; a protocol type gives the protocol's
+requirement. Every symbol is listed, one line per file. See
+docs/impact-queries.md.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runImpactQuery(cmd, args[0], rank.Dependencies)
@@ -259,8 +268,8 @@ references, inherits and implements edges in their own direction. A type target
 is reached when the chain reaches any of its members.
 
 Hops count every edge on the chain, including a "contains" step from a type
-into one of its methods, so "3 hops" is not always three calls; the edge type
-of each step is printed.`,
+into one of its methods or from a function into a function nested in it, so
+"3 hops" is not always three calls; the edge type of each step is printed.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, cleanup, err := openMemberQueryStore(cmd)
@@ -325,15 +334,11 @@ func runImpactQuery(cmd *cobra.Command, symbol string, query func(graph.Store, g
 		return writeJSON(cmd, res)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "seed=%s files=%d symbols=%d truncated=%v\n", res.Seed, len(res.Files), res.Symbols, res.Truncated)
-	// One line per file keeps the answer small; --json has every symbol.
-	const perFile = 8
+	// One line per file keeps the answer small. Every symbol is listed: a
+	// "+N more" tail would hide part of the answer.
 	for _, g := range res.Files {
 		var parts []string
-		for i, sym := range g.Symbols {
-			if i == perFile {
-				parts = append(parts, fmt.Sprintf("+%d more", len(g.Symbols)-perFile))
-				break
-			}
+		for _, sym := range g.Symbols {
 			if sym.Line > 0 {
 				parts = append(parts, fmt.Sprintf("%s [%s] L%d", sym.Name, sym.Edge, sym.Line))
 			} else {

@@ -62,6 +62,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			}
 			b.putSpan(n, node)
 			b.edge(module, id, EdgeContains)
+			b.nest(current, id)
 			walkTSFunction(b, n, module, id)
 			return
 		}
@@ -108,6 +109,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				id := funcID(b.path, name)
 				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
 				b.edge(module, id, EdgeContains)
+				b.nest(current, id)
 				walkTSFunction(b, value, module, id)
 				continue
 			}

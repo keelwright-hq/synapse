@@ -83,6 +83,7 @@ func walkPython(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				parent = tid // methods hang off their class
 			}
 			b.edge(parent, id, EdgeContains)
+			b.nest(current, id)
 			// Parameters (with type hints), return type, decorators and body.
 			for i := uint(0); i < n.NamedChildCount(); i++ {
 				if c := n.NamedChild(i); c != nil && !sameNode(c, nameNode) {
