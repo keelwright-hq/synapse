@@ -1,5 +1,7 @@
 # Synapse
 
+https://youtu.be/cndM2GSzFpc
+
 Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single self-contained binary.
 
 It also indexes **OpenAPI 3.x**, **GraphQL SDL**, and **Protobuf / gRPC** specs into the
