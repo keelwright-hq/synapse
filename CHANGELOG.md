@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.2
 
 ### Added
 
@@ -30,6 +30,13 @@
 - **`query affected` and `query dependencies` list every symbol.** The text
   output used to stop at eight symbols per file with a `+N more` tail, which
   could hide part of the answer. Output for files with many symbols is longer.
+
+### Fixed
+
+- **Release binaries.** The darwin-arm64 build now runs on `macos-15`;
+  GitHub no longer supports the `macos-14` runner, which stopped the release
+  job. v0.5.1 was tagged but shipped no binaries; v0.5.2 is the same code
+  with binaries.
 
 ## v0.5.0 — Public beta
 
