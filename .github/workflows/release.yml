@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             goos: darwin
             goarch: arm64
             artifact: synapse-darwin-arm64
