@@ -118,7 +118,7 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			// function too; the wrapper call and the literal's body belong to it.
 			// Only at module scope: inside a function, `const xs = arr.map(fn)`
 			// is a local value, not an addressable symbol.
-			if nameNode != nil && current == "" && wrapsFunctionLiteral(value) {
+			if nameNode != nil && current == "" && wrapsFunctionLiteral(b, value) {
 				name := b.text(nameNode)
 				id := funcID(b.path, name)
 				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})

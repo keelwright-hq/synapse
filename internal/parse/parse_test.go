@@ -959,6 +959,15 @@ export const POST = withAuth(withRateLimit(async (req: Request) => {
 
 export const config = defineConfig({ retries: 2 });
 
+export const castFn = inngest.createFunction({ id: "cast" }, async () => {
+  await castWork();
+}) as unknown as AnyFunction;
+
+export const Card = (memo((props: Props) => render(props)));
+
+export const ids = rows.map((row) => row.id);
+export const body = fetch(url).then((res) => res.json());
+
 export function outer() {
   const doubled = items.map((x) => x * 2);
   return doubled;
@@ -973,6 +982,9 @@ export const publishPostFn = inngest.createFunction(
 );
 
 const config = defineConfig({ retries: 2 });
+
+export const ids = rows.map((row) => row.id);
+export const body = fetch(url).then((res) => res.json());
 
 function outer() {
   const doubled = items.map(function (x) { return x * 2; });
@@ -995,6 +1007,10 @@ function outer() {
 			if strings.HasSuffix(file, ".ts") {
 				assertHasKind(t, res, parse.KindFunction, "POST")
 				wantCalls["#POST"] = []string{"symbol:withAuth", "symbol:withRateLimit", "symbol:handle"}
+				// `as`, `satisfies`, `!` and parentheses don't hide the wrapper.
+				assertHasKind(t, res, parse.KindFunction, "castFn")
+				wantCalls["#castFn"] = []string{"symbol:inngest.createFunction", "symbol:castWork"}
+				assertHasKind(t, res, parse.KindFunction, "Card")
 			}
 			for from, tos := range wantCalls {
 				for _, to := range tos {
@@ -1010,9 +1026,15 @@ function outer() {
 					}
 				}
 			}
-			// A plain config call and a local inside a function stay values.
+			// A plain config call, module-level collection/promise results and a
+			// local inside a function stay values.
 			for _, n := range res.Nodes {
-				if n.Kind == parse.KindFunction && (n.Name == "config" || n.Name == "doubled") {
+				switch n.Name {
+				case "config", "ids", "body", "doubled":
+				default:
+					continue
+				}
+				if n.Kind == parse.KindFunction {
 					t.Errorf("%q indexed as a function, want a value", n.Name)
 				}
 			}

@@ -11,8 +11,10 @@
   `dependencies` find them by name. The wrapper call and the function body's
   calls belong to the declared name. A value counts as a wrapped function when
   a call (or a nested call, up to 4 deep) takes a function literal as an
-  argument. Only module scope: `const xs = arr.map(fn)` inside a function stays
-  a local value.
+  argument; `as`, `satisfies`, `!` and parentheses around the call are looked
+  through. Collection and promise methods (`rows.map(fn)`,
+  `fetch(url).then(fn)`) produce values and are not indexed as functions, and
+  neither is anything inside a function.
 
 ## v0.5.2
 

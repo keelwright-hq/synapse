@@ -112,7 +112,7 @@ func walkJS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 			// A module-level name bound to a wrapped function literal
 			// (inngest.createFunction(cfg, handler), memo(fn), withAuth(fn)) is a
 			// function too; see the TypeScript extractor.
-			if nameNode != nil && current == "" && wrapsFunctionLiteral(value) {
+			if nameNode != nil && current == "" && wrapsFunctionLiteral(b, value) {
 				name := b.text(nameNode)
 				id := funcID(b.path, name)
 				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})

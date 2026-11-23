@@ -110,14 +110,23 @@ const maxWrapperDepth = 4
 //	export const publishFn = inngest.createFunction({ id: "x" }, async ({ step }) => { ... })
 //	export const Button = React.memo((props) => { ... })
 //	export const POST = withAuth(withRateLimit(async (req) => { ... }))
+//	export const fn = inngest.createFunction(cfg, handler) as AnyFunction
 //
 // A function literal may be any argument, or the argument of a nested call.
-func wrapsFunctionLiteral(value *tree_sitter.Node) bool {
-	return wrapsFunctionLiteralDepth(value, 0)
+// Type assertions, `satisfies`, `!` and parentheses around a call are looked
+// through. Calls to collection and promise methods (rows.map(fn),
+// fetch(url).then(fn)) produce values, not functions, and never match.
+func wrapsFunctionLiteral(b *builder, value *tree_sitter.Node) bool {
+	return wrapsFunctionLiteralDepth(b, value, 0)
 }
 
-func wrapsFunctionLiteralDepth(n *tree_sitter.Node, depth int) bool {
+func wrapsFunctionLiteralDepth(b *builder, n *tree_sitter.Node, depth int) bool {
+	n = unwrapTSExpression(n)
 	if n == nil || depth >= maxWrapperDepth || n.Kind() != "call_expression" {
+		return false
+	}
+	if fn := field(n, "function"); fn != nil && fn.Kind() == "member_expression" &&
+		valueProducingMethods[selectorMemberName(b, fn)] {
 		return false
 	}
 	args := field(n, "arguments")
@@ -125,7 +134,7 @@ func wrapsFunctionLiteralDepth(n *tree_sitter.Node, depth int) bool {
 		return false
 	}
 	for i := uint(0); i < args.NamedChildCount(); i++ {
-		a := args.NamedChild(i)
+		a := unwrapTSExpression(args.NamedChild(i))
 		if a == nil {
 			continue
 		}
@@ -133,10 +142,35 @@ func wrapsFunctionLiteralDepth(n *tree_sitter.Node, depth int) bool {
 		case "arrow_function", "function_expression", "function", "generator_function":
 			return true
 		case "call_expression":
-			if wrapsFunctionLiteralDepth(a, depth+1) {
+			if wrapsFunctionLiteralDepth(b, a, depth+1) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// valueProducingMethods are array, promise and string methods whose callback
+// argument makes the call's result a value (an array, a promise, a string),
+// not a function.
+var valueProducingMethods = map[string]bool{
+	"map": true, "filter": true, "flatMap": true, "reduce": true, "reduceRight": true,
+	"forEach": true, "find": true, "findIndex": true, "findLast": true, "findLastIndex": true,
+	"some": true, "every": true, "sort": true, "toSorted": true,
+	"then": true, "catch": true, "finally": true,
+	"replace": true, "replaceAll": true,
+}
+
+// unwrapTSExpression strips wrappers that don't change which value an
+// expression evaluates to: `x as T`, `x satisfies T`, `x!` and `(x)`.
+func unwrapTSExpression(n *tree_sitter.Node) *tree_sitter.Node {
+	for n != nil {
+		switch n.Kind() {
+		case "as_expression", "satisfies_expression", "non_null_expression", "parenthesized_expression":
+			n = n.NamedChild(0)
+		default:
+			return n
+		}
+	}
+	return nil
 }
