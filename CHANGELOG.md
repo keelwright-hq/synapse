@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Module-level functions wrapped in a call are indexed** (JavaScript,
+  TypeScript). `export const publishFn = inngest.createFunction(cfg, async () => …)`,
+  `const Button = memo((props) => …)` and `export const POST = withAuth(async (req) => …)`
+  are now function nodes, so `query path`, `neighborhood`, `affected` and
+  `dependencies` find them by name. The wrapper call and the function body's
+  calls belong to the declared name. A value counts as a wrapped function when
+  a call (or a nested call, up to 4 deep) takes a function literal as an
+  argument. Only module scope: `const xs = arr.map(fn)` inside a function stays
+  a local value.
+
 ## v0.5.2
 
 ### Added

@@ -98,3 +98,45 @@ func qualifierName(b *builder, q *tree_sitter.Node) string {
 		return "_"
 	}
 }
+
+// maxWrapperDepth bounds how many nested wrapper calls wrapsFunctionLiteral
+// looks through (withAuth(withRateLimit(handler)) is depth 2).
+const maxWrapperDepth = 4
+
+// wrapsFunctionLiteral reports whether a JS/TS declarator value is a call that
+// wraps a function literal, so the declared name is a function in all but
+// syntax:
+//
+//	export const publishFn = inngest.createFunction({ id: "x" }, async ({ step }) => { ... })
+//	export const Button = React.memo((props) => { ... })
+//	export const POST = withAuth(withRateLimit(async (req) => { ... }))
+//
+// A function literal may be any argument, or the argument of a nested call.
+func wrapsFunctionLiteral(value *tree_sitter.Node) bool {
+	return wrapsFunctionLiteralDepth(value, 0)
+}
+
+func wrapsFunctionLiteralDepth(n *tree_sitter.Node, depth int) bool {
+	if n == nil || depth >= maxWrapperDepth || n.Kind() != "call_expression" {
+		return false
+	}
+	args := field(n, "arguments")
+	if args == nil {
+		return false
+	}
+	for i := uint(0); i < args.NamedChildCount(); i++ {
+		a := args.NamedChild(i)
+		if a == nil {
+			continue
+		}
+		switch a.Kind() {
+		case "arrow_function", "function_expression", "function", "generator_function":
+			return true
+		case "call_expression":
+			if wrapsFunctionLiteralDepth(a, depth+1) {
+				return true
+			}
+		}
+	}
+	return false
+}
