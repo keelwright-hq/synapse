@@ -29,6 +29,7 @@ func extractHTTPJS(b *builder, root *tree_sitter.Node, module graph.NodeID) {
 	x.prepass(root)
 	x.walk(root, nil)
 	x.recordNextRoute(root)
+	x.extractEventsJS(root)
 	for name, kind := range x.routers {
 		x.rec.router(name, "", x.exported[name], kind)
 	}

@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Inngest events link senders to the functions they trigger** (JavaScript,
+  TypeScript). A new `triggers` edge goes from code that sends an event
+  (`inngest.send(...)`, `step.sendEvent(...)`, or an outbox insert such as
+  `insertOutboxEvent({ eventName })`) to every `inngest.createFunction` whose
+  `triggers` (or v2 `{ event }`) config names that event. `query path`,
+  `affected` and `dependencies` walk it, so a route handler that enqueues work
+  now reaches the background function that does it. Event names must be
+  static strings; a function requeueing its own event gets no self edge. See
+  [docs/impact-queries.md](docs/impact-queries.md#events-inngest).
 - **Module-level functions wrapped in a call are indexed** (JavaScript,
   TypeScript). `export const publishFn = inngest.createFunction(cfg, async () => …)`,
   `const Button = memo((props) => …)` and `export const POST = withAuth(async (req) => …)`

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -1039,5 +1040,91 @@ function outer() {
 				}
 			}
 		})
+	}
+}
+
+func TestJSTSInngestEventRecords(t *testing.T) {
+	src := `
+import { inngest } from "./client";
+
+const REQUEUE = "post/publish";
+
+export const publishPostFn = inngest.createFunction(
+  { id: "publish-post", triggers: [{ event: "post/publish" }, { cron: "* * * * *" }] },
+  async ({ event, step }) => {
+    await step.sendEvent("requeue", { name: REQUEUE, data: { name: "not/an-event" } });
+  }
+);
+
+export const legacyFn = inngest.createFunction({ id: "legacy" }, { event: "legacy/run" }, async () => {});
+
+export const singleFn = inngest.createFunction({ id: "single", trigger: { event: "single/run" } }, async () => {});
+
+export const cronFn = inngest.createFunction({ id: "cron", triggers: [{ cron: "0 9 * * 1" }] }, async () => {});
+
+export const fanoutFn = inngest.createFunction({ id: "fanout", triggers: [{ event: "fanout/all" }] }, async ({ step }) => {
+  await step.sendEvent("enqueue", ids.map((id) => ({ name: "tenant/run" as const, data: { id } })));
+});
+
+export async function POST(req: Request) {
+  await inngest.send({ name: "post/publish", data: {} });
+  await inngest.send([{ name: "legacy/run" }, { name: ` + "`dyn/${kind}`" + ` }]);
+  res.send({ name: "not/inngest" });
+}
+
+export async function approve(tx: Tx) {
+  await db.transaction(async (tx) => {
+    await insertOutboxEvent({ aggregateId: "x", eventName: "single/run", payload: { name: "nope" }, tx });
+  });
+}
+`
+	path := filepath.Join(t.TempDir(), "events.ts")
+	mustWrite(t, path, src)
+	res, err := parse.ParseFile(parse.NewRegistry(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := func(name, prop string) string {
+		for _, n := range res.Nodes {
+			if n.Name == name && n.Kind == parse.KindFunction {
+				var out []string
+				for _, rec := range parse.DecodeRecords(n.Props[prop]) {
+					out = append(out, rec[0]+"/"+rec[1])
+				}
+				sort.Strings(out)
+				return strings.Join(out, " ")
+			}
+		}
+		t.Fatalf("no function %q", name)
+		return ""
+	}
+	// Trigger records are event|line; keep only the event.
+	triggers := func(name string) string {
+		var out []string
+		for _, f := range strings.Fields(records(name, parse.PropEventTriggers)) {
+			out = append(out, f[:strings.LastIndex(f, "/")])
+		}
+		return strings.Join(out, " ")
+	}
+	for name, want := range map[string]string{
+		"publishPostFn": "post/publish",
+		"legacyFn":      "legacy/run",
+		"singleFn":      "single/run",
+		"cronFn":        "",
+		"fanoutFn":      "fanout/all",
+	} {
+		if got := triggers(name); got != want {
+			t.Errorf("%s triggers = %q, want %q", name, got, want)
+		}
+	}
+	for name, want := range map[string]string{
+		"publishPostFn": "post/publish/step",
+		"fanoutFn":      "tenant/run/step",
+		"POST":          "legacy/run/send post/publish/send",
+		"approve":       "single/run/outbox",
+	} {
+		if got := records(name, parse.PropEventSends); got != want {
+			t.Errorf("%s sends = %q, want %q", name, got, want)
+		}
 	}
 }

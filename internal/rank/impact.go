@@ -20,6 +20,7 @@ var dependencyEdges = []graph.EdgeType{
 	parse.EdgeImplements,
 	parse.EdgeConsumes,
 	parse.EdgeCalls,
+	parse.EdgeTriggers,
 	parse.EdgeObservedCalls,
 	parse.EdgeReferences,
 	parse.EdgeImports, // module -> module, resolved at index time

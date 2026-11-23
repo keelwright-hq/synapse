@@ -1,7 +1,7 @@
 # Impact queries: affected, dependencies, path
 
 Three queries answer "what uses this", "what does this use" and "how does A
-reach B". They walk `calls`, `references`, `inherits` and `implements` edges,
+reach B". They walk `calls`, `triggers`, `references`, `inherits` and `implements` edges,
 and group results by file.
 
 ```bash
@@ -77,6 +77,56 @@ Because requirements are nodes, a bare name that a protocol and its
 implementations share is ambiguous as a seed. Use the `repo://` ID from the
 error.
 
+## Events (Inngest)
+
+Code that sends an event is linked to the functions that run on it by a
+`triggers` edge, so `path` from a route handler finds the background function
+it starts, and `affected` on that function lists its senders (JavaScript,
+TypeScript).
+
+```ts
+// route.ts
+export async function POST(req: Request) {
+  await inngest.send({ name: "campaign/publish-post", data });   // send
+}
+
+// approve.ts
+await insertOutboxEvent({ eventName: "campaign/publish-post", payload, tx }); // outbox
+
+// functions.ts
+export const publishPostFn = inngest.createFunction(
+  { id: "publish-post", triggers: [{ event: "campaign/publish-post" }] },
+  async ({ step }) => { … },
+);
+```
+
+```text
+path func:src/app/api/approve/route.ts#POST -> func:src/inngest/functions.ts#publishPostFn (2 hops, edge type per step)
+  start      POST src/app/api/approve/route.ts:4
+  calls      decideApproval src/lib/approve.ts:3
+  triggers   publishPostFn src/inngest/functions.ts:3
+```
+
+- **Senders:** `<client>.send(payload)` where the receiver's name contains
+  `inngest` (`inngest.send`, `this.inngestClient.send`); `step.sendEvent(id,
+  payload)`; and any call whose name mentions `outbox`
+  (`insertOutboxEvent(...)`, `outbox.insert(...)`) with an `eventName` property.
+  The edge starts at the function the call is in.
+- **Payloads:** an object, an array of objects, or objects built by a callback
+  (`ids.map((id) => ({ name: "x/y", data }))`). Only top-level `name` keys count,
+  so `data: { name }` is not an event.
+- **Receivers:** `createFunction({ triggers: [{ event }] }, handler)`,
+  `createFunction({ trigger: { event } }, handler)` and the v2 form
+  `createFunction(config, { event }, handler)`. Cron triggers have no sender.
+- **Names must be static:** a string literal, a template without substitutions
+  or a same-file string constant, with `as const` looked through. A name built
+  at runtime (`` `campaign/${kind}` ``) or passed in from elsewhere
+  (`inngest.send(decision.events)`) is not linked; the code that builds the
+  event with a static name is, when it is in a function.
+- A function that sends its own trigger event (a requeue) has no edge to
+  itself. Edge props: `event` (the event names), `via` (`send`, `step`,
+  `outbox`), provenance `INFERRED`.
+
 ## Output
 
 ```text
@@ -109,5 +159,7 @@ function into a nested function, so "3 hops" is not always three calls.
   `StoreProtocol.save`. Query the requirement for those.
 - **Nested functions with the same name in one file share a node,** so two
   outer functions that each define `inner` both contain it.
+- **Events link by name within one repo.** A sender in one workspace member
+  does not reach a function in another.
 - **Type edges** (`references`, `inherits`) exist for Swift, JavaScript,
   TypeScript and Python only.

@@ -19,6 +19,7 @@ import (
 var DefaultEdgeWeights = map[graph.EdgeType]float64{
 	parse.EdgeContains:      0.65,
 	parse.EdgeCalls:         0.8,
+	parse.EdgeTriggers:      0.75, // event sender → function it triggers
 	parse.EdgeImplements:    0.9,
 	parse.EdgeInherits:      0.85,
 	parse.EdgeReferences:    0.6,
