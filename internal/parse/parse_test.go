@@ -940,3 +940,104 @@ func mustWrite(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+func TestJSTSWrappedFunctionLiteralsIndexed(t *testing.T) {
+	cases := map[string]string{
+		"fns.ts": `
+import { inngest } from "./client";
+
+export const publishPostFn = inngest.createFunction(
+  { id: "publish-post", triggers: [{ event: "post/publish" }] },
+  async ({ event, step }) => {
+    await step.run("load", () => loadPost(event.data.postId));
+  }
+);
+
+export const POST = withAuth(withRateLimit(async (req: Request) => {
+  return handle(req);
+}));
+
+export const config = defineConfig({ retries: 2 });
+
+export const castFn = inngest.createFunction({ id: "cast" }, async () => {
+  await castWork();
+}) as unknown as AnyFunction;
+
+export const Card = (memo((props: Props) => render(props)));
+
+export const ids = rows.map((row) => row.id);
+export const body = fetch(url).then((res) => res.json());
+
+export function outer() {
+  const doubled = items.map((x) => x * 2);
+  return doubled;
+}
+`,
+		"fns.js": `
+export const publishPostFn = inngest.createFunction(
+  { id: "publish-post" },
+  async ({ event, step }) => {
+    await loadPost(event.data.postId);
+  }
+);
+
+const config = defineConfig({ retries: 2 });
+
+export const ids = rows.map((row) => row.id);
+export const body = fetch(url).then((res) => res.json());
+
+function outer() {
+  const doubled = items.map(function (x) { return x * 2; });
+  return doubled;
+}
+`,
+	}
+	for file, src := range cases {
+		t.Run(file, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), file)
+			mustWrite(t, path, src)
+			res, err := parse.ParseFile(parse.NewRegistry(), path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertHasKind(t, res, parse.KindFunction, "publishPostFn")
+			wantCalls := map[string][]string{
+				"#publishPostFn": {"symbol:inngest.createFunction", "symbol:loadPost"},
+			}
+			if strings.HasSuffix(file, ".ts") {
+				assertHasKind(t, res, parse.KindFunction, "POST")
+				wantCalls["#POST"] = []string{"symbol:withAuth", "symbol:withRateLimit", "symbol:handle"}
+				// `as`, `satisfies`, `!` and parentheses don't hide the wrapper.
+				assertHasKind(t, res, parse.KindFunction, "castFn")
+				wantCalls["#castFn"] = []string{"symbol:inngest.createFunction", "symbol:castWork"}
+				assertHasKind(t, res, parse.KindFunction, "Card")
+			}
+			for from, tos := range wantCalls {
+				for _, to := range tos {
+					found := false
+					for _, e := range res.Edges {
+						if e.Type == parse.EdgeCalls && strings.HasSuffix(string(e.From), from) && string(e.To) == to {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Errorf("want %s -> %s calls edge", from, to)
+					}
+				}
+			}
+			// A plain config call, module-level collection/promise results and a
+			// local inside a function stay values.
+			for _, n := range res.Nodes {
+				switch n.Name {
+				case "config", "ids", "body", "doubled":
+				default:
+					continue
+				}
+				if n.Kind == parse.KindFunction {
+					t.Errorf("%q indexed as a function, want a value", n.Name)
+				}
+			}
+		})
+	}
+}

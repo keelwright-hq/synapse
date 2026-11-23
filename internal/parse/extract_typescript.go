@@ -113,6 +113,20 @@ func walkTS(b *builder, n *tree_sitter.Node, module, current graph.NodeID) {
 				walkTSFunction(b, value, module, id)
 				continue
 			}
+			// A module-level name bound to a wrapped function literal
+			// (inngest.createFunction(cfg, handler), memo(fn), withAuth(fn)) is a
+			// function too; the wrapper call and the literal's body belong to it.
+			// Only at module scope: inside a function, `const xs = arr.map(fn)`
+			// is a local value, not an addressable symbol.
+			if nameNode != nil && current == "" && wrapsFunctionLiteral(b, value) {
+				name := b.text(nameNode)
+				id := funcID(b.path, name)
+				b.putSpan(value, graph.Node{ID: id, Kind: KindFunction, Name: name, Path: b.path})
+				b.edge(module, id, EdgeContains)
+				walkTS(b, field(decl, "type"), module, id)
+				walkTS(b, value, module, id)
+				continue
+			}
 			// The declared name is not a use; its type annotation and value are.
 			for _, part := range []string{"type", "value"} {
 				walkTS(b, field(decl, part), module, current)
