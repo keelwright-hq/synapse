@@ -226,8 +226,8 @@ func runWorkspaceNeighborhood(cmd *cobra.Command, symbol string) error {
 var queryAffectedCmd = &cobra.Command{
 	Use:   "affected <symbol>",
 	Short: "Code that calls, references or inherits from a symbol, grouped by file",
-	Long: `affected walks calls, references, inherits and implements edges backwards
-from a symbol. Every type on the walk includes its members, also those declared
+	Long: `affected walks calls, triggers, references, inherits and implements edges
+backwards from a symbol. Every type on the walk includes its members, also those declared
 in Swift extensions in other files, so callers of its methods count. A file:
 seed covers everything the file declares. A use inside a nested function also
 counts as a use by the function that defines it.
@@ -246,8 +246,8 @@ declares, so deep queries on import-heavy code stay bounded.`,
 var queryDependenciesCmd = &cobra.Command{
 	Use:   "dependencies <symbol>",
 	Short: "Code a symbol calls, references or inherits from, grouped by file",
-	Long: `dependencies walks calls, references, inherits and implements edges forwards
-from a symbol (and a type's members). A function includes the functions and
+	Long: `dependencies walks calls, triggers, references, inherits and implements edges
+forwards from a symbol (and a type's members). A function includes the functions and
 closures defined inside it, so what they call is listed too.
 
 Swift calls through a value with a declared type (a parameter, local or stored
@@ -264,7 +264,7 @@ var queryPathCmd = &cobra.Command{
 	Use:   "path <from> <to>",
 	Short: "Shortest call/reference path between two symbols",
 	Long: `path finds the fewest-hop chain from one symbol to another along calls,
-references, inherits and implements edges in their own direction. A type target
+triggers, references, inherits and implements edges in their own direction. A type target
 is reached when the chain reaches any of its members.
 
 Hops count every edge on the chain, including a "contains" step from a type

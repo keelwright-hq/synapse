@@ -29,6 +29,7 @@ func extractHTTPJS(b *builder, root *tree_sitter.Node, module graph.NodeID) {
 	x.prepass(root)
 	x.walk(root, nil)
 	x.recordNextRoute(root)
+	x.extractEventsJS(root)
 	for name, kind := range x.routers {
 		x.rec.router(name, "", x.exported[name], kind)
 	}
@@ -193,8 +194,9 @@ func (x *jsHTTP) declare(name, value *tree_sitter.Node, topLevel bool) {
 	case "arrow_function", "function_expression", "function":
 		return
 	}
-	if topLevel && isStringish(value) {
-		x.consts[n] = value
+	// `const BASE = "/api" as const` is a string constant too.
+	if v := unwrapTSExpression(value); topLevel && v != nil && isStringish(v) {
+		x.consts[n] = v
 	}
 }
 

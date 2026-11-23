@@ -34,6 +34,9 @@ const (
 	// Type relationships resolved at index time (Swift today).
 	EdgeInherits   graph.EdgeType = "inherits"   // type → supertype or conformed protocol
 	EdgeReferences graph.EdgeType = "references" // declaration → type it uses in a signature or body
+	// EdgeTriggers links code that sends an event to a function that runs on
+	// it (Inngest today), resolved at index time by event name.
+	EdgeTriggers graph.EdgeType = "triggers"
 )
 
 // Edge property keys and provenance values for Phase 3 edges.
