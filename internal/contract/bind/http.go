@@ -174,15 +174,11 @@ func bindHTTP(opts Options, routes map[string][]graph.Node, write edgeWriter) (H
 				var match, provenance string
 				switch len(targets) {
 				case 0:
-					if parse.IsSameOrigin(tokens) {
-						hits = matchSameOrigin(hm.routes, method, pathSegments(tail))
-						match, provenance = MatchSameOrigin, parse.ProvenanceExtracted
-					}
-					if len(hits) == 0 {
-						// Not served by its own member: a proxied path (/api/*
-						// rewritten to a backend member) is matched by inference.
-						hits = inferRoutes(members, hm.m.Name, method, pathSegments(tail))
-						match, provenance = MatchPathSuffix, parse.ProvenanceInferred
+					var ambiguous bool
+					hits, match, provenance, ambiguous = matchUndeclared(members, hm, method, pathSegments(tail), parse.IsSameOrigin(tokens))
+					if ambiguous {
+						st.Ambiguous++
+						continue
 					}
 				case 1:
 					for name, env := range targets {
@@ -301,18 +297,50 @@ func inferRoutes(members []*httpMember, self, method string, tail []string) []ht
 	return found
 }
 
+// matchUndeclared matches a call whose tokens name no declared member. A
+// same-origin call goes to its own member's route; only when its own member
+// serves no route at that path (a frontend whose /api/* is proxied to a
+// backend member) is it inferred against the other members. When its own
+// member serves the path ambiguously (an unknown method against GET and
+// POST), the call is ambiguous: inferring it would link it to a sibling
+// member that merely mirrors the path.
+func matchUndeclared(members []*httpMember, self *httpMember, method string, tail []string, sameOrigin bool) (hits []httpRoute, match, provenance string, ambiguous bool) {
+	if sameOrigin {
+		hits, served := matchSameOrigin(self.routes, method, tail)
+		if len(hits) > 0 {
+			return hits, MatchSameOrigin, parse.ProvenanceExtracted, false
+		}
+		if served {
+			return nil, "", "", true
+		}
+	}
+	return inferRoutes(members, self.m.Name, method, tail), MatchPathSuffix, parse.ProvenanceInferred, false
+}
+
 // matchSameOrigin links a root-relative call ('/api/users/{}') to its own
 // member's route at exactly that path: the URL has no base, so nothing before
 // the tail is supplied and no prefix is skipped. Generic segments count, so
-// '/api/health' links. Ties follow matchRoutes.
-func matchSameOrigin(routes []httpRoute, method string, tail []string) []httpRoute {
+// '/api/health' links. Ties follow matchRoutes. served reports that some
+// route matches the call at all, so a tie (no hits, served) is told apart
+// from a path the member doesn't serve.
+func matchSameOrigin(routes []httpRoute, method string, tail []string) (hits []httpRoute, served bool) {
 	var full []httpRoute
 	for _, r := range routes {
-		if len(r.segs) == len(tail) {
+		if len(r.segs) != len(tail) || !methodsAgree(method, r.method) {
+			continue
+		}
+		ok := true
+		for i, t := range tail {
+			if t != "{}" && r.segs[i] != "{}" && t != r.segs[i] {
+				ok = false
+				break
+			}
+		}
+		if ok {
 			full = append(full, r)
 		}
 	}
-	return matchRoutes(full, nil, method, tail, 0)
+	return matchRoutes(full, nil, method, tail, 0), len(full) > 0
 }
 
 // matchRoutes returns the routes whose path ends with tail (segment by

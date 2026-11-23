@@ -70,7 +70,9 @@ Calls are matched by the binder, in `synapse index` (one repo) and
    routes at exactly that path (no prefix skipped; `/api/health` counts). The
    edge has `provenance=EXTRACTED`, `match=same_origin`. A same-origin call
    its own repo doesn't serve (a frontend whose `/api/*` is proxied to a
-   backend member) falls through to inference below. Through a wrapper with
+   backend member) falls through to inference below. One its own repo serves
+   ambiguously (an unknown method against `GET` and `POST` at that path) is
+   counted ambiguous and not inferred. Through a wrapper with
    its own base (`apiGet(path)` reading `API_URL`), the call takes the
    wrapper's base and is not same-origin.
 2. **Declared:** if the call's tokens name a `base_env` variable of exactly one
