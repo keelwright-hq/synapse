@@ -1064,7 +1064,33 @@ export const cronFn = inngest.createFunction({ id: "cron", triggers: [{ cron: "0
 
 export const fanoutFn = inngest.createFunction({ id: "fanout", triggers: [{ event: "fanout/all" }] }, async ({ step }) => {
   await step.sendEvent("enqueue", ids.map((id) => ({ name: "tenant/run" as const, data: { id } })));
+  await step.sendEvent("enqueue-block", ids.map((id) => {
+    const label = { name: "ui/label" };
+    const build = () => ({ name: "ui/nested" });
+    return { name: "tenant/block", data: { id, label, build } };
+  }));
 });
+
+const PUBLISH = "campaign/publish-post" as const;
+
+export async function sendConst() {
+  await inngest.send({ name: PUBLISH });
+}
+
+export async function sendLocal() {
+  const name = "local/run";
+  await inngest.send({ name });
+}
+
+export async function sendOutboxShorthand(tx: Tx) {
+  const eventName = "outbox/short";
+  await insertOutboxEvent({ eventName, payload: {}, tx });
+}
+
+export async function sendLet() {
+  let name = "let/run";
+  await inngest.send({ name });
+}
 
 export async function POST(req: Request) {
   await inngest.send({ name: "post/publish", data: {} });
@@ -1119,9 +1145,15 @@ export async function approve(tx: Tx) {
 	}
 	for name, want := range map[string]string{
 		"publishPostFn": "post/publish/step",
-		"fanoutFn":      "tenant/run/step",
-		"POST":          "legacy/run/send post/publish/send",
-		"approve":       "single/run/outbox",
+		"fanoutFn":      "tenant/block/step tenant/run/step",
+		// A top-level `as const` binding, a local const read by shorthand and
+		// a shorthand outbox key resolve; a let is not followed.
+		"sendConst":           "campaign/publish-post/send",
+		"sendLocal":           "local/run/send",
+		"sendOutboxShorthand": "outbox/short/outbox",
+		"sendLet":             "",
+		"POST":                "legacy/run/send post/publish/send",
+		"approve":             "single/run/outbox",
 	} {
 		if got := records(name, parse.PropEventSends); got != want {
 			t.Errorf("%s sends = %q, want %q", name, got, want)

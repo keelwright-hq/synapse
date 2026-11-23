@@ -84,34 +84,100 @@ func (x *jsHTTP) extractEventsJS(root *tree_sitter.Node) {
 
 // eventSends records each static event name a payload sends: the `keys`
 // properties of the payload object, of each element of an array of them, and
-// of objects built by callbacks (`ids.map((id) => ({ name: 'x/y', … }))`).
-// A property's value is not entered, so `data: { name }` is not an event.
+// of the object a callback returns (`ids.map((id) => ({ name: 'x/y', … }))`).
+// Property values are not entered, so `data: { name }` is not an event, and
+// neither is an object a callback builds but does not return.
 func (x *jsHTTP) eventSends(payload *tree_sitter.Node, via string, keys []string, line int) {
 	owner := x.rec.ownerAt(line)
 	seen := map[string]bool{}
+	record := func(v *tree_sitter.Node) {
+		if name, ok := x.staticString(v); ok && name != "" && !seen[name] {
+			seen[name] = true
+			x.b.addListProp(owner, PropEventSends, EncodeRecord(name, via, strconv.Itoa(line)))
+		}
+	}
+	isKey := func(k string) bool {
+		for _, want := range keys {
+			if k == want {
+				return true
+			}
+		}
+		return false
+	}
 	var walk func(n *tree_sitter.Node, depth int)
 	walk = func(n *tree_sitter.Node, depth int) {
+		n = unwrapTSExpression(n)
 		if n == nil || depth > maxEventPayloadDepth {
 			return
 		}
-		if n.Kind() == "pair" {
-			key := propertyKey(x.b, field(n, "key"))
-			for _, k := range keys {
-				if key != k {
-					continue
-				}
-				if name, ok := x.staticString(field(n, "value")); ok && name != "" && !seen[name] {
-					seen[name] = true
-					x.b.addListProp(owner, PropEventSends, EncodeRecord(name, via, strconv.Itoa(line)))
+		switch n.Kind() {
+		case "object":
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				c := n.NamedChild(i)
+				switch c.Kind() {
+				case "pair":
+					if isKey(propertyKey(x.b, field(c, "key"))) {
+						record(field(c, "value"))
+					}
+				case "shorthand_property_identifier":
+					// { name } reads the binding of the same name.
+					if isKey(x.b.text(c)) {
+						record(c)
+					}
 				}
 			}
-			return
-		}
-		for i := uint(0); i < n.NamedChildCount(); i++ {
-			walk(n.NamedChild(i), depth+1)
+		case "array":
+			for i := uint(0); i < n.NamedChildCount(); i++ {
+				walk(n.NamedChild(i), depth+1)
+			}
+		case "call_expression":
+			// ids.map(cb), Promise.all([...]): the arguments carry the events.
+			for _, a := range callArgs(n) {
+				walk(a, depth+1)
+			}
+		case "ternary_expression":
+			walk(field(n, "consequence"), depth+1)
+			walk(field(n, "alternative"), depth+1)
+		case "arrow_function", "function_expression", "function":
+			body := field(n, "body")
+			if body == nil {
+				return
+			}
+			if body.Kind() != "statement_block" {
+				walk(body, depth+1)
+				return
+			}
+			for _, r := range returnValues(body) {
+				walk(r, depth+1)
+			}
 		}
 	}
 	walk(payload, 0)
+}
+
+// returnValues are the values a function body returns, not counting
+// returns inside functions nested in it.
+func returnValues(body *tree_sitter.Node) []*tree_sitter.Node {
+	var out []*tree_sitter.Node
+	var visit func(n *tree_sitter.Node)
+	visit = func(n *tree_sitter.Node) {
+		for i := uint(0); i < n.NamedChildCount(); i++ {
+			c := n.NamedChild(i)
+			switch c.Kind() {
+			case "arrow_function", "function_expression", "function", "function_declaration",
+				"generator_function_declaration", "class_declaration", "class":
+				continue
+			case "return_statement":
+				if c.NamedChildCount() > 0 {
+					out = append(out, c.NamedChild(0))
+				}
+				continue
+			}
+			visit(c)
+		}
+	}
+	visit(body)
+	return out
 }
 
 // eventTriggers records the events a createFunction call runs on.
@@ -151,13 +217,57 @@ func (x *jsHTTP) eventTriggers(args []*tree_sitter.Node, line int) {
 }
 
 // staticString evaluates a string literal, a template without
-// substitutions or a same-file string constant, looking through `as const`.
+// substitutions, or a const bound to one in an enclosing block or at the top
+// of the file (`const name = "x/y" as const`), looking through `as const`.
 func (x *jsHTTP) staticString(n *tree_sitter.Node) (string, bool) {
+	return x.staticStringDepth(n, 0)
+}
+
+func (x *jsHTTP) staticStringDepth(n *tree_sitter.Node, depth int) (string, bool) {
 	n = unwrapTSExpression(n)
-	if n == nil {
+	if n == nil || depth > 4 {
 		return "", false
 	}
-	return x.eval(n, nil, 0).literal()
+	switch n.Kind() {
+	case "identifier", "shorthand_property_identifier":
+		if v := constBinding(x.b, n, x.b.text(n)); v != nil {
+			return x.staticStringDepth(v, depth+1)
+		}
+		return "", false
+	case "string", "template_string":
+		return x.eval(n, nil, 0).literal()
+	}
+	return "", false
+}
+
+// constBinding is the initializer of the nearest `const name = …` visible
+// from use: declared in an enclosing statement block or at the top level of
+// the file, before or after the use. let and var are not followed.
+func constBinding(b *builder, use *tree_sitter.Node, name string) *tree_sitter.Node {
+	for p := use.Parent(); p != nil; p = p.Parent() {
+		if p.Kind() != "statement_block" && p.Kind() != "program" {
+			continue
+		}
+		for i := uint(0); i < p.NamedChildCount(); i++ {
+			decl := p.NamedChild(i)
+			if decl.Kind() == "export_statement" {
+				decl = field(decl, "declaration")
+			}
+			if decl == nil || decl.Kind() != "lexical_declaration" || !strings.HasPrefix(b.text(decl), "const") {
+				continue
+			}
+			for j := uint(0); j < decl.NamedChildCount(); j++ {
+				d := decl.NamedChild(j)
+				if d.Kind() != "variable_declarator" {
+					continue
+				}
+				if id := field(d, "name"); id != nil && id.Kind() == "identifier" && b.text(id) == name {
+					return field(d, "value")
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // objectProp is the value of the named property of an object literal.

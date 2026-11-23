@@ -112,14 +112,17 @@ path func:src/app/api/approve/route.ts#POST -> func:src/inngest/functions.ts#pub
   payload)`; and any call whose name mentions `outbox`
   (`insertOutboxEvent(...)`, `outbox.insert(...)`) with an `eventName` property.
   The edge starts at the function the call is in.
-- **Payloads:** an object, an array of objects, or objects built by a callback
-  (`ids.map((id) => ({ name: "x/y", data }))`). Only top-level `name` keys count,
-  so `data: { name }` is not an event.
+- **Payloads:** an object, an array of objects, or the object a callback
+  returns (`ids.map((id) => ({ name: "x/y", data }))`). Only top-level `name`
+  keys count, so `data: { name }` is not an event, and neither is an object a
+  callback builds without returning it.
 - **Receivers:** `createFunction({ triggers: [{ event }] }, handler)`,
   `createFunction({ trigger: { event } }, handler)` and the v2 form
   `createFunction(config, { event }, handler)`. Cron triggers have no sender.
-- **Names must be static:** a string literal, a template without substitutions
-  or a same-file string constant, with `as const` looked through. A name built
+- **Names must be static:** a string literal, a template without substitutions,
+  or a `const` bound to one in an enclosing block or at the top of the file
+  (`const name = "x/y" as const`, then `{ name }` or `{ name: name }`), with
+  `as const` looked through. `let` and `var` are not followed. A name built
   at runtime (`` `campaign/${kind}` ``) or passed in from elsewhere
   (`inngest.send(decision.events)`) is not linked; the code that builds the
   event with a static name is, when it is in a function.
