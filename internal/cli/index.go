@@ -265,7 +265,7 @@ func logHTTPStats(logger *slog.Logger, st bind.HTTPStats) {
 	}
 	logger.Info("http bind",
 		"routes", st.Routes, "client_calls", st.Clients,
-		"declared", st.Declared, "inferred", st.Inferred,
+		"declared", st.Declared, "inferred", st.Inferred, "same_origin", st.SameOrigin,
 		"ambiguous", st.Ambiguous, "unmatched", st.Unmatched,
 		"service_edges", st.ServiceEdges)
 	if len(st.EnvClashes) > 0 {

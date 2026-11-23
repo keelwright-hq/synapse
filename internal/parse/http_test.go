@@ -98,7 +98,9 @@ export async function jobs() {
 `,
 			props: []want{
 				{"func:client.ts#apiGet", parse.PropHTTPWrapper, "0|GET|API_URL"},
-				{"func:client.ts#loadUser", parse.PropHTTPCalls, "wrapper|apiGet|0|GET||/v1/users/{}||11"},
+				// A root-relative path carries the same-origin token; the index
+				// unions it with apiGet's API_URL, so the call is not same-origin.
+				{"func:client.ts#loadUser", parse.PropHTTPCalls, "wrapper|apiGet|0|GET|/|/v1/users/{}||11"},
 				{"func:client.ts#jobs", parse.PropHTTPCalls, "direct|||POST|APIBASE;DATA_URL|/jobs||17"},
 				{"func:client.ts#apiBase", parse.PropEnvReads, "DATA_URL"},
 			},
@@ -116,7 +118,23 @@ export async function load() {
 			props: []want{
 				// A same-file fetchUser is a wrapper, not an injected fetch.
 				{"func:loaders.js#fetchUser", parse.PropHTTPWrapper, "0|GET|API_URL"},
-				{"func:loaders.js#load", parse.PropHTTPCalls, "wrapper|fetchUser|0|*||/v1/users||5,direct|||POST|GOT_URL|/v1/items||6"},
+				{"func:loaders.js#load", parse.PropHTTPCalls, "wrapper|fetchUser|0|*|/|/v1/users||5,direct|||POST|GOT_URL|/v1/items||6"},
+			},
+		},
+		{
+			file: "components/user-card.tsx",
+			src: `'use client';
+export async function loadCard(id: string) {
+  await fetch(` + "`/api/users/${id}?full=1`" + `);
+  await fetch('/api/users', { method: 'POST' });
+  await fetch('//cdn.example.com/v1/assets');
+  await fetch('https://api.linkedin.com/v2/userinfo');
+}
+`,
+			props: []want{
+				// Root-relative URLs are same-origin; protocol-relative and
+				// absolute URLs are not (and the former has no tail).
+				{"func:components/user-card.tsx#loadCard", parse.PropHTTPCalls, "direct|||GET|/|/api/users/{}||3,direct|||POST|/|/api/users||4,direct|||GET||/v2/userinfo||6"},
 			},
 		},
 		{

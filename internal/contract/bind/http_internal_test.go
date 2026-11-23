@@ -141,3 +141,33 @@ func TestInferRoutesNeedsOneOtherMember(t *testing.T) {
 		t.Errorf("self match: linked %q", names(got))
 	}
 }
+
+func TestMatchSameOrigin(t *testing.T) {
+	routes := testRoutes(
+		"GET /api/users r#GET",
+		"POST /api/users r#POST",
+		"GET /api/users/{} id#GET",
+		"GET /api/health h#GET",
+		"GET /api/v1/teams/{}/users t#GET",
+	)
+	cases := []struct {
+		method, tail, want string
+	}{
+		{"GET", "/api/users", "GET /api/users"},
+		{"POST", "/api/users", "POST /api/users"},
+		{"GET", "/api/users/{}", "GET /api/users/{}"},
+		// Generic segments are enough for a same-origin path.
+		{"GET", "/api/health", "GET /api/health"},
+		// The whole path is given: no prefix may be skipped.
+		{"GET", "/users", ""},
+		{"GET", "/teams/{}/users", ""},
+		{"DELETE", "/api/users", ""},
+		// An unknown method matching routes of different methods is ambiguous.
+		{"*", "/api/users", ""},
+	}
+	for _, c := range cases {
+		if got := names(matchSameOrigin(routes, c.method, pathSegments(c.tail))); got != c.want {
+			t.Errorf("%s %s = %q, want %q", c.method, c.tail, got, c.want)
+		}
+	}
+}

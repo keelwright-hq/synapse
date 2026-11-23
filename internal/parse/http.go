@@ -49,6 +49,13 @@ const (
 // AnyMethod matches every HTTP method (Express `all`, an unknown method).
 const AnyMethod = "*"
 
+// SameOriginToken is the token of a client call whose URL is a root-relative
+// literal ('/api/users', `/api/users/${id}`): it has no base, so it goes to
+// the origin that served the caller (a Next.js page calling its own app/api
+// route). Through a wrapper it is unioned with the wrapper's base tokens, so
+// a call is same-origin only when this is its only token.
+const SameOriginToken = "/"
+
 var recordEscaper = strings.NewReplacer("%", "%25", ",", "%2C", "|", "%7C")
 var recordUnescaper = strings.NewReplacer("%2C", ",", "%7C", "|", "%25", "%")
 
@@ -197,6 +204,13 @@ func (v strVal) render() string {
 // it; the rest, from the first literal, is the path tail. A leading parameter
 // means the URL is passed in (param >= 0, no tail): the function is a wrapper.
 func splitURL(v strVal) (tokens []string, tail string, param int) {
+	tokens, tail, param, _ = splitURLOrigin(v)
+	return tokens, tail, param
+}
+
+// splitURLOrigin is splitURL that also reports a root-relative URL: a
+// literal starting with a single '/', with no base before it.
+func splitURLOrigin(v strVal) (tokens []string, tail string, param int, sameOrigin bool) {
 	param = -1
 	i := 0
 	for i < len(v) && v[i].dyn && v[i].param < 0 {
@@ -207,10 +221,10 @@ func splitURL(v strVal) (tokens []string, tail string, param int) {
 		for _, p := range v[i+1:] {
 			if !p.dyn && strings.TrimSpace(p.lit) != "" && !strings.HasPrefix(p.lit, "?") {
 				// `${base}${path}/x`: more path after the parameter.
-				return tokens, "", -1
+				return tokens, "", -1, false
 			}
 		}
-		return tokens, "", v[i].param
+		return tokens, "", v[i].param, false
 	}
 	rest := strVal(v[i:]).render()
 	if i == 0 {
@@ -219,20 +233,38 @@ func splitURL(v strVal) (tokens []string, tail string, param int) {
 			rest = strings.SplitN(rest, "://", 2)[1]
 			slash := strings.Index(rest, "/")
 			if slash < 0 {
-				return tokens, "", -1
+				return tokens, "", -1, false
 			}
 			rest = rest[slash:]
+		case strings.HasPrefix(rest, "//"):
+			return tokens, "", -1, false // protocol-relative: another host
 		case !strings.HasPrefix(rest, "/"):
-			return tokens, "", -1
+			return tokens, "", -1, false
+		default:
+			sameOrigin = true
 		}
 	} else if rest != "" && !strings.HasPrefix(rest, "/") && !strings.HasPrefix(rest, "?") {
 		rest = "/" + rest
 	}
 	tail = NormalizeHTTPPath(rest)
 	if !hasLiteralSegment(tail) {
-		return tokens, "", -1 // `${a}/${b}` is a key, not a route path
+		return tokens, "", -1, false // `${a}/${b}` is a key, not a route path
 	}
-	return tokens, tail, -1
+	return tokens, tail, -1, sameOrigin
+}
+
+// originTokens adds SameOriginToken to a root-relative call with no other
+// base tokens.
+func originTokens(tokens []string, sameOrigin bool) []string {
+	if sameOrigin && len(tokens) == 0 {
+		return []string{SameOriginToken}
+	}
+	return tokens
+}
+
+// IsSameOrigin reports a resolved call whose only token is SameOriginToken.
+func IsSameOrigin(tokens []string) bool {
+	return len(tokens) == 1 && tokens[0] == SameOriginToken
 }
 
 // cleanTokens upper-cases identifier tokens (env names compare that way;
@@ -367,7 +399,7 @@ func (r *httpRecorder) envRead(name string, scopeFn *tree_sitter.Node, line int)
 // direct records a call to an HTTP client; a URL taken from the enclosing
 // function's parameter makes that function a wrapper instead.
 func (r *httpRecorder) direct(method string, url strVal, extraTokens []string, line int, scopeFn *tree_sitter.Node) {
-	tokens, tail, param := splitURL(url)
+	tokens, tail, param, sameOrigin := splitURLOrigin(url)
 	tokens = cleanTokens(append(tokens, extraTokens...))
 	if param >= 0 {
 		if owner := r.ownerOfSpan(scopeFn); owner != "" {
@@ -379,13 +411,13 @@ func (r *httpRecorder) direct(method string, url strVal, extraTokens []string, l
 		return
 	}
 	r.b.addListProp(r.recordOwner(scopeFn, line), PropHTTPCalls,
-		EncodeRecord("direct", "", "", method, JoinTokens(tokens), tail, "", strconv.Itoa(line)))
+		EncodeRecord("direct", "", "", method, JoinTokens(originTokens(tokens, sameOrigin)), tail, "", strconv.Itoa(line)))
 }
 
 // wrapperCall records a call that passes a path (or the caller's own path
 // parameter) to a function that may be an HTTP wrapper.
 func (r *httpRecorder) wrapperCall(callee string, arg int, method string, url strVal, line int, scopeFn *tree_sitter.Node) {
-	tokens, tail, param := splitURL(url)
+	tokens, tail, param, sameOrigin := splitURLOrigin(url)
 	p := ""
 	if param >= 0 {
 		if !requestLikeName(callee) {
@@ -399,7 +431,7 @@ func (r *httpRecorder) wrapperCall(callee string, arg int, method string, url st
 		return
 	}
 	r.b.addListProp(r.recordOwner(scopeFn, line), PropHTTPCalls,
-		EncodeRecord("wrapper", callee, strconv.Itoa(arg), method, JoinTokens(cleanTokens(tokens)), tail, p, strconv.Itoa(line)))
+		EncodeRecord("wrapper", callee, strconv.Itoa(arg), method, JoinTokens(originTokens(cleanTokens(tokens), sameOrigin)), tail, p, strconv.Itoa(line)))
 }
 
 // requestLikeName reports a callee that may send a request: an HTTP verb

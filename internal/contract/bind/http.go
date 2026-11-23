@@ -23,6 +23,7 @@ const (
 	MatchDeclaredEnv = "declared_env" // client base URL reads a declared env var
 	MatchPathSuffix  = "path_suffix"  // no declared target; unique path match
 	MatchEnvRead     = "env_read"     // member reads another member's env var
+	MatchSameOrigin  = "same_origin"  // root-relative call to its own member's route
 )
 
 // Service nodes stand for a whole member in env_read edges.
@@ -38,7 +39,7 @@ func ServiceNodeID(member string) graph.NodeID {
 
 // HTTPStats counts the HTTP binding outcome.
 type HTTPStats struct {
-	Routes, Clients, Declared, Inferred, Ambiguous, Unmatched, ServiceEdges int
+	Routes, Clients, Declared, Inferred, SameOrigin, Ambiguous, Unmatched, ServiceEdges int
 	// EnvClashes are base_env names declared by more than one member; calls
 	// reading them are not treated as declared.
 	EnvClashes []string
@@ -173,8 +174,16 @@ func bindHTTP(opts Options, routes map[string][]graph.Node, write edgeWriter) (H
 				var match, provenance string
 				switch len(targets) {
 				case 0:
-					hits = inferRoutes(members, hm.m.Name, method, pathSegments(tail))
-					match, provenance = MatchPathSuffix, parse.ProvenanceInferred
+					if parse.IsSameOrigin(tokens) {
+						hits = matchSameOrigin(hm.routes, method, pathSegments(tail))
+						match, provenance = MatchSameOrigin, parse.ProvenanceExtracted
+					}
+					if len(hits) == 0 {
+						// Not served by its own member: a proxied path (/api/*
+						// rewritten to a backend member) is matched by inference.
+						hits = inferRoutes(members, hm.m.Name, method, pathSegments(tail))
+						match, provenance = MatchPathSuffix, parse.ProvenanceInferred
+					}
 				case 1:
 					for name, env := range targets {
 						t := byName[name]
@@ -190,9 +199,12 @@ func bindHTTP(opts Options, routes map[string][]graph.Node, write edgeWriter) (H
 					st.Unmatched++
 					continue
 				}
-				if match == MatchDeclaredEnv {
+				switch match {
+				case MatchDeclaredEnv:
 					st.Declared++
-				} else {
+				case MatchSameOrigin:
+					st.SameOrigin++
+				default:
 					st.Inferred++
 				}
 				for _, r := range hits {
@@ -287,6 +299,20 @@ func inferRoutes(members []*httpMember, self, method string, tail []string) []ht
 		return nil
 	}
 	return found
+}
+
+// matchSameOrigin links a root-relative call ('/api/users/{}') to its own
+// member's route at exactly that path: the URL has no base, so nothing before
+// the tail is supplied and no prefix is skipped. Generic segments count, so
+// '/api/health' links. Ties follow matchRoutes.
+func matchSameOrigin(routes []httpRoute, method string, tail []string) []httpRoute {
+	var full []httpRoute
+	for _, r := range routes {
+		if len(r.segs) == len(tail) {
+			full = append(full, r)
+		}
+	}
+	return matchRoutes(full, nil, method, tail, 0)
 }
 
 // matchRoutes returns the routes whose path ends with tail (segment by
