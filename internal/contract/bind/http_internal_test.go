@@ -141,3 +141,73 @@ func TestInferRoutesNeedsOneOtherMember(t *testing.T) {
 		t.Errorf("self match: linked %q", names(got))
 	}
 }
+
+func TestMatchSameOrigin(t *testing.T) {
+	routes := testRoutes(
+		"GET /api/users r#GET",
+		"POST /api/users r#POST",
+		"GET /api/users/{} id#GET",
+		"GET /api/health h#GET",
+		"GET /api/v1/teams/{}/users t#GET",
+	)
+	cases := []struct {
+		method, tail, want string
+	}{
+		{"GET", "/api/users", "GET /api/users"},
+		{"POST", "/api/users", "POST /api/users"},
+		{"GET", "/api/users/{}", "GET /api/users/{}"},
+		// Generic segments are enough for a same-origin path.
+		{"GET", "/api/health", "GET /api/health"},
+		// The whole path is given: no prefix may be skipped.
+		{"GET", "/users", ""},
+		{"GET", "/teams/{}/users", ""},
+		{"DELETE", "/api/users", ""},
+		// An unknown method matching routes of different methods is ambiguous.
+		{"*", "/api/users", ""},
+	}
+	for _, c := range cases {
+		hits, _ := matchSameOrigin(routes, c.method, pathSegments(c.tail))
+		if got := names(hits); got != c.want {
+			t.Errorf("%s %s = %q, want %q", c.method, c.tail, got, c.want)
+		}
+	}
+}
+
+func TestMatchUndeclaredSameOrigin(t *testing.T) {
+	mk := func(name string, specs ...string) *httpMember {
+		hm := &httpMember{m: Member{Name: name}, routes: testRoutes(specs...)}
+		for i := range hm.routes {
+			hm.routes[i].repo = name
+		}
+		hm.common = commonPrefixes(hm.routes)
+		return hm
+	}
+	web := mk("web", "GET /billing/invoices inv#GET", "POST /billing/invoices inv#POST")
+	api := mk("api", "GET /api/v1/billing/invoices a#GET", "GET /api/v1/teams/members b#GET")
+	members := []*httpMember{web, api}
+	tail := pathSegments("/billing/invoices")
+
+	// Its own member serves the path: linked there, not to the sibling.
+	hits, match, _, amb := matchUndeclared(members, web, "GET", tail, true)
+	if amb || match != MatchSameOrigin || names(hits) != "GET /billing/invoices" {
+		t.Errorf("GET: %q %s ambiguous=%v", names(hits), match, amb)
+	}
+	// An unknown method ties on its own member: ambiguous, and never inferred
+	// onto the sibling's GET /api/v1/billing/invoices.
+	hits, _, _, amb = matchUndeclared(members, web, "*", tail, true)
+	if !amb || len(hits) != 0 {
+		t.Errorf("* tie: linked %q ambiguous=%v", names(hits), amb)
+	}
+	// Its own member doesn't serve the method or path: a proxied call falls
+	// through to inference.
+	front := mk("front", "GET /home h#GET")
+	hits, match, _, amb = matchUndeclared([]*httpMember{front, api}, front, "GET", tail, true)
+	if amb || match != MatchPathSuffix || names(hits) != "GET /api/v1/billing/invoices" {
+		t.Errorf("proxied: %q %s ambiguous=%v", names(hits), match, amb)
+	}
+	// A call that isn't same-origin is never matched on its own member first.
+	hits, match, _, amb = matchUndeclared(members, web, "GET", tail, false)
+	if amb || match != MatchPathSuffix || len(hits) != 0 {
+		t.Errorf("not same-origin: %q %s ambiguous=%v", names(hits), match, amb)
+	}
+}

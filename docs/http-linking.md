@@ -1,7 +1,8 @@
 # HTTP route and client linking
 
-Synapse links HTTP client calls in one workspace member to the route handlers
-that serve them in another, without OpenAPI, GraphQL or protobuf files. The
+Synapse links HTTP client calls to the route handlers that serve them, in
+another workspace member or in the caller's own repo (a Next.js page calling
+its `app/api` routes), without OpenAPI, GraphQL or protobuf files. The
 links feed `synapse query services`, and `affected` / `dependencies` follow
 them across repos.
 
@@ -53,18 +54,31 @@ parameters go. A URL is read as *base + tail*:
   file.
 - The rest, from the first literal, is the tail. Parameters become `{}` and the
   query string is dropped.
+- A root-relative URL with no base (`fetch('/api/users')`,
+  `` fetch(`/api/users/${id}`) ``) is *same-origin*: it goes to whatever served
+  the caller. Protocol-relative (`//host/x`) and absolute URLs are not.
 
 Normalizers such as `BASE.replace(/\/api$/, '')` are never evaluated, because
 only the tail is matched.
 
 ## Matching
 
-Calls are matched in `synapse index --workspace`, by the binder.
+Calls are matched by the binder, in `synapse index` (one repo) and
+`synapse index --workspace`.
 
-1. **Declared:** if the call's tokens name a `base_env` variable of exactly one
+1. **Same-origin:** a root-relative call is matched against its own repo's
+   routes at exactly that path (no prefix skipped; `/api/health` counts). The
+   edge has `provenance=EXTRACTED`, `match=same_origin`. A same-origin call
+   its own repo doesn't serve (a frontend whose `/api/*` is proxied to a
+   backend member) falls through to inference below. One its own repo serves
+   ambiguously (an unknown method against `GET` and `POST` at that path) is
+   counted ambiguous and not inferred. Through a wrapper with
+   its own base (`apiGet(path)` reading `API_URL`), the call takes the
+   wrapper's base and is not same-origin.
+2. **Declared:** if the call's tokens name a `base_env` variable of exactly one
    member, the call targets that member. Its `gateway_prefix` is stripped from
    the tail. The edge has `provenance=EXTRACTED`, `match=declared_env`.
-2. **Inferred:** if no member is declared for the tokens, the tail is matched
+3. **Inferred:** if no member is declared for the tokens, the tail is matched
    against every member's routes.
    - It needs at least two specific path segments (`api`, `v1`, `health` and the
      like don't count).
