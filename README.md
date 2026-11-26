@@ -1,8 +1,28 @@
+[![Synapse: how it finds code](https://img.youtube.com/vi/cndM2GSzFpc/maxresdefault.jpg)](https://youtu.be/cndM2GSzFpc)
+
 # Synapse
 
-https://youtu.be/cndM2GSzFpc
+Synapse is a local code graph that gives AI agents the right code in fewer tokens. On 60 questions across 9 repos it answered 53 completely using an estimated 21,848 tokens, where grep and git answered all 60 using 221,856. Public beta (v0.5.0), Apache-2.0.
 
-Go-native code context engine for AI IDEs. Synapse indexes repositories via tree-sitter, persists a code graph in an embedded store, and serves context over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP)—as a single self-contained binary.
+- Video: https://youtu.be/cndM2GSzFpc
+- Website, full benchmarks and their limits: https://www.keelwright.ca/synapse
+
+Synapse indexes your repositories with tree-sitter, stores a code graph in an embedded database on your machine, and serves ranked context to your IDE or agent over the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP), as a single self-contained binary.
+
+## Three reasons to try it
+
+1. **It spends far fewer tokens on questions about how code connects.** On a private Swift app (8 questions), finding the callers of a function across files cost grep 5,713 estimated tokens and Synapse 218. A type's dependencies cost 4,751 and 324.
+2. **It follows links that grep cannot follow cheaply.** It records calls, imports, type edges, git co-changes and doc links, and links HTTP routes to client calls across repos. On 8 cross-service questions it answered 8 of 8 with base-URL env vars declared and 3 of 8 with nothing declared. In a random sample of 30 links, all 30 were correct.
+3. **It runs where your code is.** One binary for macOS and Linux, a graph stored in your repo's `.synapse` folder, no server to host.
+
+## Where grep still wins, and how to read these numbers
+
+- grep was cheaper on plain text patterns (docs that mention a name: 17 tokens against 45) and on a well-built git log (138 against 549). In the cross-service test it used 557 tokens against Synapse's 1,570, because its commands already knew the env var names.
+- The author wrote the questions, the answer keys and the fixes, and wrote the fixes after seeing the results. An independent task set would be a better test.
+- The test repos are private, so the original runs cannot be reproduced. The harness in `bench/harness` ships with a small synthetic fixture.
+- Tokens are estimated as characters divided by 4. No live agent ran.
+- Type edges exist for Swift, JavaScript, TypeScript and Python only. Go, Java, Kotlin, Ruby, PHP, C, C++ and C# are not benchmarked.
+- Numbers were measured on `main` before the v0.5.0 tag.
 
 It also indexes **OpenAPI 3.x**, **GraphQL SDL**, and **Protobuf / gRPC** specs into the
 graph and links handlers/clients across repos with `implements` / `consumes` edges.
@@ -329,7 +349,8 @@ Details: [docs/federation.md](docs/federation.md).
 | [docs/phase3.md](docs/phase3.md) | Phase 3 semantic extraction |
 | [docs/reviewer-workflows.md](docs/reviewer-workflows.md) | Reviewer workflows (co-changes, hot paths, docs) |
 | [docs/otel.md](docs/otel.md) | OpenTelemetry ingest |
-| [docs/benchmarks.md](docs/benchmarks.md) | Graph store benchmarks |
+| [docs/benchmarks.md](docs/benchmarks.md) | Graph store speed benchmarks |
+| [keelwright.ca/synapse](https://www.keelwright.ca/synapse) | Benchmarks against grep and Graphify, with limits |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
 ## Testing the beta
